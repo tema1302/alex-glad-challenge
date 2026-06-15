@@ -1,165 +1,242 @@
-import type { AIConfig } from './zai';
-import { getApiUrl, getModel, getHeaders } from './zai';
+'use client';
+
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, MessageCircle, Loader2, ChevronDown, ChevronUp, AlertTriangle } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import type { Question } from '@/types';
+import { QAAgent, createQAAgent, type ChatMessage, type TokenStats } from '@/lib/qaAgent';
+import { useSettingsStore } from '@/stores/useSettingsStore';
+import { useChatStore } from '@/stores/useChatStore';
+import { getBuiltinAIConfig, type AIConfig } from '@/lib/zai';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
+interface QuestionChatProps {
+  question: Question;
+  userAnswer?: string;
 }
 
-interface QAAgentConfig {
-  aiConfig: AIConfig;
+function resolveAIConfig(): AIConfig | null {
+  const builtin = getBuiltinAIConfig('deepseek') || getBuiltinAIConfig('openrouter');
+  if (builtin) return builtin;
+
+  const s = useSettingsStore.getState();
+  const provider = s.aiProvider;
+  const userKey = provider === 'deepseek' ? s.deepseekKey
+    : provider === 'openrouter' ? s.openrouterKey
+    : s.customApiKey;
+  if (!userKey) return null;
+
+  const model = provider === 'deepseek' ? 'deepseek-chat'
+    : provider === 'openrouter' ? (s.openrouterModel || 'google/gemini-2.0-flash-001')
+    : s.customModel;
+  const apiUrl = provider === 'custom' ? s.customApiUrl : undefined;
+  return { provider, apiKey: userKey, model, apiUrl };
 }
 
-export class QAAgent {
-  private config: AIConfig;
-  private messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
+function formatCost(cost: number): string {
+  if (cost < 0.001) return '$0.000';
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(3)}`;
+}
 
-  constructor({ aiConfig }: QAAgentConfig) {
-    this.config = aiConfig;
-  }
+export function QuestionChat({ question, userAnswer }: QuestionChatProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [input, setInput] = useState('');
+  const [agent, setAgent] = useState<QAAgent | null>(null);
+  const messages = useChatStore(s => s.messages);
+  const isLoading = useChatStore(s => s.isLoading);
+  const error = useChatStore(s => s.error);
+  const tokenStats = useChatStore(s => s.tokenStats);
+  const addMessage = useChatStore(s => s.addMessage);
+  const setLoading = useChatStore(s => s.setLoading);
+  const setError = useChatStore(s => s.setError);
+  const setTokenStats = useChatStore(s => s.setTokenStats);
+  const clear = useChatStore(s => s.clear);
+  const loadFromDB = useChatStore(s => s.loadFromDB);
+  const saveToDB = useChatStore(s => s.saveToDB);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  initContext(question: Question, userAnswer?: string): void {
-    const correctOption = question.options.find(o => o.isCorrect);
-    const systemMsg: { role: 'system'; content: string } = {
-      role: 'system',
-      content: `Ты — ИИ-ассистент в образовательном приложении. Помогаешь студенту понять учебный материал.
-
-Контекст: студент ответил на вопрос теста.
-Вопрос: ${question.text}
-${userAnswer ? `Ответ студента: ${userAnswer}` : 'Студент ещё не ответил.'}
-Правильный ответ: ${correctOption?.text ?? 'неизвестно'}
-Пояснение: ${question.explanation}
-
-Все варианты ответов:
-${question.options.map(o => `${o.isCorrect ? '✓' : '✗'} ${o.text}`).join('\n')}
-
-ПРАВИЛА:
-- Отвечай на русском языке
-- Объясняй просто, с аналогиями из жизни
-- Если студент ошибся — объясни почему правильный ответ другой
-- Если правильно — похвали и углуби понимание
-- Отвечай кратко, 2-4 предложения
-- Местами заставляй человека в голос проговорить важные фразы или термины
-- Технические термины давай с английским в скобках`,
-    };
-    this.messages = [systemMsg];
-  }
-
-  restoreHistory(history: ChatMessage[]): void {
-    for (const msg of history) {
-      this.messages.push({ role: msg.role, content: msg.text });
+  // Init agent + load history from DB when question changes
+  useEffect(() => {
+    const config = resolveAIConfig();
+    if (!config) {
+      setAgent(null);
+      return;
     }
-  }
-
-  async send(userMessage: string): Promise<string> {
-    this.messages.push({ role: 'user', content: userMessage });
-
-    const url = this.config.provider === 'custom' ? (this.config.apiUrl || '') : getApiUrl(this.config.provider);
-    const model = getModel(this.config);
-
-    if (!url) throw new Error('API URL не настроен');
-    if (!this.config.apiKey) throw new Error('API ключ не настроен');
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: getHeaders(this.config),
-      body: JSON.stringify({
-        model,
-        messages: this.messages,
-        temperature: 0.7,
-        max_tokens: 1024,
-      }),
+    const newAgent = createQAAgent(config, question, userAnswer, (stats: TokenStats) => {
+      setTokenStats(stats);
     });
+    setAgent(newAgent);
+    clear();
 
-    if (!response.ok) {
-      const err = await response.text().catch(() => '');
-      throw new Error(`API Error ${response.status}: ${err}`);
+    loadFromDB(question.id).then(() => {
+      const history = useChatStore.getState().messages;
+      if (history.length > 0) {
+        newAgent.restoreHistory(history);
+      }
+    });
+  }, [question.id]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
+  }, [messages, isLoading]);
 
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Пустой ответ от AI');
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || !agent || isLoading) return;
 
-    this.messages.push({ role: 'assistant', content });
-    return content;
-  }
+    const userMsg: ChatMessage = { id: `u${Date.now()}`, role: 'user', text };
+    addMessage(userMsg);
+    saveToDB(question.id, userMsg);
+    setInput('');
+    setLoading(true);
+    setError(null);
 
-  reset(): void {
-    this.messages = [];
-  }
+    try {
+      const reply = await agent.send(text);
+      const aiMsg: ChatMessage = { id: `a${Date.now()}`, role: 'assistant', text: reply };
+      addMessage(aiMsg);
+      saveToDB(question.id, aiMsg);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка');
+    } finally {
+      setLoading(false);
+    }
+  }, [input, agent, isLoading, question.id, addMessage, setLoading, setError, saveToDB]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  }, [handleSend]);
+
+  const config = resolveAIConfig();
+  if (!config) return null;
+
+  const contextPct = agent ? agent.getContextUtilization() : 0;
+  const isNearLimit = contextPct > 0.7;
+  const isOverLimit = contextPct > 0.95;
+
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl border border-[var(--primary-border)] bg-[var(--primary-ghost)] transition-all active:scale-[0.98]"
+      >
+        <span className="flex items-center gap-2 text-[13px] font-bold text-[var(--primary-color)]">
+          <MessageCircle size={15} /> Спросить ИИ
+          {tokenStats && tokenStats.turnCount > 0 && (
+            <span className="text-[10px] font-normal text-[var(--text-muted)]">
+              {tokenStats.cumulative.totalTokens} токенов
+            </span>
+          )}
+        </span>
+        {expanded ? <ChevronUp size={15} className="text-[var(--text-muted)]" /> : <ChevronDown size={15} className="text-[var(--text-muted)]" />}
+      </button>
+
+      {expanded && (
+        <div className="mt-2 rounded-xl border border-[var(--card-border)] bg-[var(--bg-elevated)] overflow-hidden animate-fade-in">
+          {/* Token stats bar */}
+          {tokenStats && tokenStats.turnCount > 0 && agent && (
+            <div className={`px-3 py-2 border-b border-[var(--card-border)] text-[10px] flex items-center justify-between ${
+              isOverLimit ? 'bg-red-500/10 text-red-400' : isNearLimit ? 'bg-yellow-500/10 text-yellow-400' : 'text-[var(--text-muted)]'
+            }`}>
+              <div className="flex items-center gap-3">
+                <span>Запрос: {tokenStats.lastRequest?.promptTokens ?? 0}</span>
+                <span>Ответ: {tokenStats.lastRequest?.completionTokens ?? 0}</span>
+                <span>Всего: {tokenStats.cumulative.totalTokens}</span>
+                <span>Ходов: {tokenStats.turnCount}</span>
+                <span>Стоимость: {formatCost(agent.getEstimatedCost())}</span>
+              </div>
+              {(isNearLimit || isOverLimit) && (
+                <span className="flex items-center gap-1 font-bold">
+                  <AlertTriangle size={10} />
+                  {isOverLimit ? 'Лимит превышен!' : `${Math.round(contextPct * 100)}% контекста`}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Context progress bar */}
+          {tokenStats && tokenStats.turnCount > 0 && agent && (
+            <div className="px-3 pt-1.5 pb-0.5">
+              <div className="w-full h-1 bg-black/30 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-500"
+                  style={{
+                    width: `${Math.min(100, contextPct * 100)}%`,
+                    background: isOverLimit
+                      ? 'linear-gradient(90deg, #FF2D6B, #FF0000)'
+                      : isNearLimit
+                        ? 'linear-gradient(90deg, #FFB800, #FF6600)'
+                        : 'linear-gradient(90deg, var(--primary-color), var(--success-color))',
+                  }}
+                />
+              </div>
+              <div className="flex justify-between text-[9px] text-[var(--text-muted)] mt-0.5">
+                <span>0</span>
+                <span>{agent.getModelLimit().toLocaleString()} токенов лимит</span>
+              </div>
+            </div>
+          )}
+
+          <div ref={scrollRef} className="max-h-60 overflow-y-auto p-3 space-y-2">
+            {messages.length === 0 && (
+              <p className="text-[12px] text-[var(--text-muted)] text-center py-3">
+                Задайте вопрос по этому заданию
+              </p>
+            )}
+            {messages.map(msg => (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] px-3 py-2 rounded-xl text-[13px] leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-[var(--primary-ghost)] text-[var(--primary-color)] border border-[var(--primary-border)]'
+                    : 'bg-[var(--surface-color)] text-[var(--text-sub)] border border-[var(--card-border)]'
+                }`}>
+                  {msg.role === 'assistant' ? (
+                    <div className="prose-custom prose-chat">
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    </div>
+                  ) : msg.text}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="px-3 py-2 rounded-xl bg-[var(--surface-color)] border border-[var(--card-border)]">
+                  <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />
+                </div>
+              </div>
+            )}
+            {error && (
+              <p className="text-[12px] text-[var(--danger-color)] text-center">{error}</p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 p-2 border-t border-[var(--card-border)]">
+            <input
+              type="text"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Ваш вопрос..."
+              disabled={isLoading || isOverLimit}
+              className="flex-1 bg-transparent text-[13px] text-[var(--text-main)] placeholder:text-[var(--text-muted)] outline-none disabled:opacity-30"
+            />
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={!input.trim() || isLoading || isOverLimit}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-[var(--primary-color)] text-black disabled:opacity-30 active:scale-90 transition-all"
+            >
+              <Send size={13} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
-
-export function createQAAgent(aiConfig: AIConfig, question: Question, userAnswer?: string): QAAgent {
-  const agent = new QAAgent({ aiConfig });
-  agent.initContext(question, userAnswer);
-  return agent;
-}
-
-
-// в другом файле -- обращение к супабейс как БД
-import { create } from 'zustand';
-import type { ChatMessage } from '@/lib/qaAgent';
-import { supabase } from '@/lib/supabase';
-
-const USER_ID = 'default';
-
-interface ChatState {
-  messages: ChatMessage[];
-  isLoading: boolean;
-  error: string | null;
-  addMessage: (msg: ChatMessage) => void;
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  clear: () => void;
-  loadFromDB: (questionId: string) => Promise<void>;
-  saveToDB: (questionId: string, msg: ChatMessage) => Promise<void>;
-  deleteFromDB: (questionId: string) => Promise<void>;
-}
-
-export const useChatStore = create<ChatState>((set) => ({
-  messages: [],
-  isLoading: false,
-  error: null,
-  addMessage: (msg) => set(s => ({ messages: [...s.messages, msg] })),
-  setLoading: (isLoading) => set({ isLoading }),
-  setError: (error) => set({ error }),
-  clear: () => set({ messages: [], isLoading: false, error: null }),
-
-  loadFromDB: async (questionId) => {
-    const { data, error } = await supabase
-      .from('chat_messages')
-      .select('id, role, content')
-      .eq('question_id', questionId)
-      .eq('user_id', USER_ID)
-      .order('created_at', { ascending: true });
-
-    if (error || !data) return;
-
-    const messages: ChatMessage[] = data.map((row: { id: string; role: string; content: string }) => ({
-      id: row.id,
-      role: row.role as 'user' | 'assistant',
-      text: row.content,
-    }));
-    set({ messages });
-  },
-
-  saveToDB: async (questionId, msg) => {
-    await supabase.from('chat_messages').insert({
-      id: msg.id,
-      question_id: questionId,
-      user_id: USER_ID,
-      role: msg.role,
-      content: msg.text,
-    });
-  },
-
-  deleteFromDB: async (questionId) => {
-    await supabase
-      .from('chat_messages')
-      .delete()
-      .eq('question_id', questionId)
-      .eq('user_id', USER_ID);
-  },
-}));
