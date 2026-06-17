@@ -8,11 +8,20 @@
 //   pnpm --filter challenge start -- list              # список всех демо
 //   pnpm --filter challenge start -- day-03            # прогнать демо конкретного дня
 //   pnpm --filter challenge start -- latest            # прогнать последний день
+//   pnpm --filter challenge start -- news              # блог-pipeline: rss → 3 агента → пост
+//   pnpm --filter challenge start -- news --hours 48
+//   pnpm --filter challenge start -- seed-style        # залить образцы стиля в БД
 //   pnpm --filter challenge start -- help
+
+import path from 'node:path';
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { startRepl } from './repl.js';
-import { LlmClient } from './core/index.js';
+import { BlogDb, LlmClient } from './core/index.js';
+import { runNewsPipeline } from './core/agents/pipeline.js';
+import { seedStyleSamples } from './core/agents/seed.js';
+
+const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 
 function printHelp(): void {
   console.log('Использование:');
@@ -26,6 +35,12 @@ function printHelp(): void {
   console.log('  list             Список всех демо');
   console.log('  latest           Прогнать последний день (один запуск сценария)');
   console.log('  <id>             Прогнать демо конкретного дня (например day-03)');
+  console.log('  news             Блог-pipeline: RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг)');
+  console.log('    --hours <N>        окно свежести (по умолчанию 24)');
+  console.log('    --top <N>          сколько топ-новостей брать (по умолчанию 5)');
+  console.log('    --for <i>          индекс новости из топа для поста (0 = самая хайповая)');
+  console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
+  console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
   console.log('  help             Эта справка');
 }
 
@@ -73,6 +88,21 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'news') {
+    await runNewsCommand(argv.slice(1));
+    return;
+  }
+
+  if (arg === 'seed-style') {
+    await runSeedStyleCommand();
+    return;
+  }
+
+  if (arg === 'db-stats') {
+    runDbStatsCommand();
+    return;
+  }
+
   if (arg === 'help' || arg === '--help' || arg === '-h') {
     printHelp();
     return;
@@ -88,8 +118,87 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, help');
   process.exit(1);
+}
+
+// --- подкоманды для блога ---
+
+interface NewsFlags { hours?: number; top?: number; forIndex?: number; }
+
+function parseNewsFlags(argv: string[]): NewsFlags {
+  const flags: NewsFlags = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--hours' && argv[i + 1]) { flags.hours = Number(argv[++i]); continue; }
+    if (argv[i] === '--top' && argv[i + 1]) { flags.top = Number(argv[++i]); continue; }
+    if (argv[i] === '--for' && argv[i + 1]) { flags.forIndex = Number(argv[++i]); continue; }
+  }
+  return flags;
+}
+
+async function runNewsCommand(argv: string[]): Promise<void> {
+  const flags = parseNewsFlags(argv);
+  const client = new LlmClient();
+  const db = new BlogDb(DB_PATH);
+  try {
+    console.log('▶ Блог-pipeline: RSS → агент 1 → агент 2 → агент 3\n');
+    const result = await runNewsPipeline(db, client, {
+      maxAgeHours: flags.hours,
+      topK: flags.top,
+      writeForIndex: flags.forIndex,
+    });
+
+    console.log('\n=== Топ-новости (агент 1) ===');
+    for (const r of result.news.ranked) {
+      console.log(`  [${r.score}] ${r.news.title}  (${r.why})`);
+    }
+
+    if (!result.post) {
+      console.log('\nНет подходящих новостей для поста.');
+      return;
+    }
+
+    console.log('\n=== Пост (агент 2) ===');
+    console.log(result.post.content);
+
+    if (result.factCheck) {
+      console.log('\n=== Фактчекинг (агент 3) ===');
+      console.log(`verdict: ${result.factCheck.verdict}`);
+      console.log(`recommendation: ${result.factCheck.recommendation}`);
+      if (result.factCheck.issues.length > 0) {
+        console.log('issues:');
+        for (const issue of result.factCheck.issues) {
+          console.log(`  [${issue.severity}] ${issue.claim}`);
+          console.log(`         vs: ${issue.source}`);
+        }
+      } else {
+        console.log('issues: нет');
+      }
+    }
+  } finally {
+    db.close();
+  }
+}
+
+async function runSeedStyleCommand(): Promise<void> {
+  const db = new BlogDb(DB_PATH);
+  try {
+    const added = await seedStyleSamples(db);
+    console.log(`Залито образцов стиля: ${added}. Всего в БД: ${db.styleSamplesCount()}.`);
+  } finally {
+    db.close();
+  }
+}
+
+function runDbStatsCommand(): void {
+  const db = new BlogDb(DB_PATH);
+  try {
+    console.log(`news:           ${db.newsCount()}`);
+    console.log(`posts:          ${db.postsCount()}`);
+    console.log(`style_samples:  ${db.styleSamplesCount()}`);
+  } finally {
+    db.close();
+  }
 }
 
 main().catch((err) => {
