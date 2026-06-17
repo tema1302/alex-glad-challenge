@@ -8,6 +8,7 @@ export type { ProviderConfig } from './client.js';
 export { Agent } from './agent.js';
 export type { ContextStrategy, ContextStats } from './strategy.js';
 export { FullHistory, SlidingWindow, StickyFacts, Branching } from './strategy.js';
+export { loadEnvUpward } from './env.js';
 
 export { BlogDb } from './db.js';
 export type { NewsRow, PostRow, StyleSampleRow } from './db.js';

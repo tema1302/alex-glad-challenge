@@ -10,16 +10,21 @@
 //   pnpm --filter challenge start -- latest            # прогнать последний день
 //   pnpm --filter challenge start -- news              # блог-pipeline: rss → 3 агента → пост
 //   pnpm --filter challenge start -- news --hours 48
+//   pnpm --filter challenge start -- news --publish     # опубликовать пост в Telegram
 //   pnpm --filter challenge start -- seed-style        # залить образцы стиля в БД
 //   pnpm --filter challenge start -- help
 
 import path from 'node:path';
+
+import { loadEnvUpward } from './core/env.js';
+loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { startRepl } from './repl.js';
 import { BlogDb, LlmClient } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
+import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 
@@ -39,6 +44,7 @@ function printHelp(): void {
   console.log('    --hours <N>        окно свежести (по умолчанию 24)');
   console.log('    --top <N>          сколько топ-новостей брать (по умолчанию 5)');
   console.log('    --for <i>          индекс новости из топа для поста (0 = самая хайповая)');
+  console.log('    --publish          опубликовать готовый пост в Telegram (только если verdict=ok)');
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
   console.log('  help             Эта справка');
@@ -124,7 +130,7 @@ async function main(): Promise<void> {
 
 // --- подкоманды для блога ---
 
-interface NewsFlags { hours?: number; top?: number; forIndex?: number; }
+interface NewsFlags { hours?: number; top?: number; forIndex?: number; publish?: boolean; }
 
 function parseNewsFlags(argv: string[]): NewsFlags {
   const flags: NewsFlags = {};
@@ -132,6 +138,7 @@ function parseNewsFlags(argv: string[]): NewsFlags {
     if (argv[i] === '--hours' && argv[i + 1]) { flags.hours = Number(argv[++i]); continue; }
     if (argv[i] === '--top' && argv[i + 1]) { flags.top = Number(argv[++i]); continue; }
     if (argv[i] === '--for' && argv[i + 1]) { flags.forIndex = Number(argv[++i]); continue; }
+    if (argv[i] === '--publish') { flags.publish = true; continue; }
   }
   return flags;
 }
@@ -181,6 +188,23 @@ async function runNewsCommand(argv: string[]): Promise<void> {
         }
       } else {
         console.log('issues: нет');
+      }
+    }
+
+    // Публикация в Telegram (флаг --publish).
+    if (flags.publish) {
+      if (!isTelegramConfigured()) {
+        console.log('\n[telegram] TG_BOT_TOKEN или TG_CHAT_ID не заданы в .env — пропуск.');
+      } else if (result.factCheck && result.factCheck.verdict !== 'ok') {
+        console.log('\n[telegram] verdict != ok — пост НЕ опубликован (нужна правка).');
+      } else {
+        console.log('\n[telegram] Публикую пост в канал...');
+        const tg = await publishPost(result.post.content);
+        if (tg.ok) {
+          console.log(`[telegram] Пост опубликован (message_id=${tg.messageId}).`);
+        } else {
+          console.error(`[telegram] Ошибка: ${tg.error}`);
+        }
       }
     }
   } finally {

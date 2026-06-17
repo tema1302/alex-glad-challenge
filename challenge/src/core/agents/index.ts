@@ -16,3 +16,6 @@ export { fetchAllFeeds, filterRecent, toNewsRow } from './rss.js';
 export type { RssItem } from './rss.js';
 
 export { seedStyleSamples } from './seed.js';
+
+export { publishPost, isTelegramConfigured } from './telegram.js';
+export type { PublishResult } from './telegram.js';
