@@ -4,6 +4,11 @@
 заданию в день. Каждое задание — отдельный эксперимент над LLM: температура,
 токены, стратегии контекста, ветки диалога, агенты и т.п.
 
+Кроме того, в репозитории живёт **pipeline блог-агентов** для футбольного
+Telegram-канала «Иди на факты глянь»: RSS → выбор топ-новостей → написание
+поста в авторском стиле → фактчекинг. Готов к cron-автоматизации. См.
+[`challenge/README.md`](challenge/README.md).
+
 ## Архитектура
 
 Единый монолит `challenge/` (TypeScript, один пакет, один CLI). Все 10 дней
@@ -115,6 +120,12 @@ pnpm --filter challenge start -- latest
 
 # список всех дней:
 pnpm --filter challenge start -- list
+
+# блог-агенты: RSS → топ-новости → пост в стиле канала → фактчекинг
+pnpm --filter challenge start -- seed-style   # первичная инициализация (один раз)
+pnpm --filter challenge start -- news         # pipeline за сутки
+pnpm --filter challenge start -- news --hours 48 --top 3
+pnpm --filter challenge start -- db-stats     # статистика БД
 ```
 
 Внутри REPL: `/help`, `/strategy <full|sliding|sticky|branching>`, `/system <text>`,
