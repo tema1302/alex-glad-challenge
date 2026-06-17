@@ -163,6 +163,14 @@ async function runNewsCommand(argv: string[]): Promise<void> {
 
     if (result.factCheck) {
       console.log('\n=== Фактчекинг (агент 3) ===');
+
+      // Chain-of-thought рассуждения агенту 3 — показать ход мысли.
+      if (result.factCheck.reasoning.trim()) {
+        console.log('\n--- ход рассуждений ---');
+        console.log(result.factCheck.reasoning.trim());
+        console.log('--- конец рассуждений ---\n');
+      }
+
       console.log(`verdict: ${result.factCheck.verdict}`);
       console.log(`recommendation: ${result.factCheck.recommendation}`);
       if (result.factCheck.issues.length > 0) {
