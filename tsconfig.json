@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@challenge/core": ["./challenge/core/src/index.ts"]
+    }
+  },
+  "include": ["challenge/**/*.ts", "*.ts"],
+  "exclude": ["node_modules", "**/dist", "1-day", "2-day", "3-day", "4-day", "5-day", "6-day", "7-day", "8-day", "9-day", "10-day"]
+}
