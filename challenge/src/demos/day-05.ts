@@ -2,20 +2,12 @@
 // День 5. Версии моделей
 // ============================================================================
 // ЗАДАНИЕ:
-//   Выполните один и тот же запрос:
-//   - на слабой модели
-//   - на средней модели
-//   - на сильной модели
-//   (например: из начала, середины и конца списка HuggingFace)
-//
-//   Замерьте: время ответа, количество токенов, стоимость (если модель платная).
-//   Сравните: качество ответов, скорость, ресурсоёмкость.
-//
-// РЕЗУЛЬТАТ: короткий вывод о различиях между моделями + ссылки.
-// ФОРМАТ: видео + код.
-// ============================================================================
+//   Выполните один и тот же запрос на слабой / средней / сильной модели.
+//   Замерьте время ответа, количество токенов, стоимость.
+//   Сравните качество, скорость, ресурсоёмкость.
 
-import { type ChatParams, LlmClient, msg } from '@challenge/core';
+import { type ChatParams, LlmClient, msg } from '../core/index.js';
+import type { Demo } from './types.js';
 
 const PROMPT = 'Объясни одной фразой, зачем нужен self-attention в трансформерах.';
 
@@ -41,7 +33,7 @@ function pickTiers(defaultModel: string): Tier[] {
   ];
 }
 
-async function main(): Promise<void> {
+async function run(): Promise<void> {
   const client = new LlmClient();
   const tiers = pickTiers(client.defaultModel);
 
@@ -63,7 +55,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export const demo: Demo = {
+  id: 'day-05',
+  title: 'Версии моделей',
+  run,
+};

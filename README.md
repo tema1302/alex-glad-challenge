@@ -1,35 +1,40 @@
 # alex-glad-challenge
 
 Челлендж «как LLM работает изнутри». Дневник прохождения курса, по одному
-заданию в день. Каждое задание — отдельный маленький эксперимент над LLM:
-температура, токены, стратегии контекста, ветки диалога, агенты и т.п.
+заданию в день. Каждое задание — отдельный эксперимент над LLM: температура,
+токены, стратегии контекста, ветки диалога, агенты и т.п.
 
-## Стек
+## Архитектура
 
-- **Дни 1–10 (архив):** фрагменты Next.js/React-приложения на TypeScript.
-  Лежат в `1-day/` … `10-day/`. Оставлены как историческая ссылка, не используются
-  в новой разработке.
-- **Дни 1–10 (TS-порт):** те же концепции переписаны как автономные скрипты в
-  `challenge/` (pnpm workspace). Это актуальная версия для разбора и видео.
-- **День 11+:** все новые задания — в `challenge/days/day-NN-name/`.
+Единый монолит `challenge/` (TypeScript, один пакет, один CLI). Все 10 дней
+реализованы как демо-модули в `challenge/src/demos/` и запускаются одной
+командой. Каждый новый день дорабатывает этот монолит в отдельной git-ветке
+и вливается в `main` через PR.
 
-Runtime: Node.js 24+, TypeScript, pnpm workspaces. API: DeepSeek и OpenRouter
+- **Дни 1–10 (архив `1-day/` … `10-day/`):** фрагменты Next.js/React-приложения.
+  Оставлены как историческая ссылка, в разработке не участвуют.
+- **Дни 1–10 (`challenge/src/demos/day-01..10.ts`):** актуальные демо-модули
+  единого монолита.
+- **День 11+:** дорабатывается в ветке `day-NN`, добавляется в
+  `challenge/src/demos/day-NN.ts`, регистрируется в `registry.ts`, льётся в main.
+
+Стек: Node.js 24+, TypeScript (strict), pnpm. API: DeepSeek и OpenRouter
 (модельный зоопарк). Ключи — через `.env`, см. `.env.example`.
 
 ## Что уже разобрано
 
 | День | Тема | Где смотреть |
 |------|------|--------------|
-| 1 | Первый запрос к LLM через API | `challenge/days/day-01-first-request/` |
-| 2 | Формат ответа (без ограничений / JSON / stop) | `challenge/days/day-02-format/` |
-| 3 | Способы рассуждения (прямой / пошаговый / мета / эксперты) | `challenge/days/day-03-reasoning/` |
-| 4 | Температура (0 / 0.7 / 1.2) | `challenge/days/day-04-temperature/` |
-| 5 | Сравнение версий моделей | `challenge/days/day-05-models/` |
-| 6 | Первый агент | `challenge/days/day-06-agent/` |
-| 7 | Сохранение контекста в JSON | `challenge/days/day-07-persistence/` |
-| 8 | Подсчёт токенов | `challenge/days/day-08-tokens/` |
-| 9 | Сжатие истории через summary | `challenge/days/day-09-compression/` |
-| 10 | Sliding / Sticky / Branching | `challenge/days/day-10-strategies/` |
+| 1 | Первый запрос к LLM через API | `challenge/src/demos/day-01.ts` |
+| 2 | Формат ответа (без ограничений / JSON / stop) | `challenge/src/demos/day-02.ts` |
+| 3 | Способы рассуждения (прямой / пошаговый / мета / эксперты) | `challenge/src/demos/day-03.ts` |
+| 4 | Температура (0 / 0.7 / 1.2) | `challenge/src/demos/day-04.ts` |
+| 5 | Сравнение версий моделей | `challenge/src/demos/day-05.ts` |
+| 6 | Первый агент | `challenge/src/demos/day-06.ts` |
+| 7 | Сохранение контекста в JSON | `challenge/src/demos/day-07.ts` |
+| 8 | Подсчёт токенов | `challenge/src/demos/day-08.ts` |
+| 9 | Сжатие истории через summary | `challenge/src/demos/day-09.ts` |
+| 10 | Sliding / Sticky / Branching | `challenge/src/demos/day-10.ts` |
 
 ## Быстрый старт
 
@@ -93,23 +98,23 @@ notepad .env   # или любой редактор
   доступ к десяткам моделей: OpenAI, Anthropic, Google, Meta и т.д.)
 - `DEEPSEEK_API_KEY=sk-...` — получить на https://platform.deepseek.com/api_keys
 
-### 5. Запустить день
+### 5. Запустить демо
 
 ```powershell
+# список всех дней:
+pnpm --filter challenge start -- list
+
 # конкретный день:
-pnpm --filter day-01-first-request start
+pnpm --filter challenge start -- day-03
 
-# или напрямую через tsx:
-pnpm exec tsx challenge/days/day-01-first-request/index.ts
-
-# день 10 принимает аргумент-стратегию:
-pnpm --filter day-10-strategies start -- sticky
+# последний добавленный день:
+pnpm --filter challenge start
 ```
 
 ### 6. Проверить типы (опционально)
 
 ```powershell
-pnpm typecheck
+pnpm --filter challenge typecheck
 ```
 
 ---

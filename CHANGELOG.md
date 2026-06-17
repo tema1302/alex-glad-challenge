@@ -19,7 +19,7 @@
 
 **Сделано:**
 - В архиве (`1-day/index.ts`): фрагмент TS-клиента в контексте Next.js-приложения.
-- TS-порт (`challenge/days/day-01-first-request/`): автономный скрипт через
+- TS-порт (`challenge/src/demos/day-01.ts`): автономный скрипт через
   `@challenge/core::LlmClient`.
 
 **Выводы:**
@@ -27,7 +27,7 @@
   и для OpenRouter — отличается только base_url и ключ.
 - Минимальный запрос: `{model, messages}`.
 
-**Код:** `challenge/days/day-01-first-request/index.ts`
+**Код:** `challenge/src/demos/day-01.ts`
 
 ---
 
@@ -52,7 +52,7 @@
 - `max_tokens` пригодится для дня 8 (токены), но жесткий лимит обрезает ответ
   посередине мысли.
 
-**Код:** `challenge/days/day-02-format/index.ts`
+**Код:** `challenge/src/demos/day-02.ts`
 
 ---
 
@@ -80,7 +80,7 @@
 - "Пошагово" даёт самый структурированный и проверяемый ответ.
 - Мета-промпт полезен, когда задача размытая — модель сама уточняет себя.
 
-**Код:** `challenge/days/day-03-reasoning/index.ts`
+**Код:** `challenge/src/demos/day-03.ts`
 
 ---
 
@@ -106,7 +106,7 @@
 - 0.7 — слоганы, краткие тексты, баланс.
 - 1.2 — брейншторм, диверсификация идей; иногда рвёт логику.
 
-**Код:** `challenge/days/day-04-temperature/index.ts`
+**Код:** `challenge/src/demos/day-04.ts`
 
 ---
 
@@ -133,7 +133,7 @@
 - Слабые модели быстрее и дешевле, но путаются в многошаговых рассуждениях.
 - На длинных промптах расход токенов растёт нелинейно — важно для дня 8.
 
-**Код:** `challenge/days/day-05-models/index.ts`
+**Код:** `challenge/src/demos/day-05.ts`
 
 ---
 
@@ -163,7 +163,7 @@
 - Логика запроса инкапсулирована в агенте, UI ничего не знает про HTTP.
 - Этот агент — основа для всех последующих дней (контекст, токены, ветки).
 
-**Код:** `challenge/days/day-06-agent/index.ts`
+**Код:** `challenge/src/demos/day-06.ts`
 
 ---
 
@@ -192,7 +192,7 @@
 - JSON хорош для демо; на проде нужен SQLite (см. день 9 — compression).
 - Восстановление работает, только если системный промпт детерминирован.
 
-**Код:** `challenge/days/day-07-persistence/index.ts`
+**Код:** `challenge/src/demos/day-07.ts`
 
 ---
 
@@ -226,7 +226,7 @@
 - Без локального tokenization точный подсчёт невозможен — `usage` единственный
   честный источник.
 
-**Код:** `challenge/days/day-08-tokens/index.ts`
+**Код:** `challenge/src/demos/day-08.ts`
 
 ---
 
@@ -256,7 +256,7 @@
 - Качество ответа слегка падает, если summary слишком агрессивно сжало факты —
   отсюда мотивация для Sticky Facts (день 10).
 
-**Код:** `challenge/days/day-09-compression/index.ts`
+**Код:** `challenge/src/demos/day-09.ts`
 
 ---
 
@@ -304,7 +304,7 @@
 - Sticky Facts — лучший баланс, если правила извлечения фактов адекватные.
 - Branching незаменим для "что если" сценариев и A/B тестинга промптов.
 
-**Код:** `challenge/days/day-10-strategies/index.ts`
+**Код:** `challenge/src/demos/day-10.ts`
 
 ---
 
@@ -320,4 +320,4 @@
 **Выводы:**
 - TBD
 
-**Код:** `challenge/days/day-11-name/` (ветка `day-11`)
+**Код:** `challenge/src/demos/day-11.ts` (ветка `day-11`)

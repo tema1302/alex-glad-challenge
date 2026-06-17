@@ -9,14 +9,11 @@
 //
 // РЕЗУЛЬТАТ: код, который отправляет запрос в LLM через API и получает ответ.
 // ФОРМАТ: видео + код.
-//
-// Запуск: pnpm --filter day-01-first-request start
-//      или: pnpm exec tsx challenge/days/day-01-first-request/index.ts
-// ============================================================================
 
-import { LlmClient, msg } from '@challenge/core';
+import { LlmClient, msg } from '../core/index.js';
+import type { Demo } from './types.js';
 
-async function main(): Promise<void> {
+async function run(): Promise<void> {
   const client = new LlmClient();
   console.log(`Использую модель: ${client.defaultModel}`);
 
@@ -24,7 +21,8 @@ async function main(): Promise<void> {
   console.log('Ответ модели:\n' + answer);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export const demo: Demo = {
+  id: 'day-01',
+  title: 'Первый запрос к LLM через API',
+  run,
+};

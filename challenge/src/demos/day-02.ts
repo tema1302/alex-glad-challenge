@@ -10,14 +10,13 @@
 //   Сравните ответы: без ограничений vs с ограничениями.
 //
 // РЕЗУЛЬТАТ: один и тот же запрос с разным уровнем контроля ответа через API.
-// ФОРМАТ: видео + код.
-// ============================================================================
 
-import { type ChatParams, LlmClient, msg } from '@challenge/core';
+import { type ChatParams, LlmClient, msg } from '../core/index.js';
+import type { Demo } from './types.js';
 
 const PROMPT = 'Дай три совета, как писать понятные промпты для LLM.';
 
-async function main(): Promise<void> {
+async function run(): Promise<void> {
   const client = new LlmClient();
 
   console.log('=== Без ограничений ===');
@@ -40,7 +39,8 @@ async function main(): Promise<void> {
   console.log(c);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export const demo: Demo = {
+  id: 'day-02',
+  title: 'Формат ответа',
+  run,
+};

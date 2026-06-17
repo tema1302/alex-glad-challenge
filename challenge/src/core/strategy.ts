@@ -1,5 +1,5 @@
-// Трейт-эквивалент стратегии управления контекстом.
-// Конкретные реализации: FullHistory, SlidingWindow, StickyFacts, Branching.
+// Стратегии управления контекстом.
+// Полная история, Sliding Window, Sticky Facts, Branching.
 
 import type { ChatMessage } from './types.js';
 
@@ -151,7 +151,6 @@ export class Branching implements ContextStrategy {
     this.allMessages = [];
   }
 
-  // Создать новый чекпойнт от текущей активной ветки.
   checkpoint(label: string): number {
     const snapshot = [...this.branches[this.activeId].messages];
     const id = this.branches.length;

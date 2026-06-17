@@ -2,24 +2,11 @@
 // День 8. Работа с токенами
 // ============================================================================
 // ЗАДАНИЕ:
-//   Добавьте в код агента подсчёт токенов:
-//   - для текущего запроса
-//   - для всей истории диалога
-//   - для ответа модели
-//
-//   Сравните:
-//   - короткий диалог
-//   - длинный диалог
-//   - диалог, который превышает лимит модели
-//
-//   Покажите: как растёт стоимость/токены по мере диалога, что ломается при
-//   переполнении.
-//
-// РЕЗУЛЬТАТ: код, который считает токены и показывает, как они влияют на поведение.
-// ФОРМАТ: видео + код.
-// ============================================================================
+//   Подсчёт токенов для текущего запроса, для всей истории и для ответа.
+//   Сравните короткий / длинный диалоги. Покажите, что ломается при переполнении.
 
-import { type ChatMessage, type Usage, LlmClient, msg } from '@challenge/core';
+import { type ChatMessage, type Usage, LlmClient, msg } from '../core/index.js';
+import type { Demo } from './types.js';
 
 function emptyUsage(): Usage {
   return { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
@@ -35,7 +22,7 @@ function printUsage(label: string, u: Usage, cum: Usage): void {
   );
 }
 
-async function main(): Promise<void> {
+async function run(): Promise<void> {
   const client = new LlmClient();
 
   const turns = [
@@ -64,7 +51,8 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export const demo: Demo = {
+  id: 'day-08',
+  title: 'Работа с токенами',
+  run,
+};

@@ -43,7 +43,7 @@ export class LlmClient {
     return this.config.defaultModel;
   }
 
-  // Низкоуровневый POST к /chat/completions. Все дни используют его.
+  // Низкоуровневый POST к /chat/completions. Все демо используют его.
   async chatRaw(req: LlmRequest): Promise<LlmResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
     const resp = await fetch(url, {
@@ -76,7 +76,7 @@ export class LlmClient {
     return content;
   }
 
-  // chat + распакованный usage (для дней про токены).
+  // chat + распакованный usage (для демо про токены).
   async chatWithUsage(
     messages: ChatMessage[],
     params: ChatParams = {},

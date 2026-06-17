@@ -2,21 +2,11 @@
 // День 9. Управление контекстом: сжатие истории
 // ============================================================================
 // ЗАДАНИЕ:
-//   Реализуйте механизм управления контекстом:
-//   - храните последние N сообщений «как есть»
-//   - остальное заменяйте summary (например каждые 10 сообщений)
-//   - храните summary отдельно и подставляйте его в запрос вместо полной истории
-//
-//   Сравните:
-//   - качество ответов без сжатия
-//   - качество ответов со сжатием
-//   - расход токенов до/после
-//
-// РЕЗУЛЬТАТ: агент, который работает с компрессией истории и экономит токены.
-// ФОРМАТ: видео + код.
-// ============================================================================
+//   Последние N сообщений «как есть», остальное — summary каждые K сообщений.
+//   Summary подставляется в запрос вместо полной истории. Сравнить расход токенов.
 
-import { type ChatMessage, type Usage, LlmClient, msg } from '@challenge/core';
+import { type ChatMessage, type Usage, LlmClient, msg } from '../core/index.js';
+import type { Demo } from './types.js';
 
 const KEEP_LAST = 4;
 const SUMMARIZE_EVERY = 4;
@@ -26,9 +16,7 @@ function emptyUsage(): Usage {
 }
 
 async function summarize(client: LlmClient, msgs: ChatMessage[]): Promise<string> {
-  const dialogue = msgs
-    .map((m) => `${m.role}: ${m.content}`)
-    .join('\n');
+  const dialogue = msgs.map((m) => `${m.role}: ${m.content}`).join('\n');
   return client.chat(
     [msg.user('Сожми следующий диалог в короткую выжимку ключевых фактов и решений:\n\n' + dialogue)],
     { maxTokens: 150 },
@@ -69,7 +57,7 @@ async function turn(
   return content;
 }
 
-async function main(): Promise<void> {
+async function run(): Promise<void> {
   const client = new LlmClient();
   const history: ChatMessage[] = [];
   const summary = { value: null as string | null };
@@ -95,7 +83,8 @@ async function main(): Promise<void> {
   console.log('=== Итоговое summary ===\n' + (summary.value ?? '(нет)'));
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+export const demo: Demo = {
+  id: 'day-09',
+  title: 'Сжатие истории',
+  run,
+};
