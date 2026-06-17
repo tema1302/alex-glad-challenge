@@ -24,7 +24,7 @@
 
 ## Стек
 
-- **Runtime:** Node.js 22+.
+- **Runtime:** Node.js 24+.
 - **Язык:** TypeScript (strict).
 - **Менеджер пакетов:** pnpm 10+ (workspaces).
 - **Запуск:** `tsx` напрямую, без отдельного шага сборки.

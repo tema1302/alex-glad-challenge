@@ -13,7 +13,7 @@
   `challenge/` (pnpm workspace). Это актуальная версия для разбора и видео.
 - **День 11+:** все новые задания — в `challenge/days/day-NN-name/`.
 
-Runtime: Node.js 22+, TypeScript, pnpm workspaces. API: DeepSeek и OpenRouter
+Runtime: Node.js 24+, TypeScript, pnpm workspaces. API: DeepSeek и OpenRouter
 (модельный зоопарк). Ключи — через `.env`, см. `.env.example`.
 
 ## Что уже разобрано
@@ -33,25 +33,29 @@ Runtime: Node.js 22+, TypeScript, pnpm workspaces. API: DeepSeek и OpenRouter
 
 ## Быстрый старт
 
-### 1. Установить Node.js 22+ и pnpm
+### 1. Установить Node.js 24+ и pnpm
 
 **Windows (PowerShell):**
 ```powershell
-# через winget (встроен в Windows 10/11):
-winget install OpenJS.NodeJS.LTS
-winget install pnpm.pnpm
+# через nvm-windows (рекомендуется, позволяет переключать версии):
+winget install CoreyButler.NVMforWindows
+nvm install 24
+nvm use 24
 
-# либо скачать установщики:
+# либо просто установить LTS-инсталлер:
+# winget install OpenJS.NodeJS.LTS
 # Node.js:  https://nodejs.org/
-# pnpm:     https://pnpm.io/installation
+
+# pnpm:
+winget install pnpm.pnpm
 ```
 
 **macOS / Linux:**
 ```bash
 # nvm (рекомендуется):
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
-nvm install 22
-nvm use 22
+nvm install 24
+nvm use 24
 
 # pnpm:
 corepack enable
@@ -60,7 +64,7 @@ corepack prepare pnpm@latest --activate
 
 Проверка:
 ```powershell
-node --version   # v22.x.x
+node --version   # v24.x.x
 pnpm --version   # 10.x.x
 ```
 
