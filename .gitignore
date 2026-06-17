@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# Окружение и секреты
+.env
+.env.*
+!.env.example
+
+# Артефакты запуска дней
+day-07-history.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

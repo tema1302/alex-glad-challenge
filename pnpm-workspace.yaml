@@ -1,0 +1,3 @@
+packages:
+  - 'challenge/days/*'
+  - 'challenge/core'
