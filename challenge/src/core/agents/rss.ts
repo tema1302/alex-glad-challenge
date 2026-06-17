@@ -14,13 +14,30 @@ export interface RssItem {
 }
 
 const FEEDS: Array<{ source: string; url: string }> = [
-  // Sports.ru — лента футбола
-  { source: 'sports.ru', url: 'https://www.sports.ru/rss/rubric/news.xml?rubric=99' },
-  // Championat.com — футбол
+  // Championat.com — футбол (Россия)
   { source: 'championat.com', url: 'https://www.championat.com/rss/news/football/' },
-  // BBC Sport — football
-  { source: 'bbc.co.uk', url: 'https://feeds.bbci.co.uk/sport/football/rss.xml' },
+  // Sky Sports — football news (Англия)
+  { source: 'skysports.com', url: 'https://www.skysports.com/rss/11095' },
+  // Sky Sports — Premier League
+  { source: 'skysports.com (EPL)', url: 'https://www.skysports.com/rss/12040' },
 ];
+
+// Нормализовать нестандартные сокращения часовых поясов (BST, EST, ...)
+// в числовое смещение, чтобы Date.parse понимал.
+function normalizeTz(s: string): string {
+  const tzMap: Record<string, string> = {
+    BST: '+01:00',  // British Summer Time
+    GMT: '+00:00',
+    EST: '-05:00',
+    EDT: '-04:00',
+    PST: '-08:00',
+    PDT: '-07:00',
+    CET: '+01:00',
+    CEST: '+02:00',
+    MSK: '+03:00',
+  };
+  return s.replace(/([A-Z]{2,5})\s*$/, (match, tz) => tzMap[tz] ?? match);
+}
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -79,15 +96,15 @@ export function filterRecent(items: RssItem[], maxAgeHours = 24): RssItem[] {
   const cutoff = Date.now() - maxAgeHours * 3600_000;
   return items
     .filter((it) => {
-      const t = Date.parse(it.pubDate);
+      const t = Date.parse(normalizeTz(it.pubDate));
       return Number.isFinite(t) && t >= cutoff;
     })
-    .sort((a, b) => Date.parse(b.pubDate) - Date.parse(a.pubDate));
+    .sort((a, b) => Date.parse(normalizeTz(b.pubDate)) - Date.parse(normalizeTz(a.pubDate)));
 }
 
 // Конвертация RssItem в формат строки БД.
 export function toNewsRow(item: RssItem): Omit<NewsRow, 'id' | 'used' | 'created_at'> {
-  const published = new Date(Date.parse(item.pubDate)).toISOString();
+  const published = new Date(Date.parse(normalizeTz(item.pubDate))).toISOString();
   return {
     url: item.link,
     title: item.title,

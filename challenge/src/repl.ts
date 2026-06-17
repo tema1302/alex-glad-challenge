@@ -6,9 +6,13 @@
 //   pnpm --filter challenge start -- chat --strategy sliding --system "Ты ревьюер"
 
 import { createInterface } from 'node:readline/promises';
+import path from 'node:path';
 
 import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, msg, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
+import { runNewsPipeline } from './core/agents/pipeline.js';
+import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
+import { BlogDb } from './core/db.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -296,6 +300,14 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log(c.gray + '  ' + bar + c.reset + '\n');
       return;
     }
+    case 'news': {
+      await handleNewsCommand(arg, state);
+      return;
+    }
+    case 'db-stats': {
+      handleDbStatsCommand();
+      return;
+    }
     case 'quit':
     case 'exit':
       return;
@@ -318,6 +330,10 @@ function printFullHelp(state: SessionState): void {
   row('/system <text>', 'сменить system-промпт');
   row('/reset', 'очистить историю и usage (system сохраняется)');
   console.log('');
+  header('Блог-агенты');
+  row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
+  row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
+  console.log('');
   header('Ветки диалога  (только в /strategy branching)');
   row('/branch [label]', 'чекпойнт + новая ветка');
   row('/switch <id>', 'переключиться на ветку');
@@ -332,6 +348,102 @@ function printFullHelp(state: SessionState): void {
   row('/quit, /exit', 'выход (или Ctrl+D)');
   console.log('');
   console.log(c.gray + 'Текущая стратегия: ' + c.magenta + state.strategy.name + c.reset + '\n');
+}
+
+const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
+
+async function handleNewsCommand(arg: string, state: SessionState): Promise<void> {
+  // Парсим флаги из аргумента.
+  const parts = arg.split(/\s+/);
+  let hours = 24, topK = 5, forIndex = 0, publish = false;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '--hours' && parts[i + 1]) { hours = Number(parts[++i]); continue; }
+    if (parts[i] === '--top' && parts[i + 1]) { topK = Number(parts[++i]); continue; }
+    if (parts[i] === '--for' && parts[i + 1]) { forIndex = Number(parts[++i]); continue; }
+    if (parts[i] === '--publish') { publish = true; continue; }
+  }
+
+  const db = new BlogDb(DB_PATH);
+  try {
+    console.log(c.bold + c.cyan + '\n▶ Блог-pipeline: RSS → агент 1 → агент 2 → агент 3\n' + c.reset);
+    const result = await runNewsPipeline(db, state.client, {
+      maxAgeHours: hours,
+      topK,
+      writeForIndex: forIndex,
+    });
+
+    console.log('\n' + c.bold + '=== Топ-новости (агент 1) ===' + c.reset);
+    for (const r of result.news.ranked) {
+      console.log(`  ${c.green}[${r.score}]${c.reset} ${r.news.title}  ${c.gray}(${r.why})${c.reset}`);
+    }
+
+    if (!result.post) {
+      console.log(c.yellow + '\nНет подходящих новостей для поста.' + c.reset + '\n');
+      return;
+    }
+
+    console.log('\n' + c.bold + '=== Пост (агент 2) ===' + c.reset);
+    console.log(result.post.content);
+
+    if (result.factCheck) {
+      console.log('\n' + c.bold + '=== Фактчекинг (агент 3) ===' + c.reset);
+      if (result.factCheck.reasoning.trim()) {
+        console.log(c.gray + '\n--- ход рассуждений ---' + c.reset);
+        console.log(result.factCheck.reasoning.trim());
+        console.log(c.gray + '--- конец рассуждений ---\n' + c.reset);
+      }
+      const vc = result.factCheck.verdict === 'ok' ? c.green : c.yellow;
+      console.log(`${c.gray}verdict:${c.reset} ${vc}${result.factCheck.verdict}${c.reset}`);
+      console.log(c.gray + 'recommendation: ' + c.reset + result.factCheck.recommendation);
+      if (result.factCheck.issues.length > 0) {
+        console.log(c.gray + 'issues:' + c.reset);
+        for (const issue of result.factCheck.issues) {
+          console.log(`  ${c.red}[${issue.severity}]${c.reset} ${issue.claim}`);
+          console.log(`         ${c.gray}vs: ${issue.source}${c.reset}`);
+        }
+      } else {
+        console.log(c.gray + 'issues: нет' + c.reset);
+      }
+    }
+
+    // Публикация в Telegram.
+    if (publish) {
+      if (!isTelegramConfigured()) {
+        console.log(c.yellow + '\n[telegram] TG_BOT_TOKEN или TG_CHAT_ID не заданы — пропуск.' + c.reset + '\n');
+      } else if (result.factCheck && result.factCheck.verdict !== 'ok') {
+        console.log(c.yellow + '\n[telegram] verdict != ok — пост НЕ опубликован.' + c.reset + '\n');
+      } else {
+        console.log(c.gray + '\n[telegram] Публикую...' + c.reset);
+        const tg = await publishPost(result.post.content);
+        if (tg.ok) {
+          console.log(c.green + `[telegram] Пост опубликован (message_id=${tg.messageId}).` + c.reset + '\n');
+        } else {
+          console.error(c.red + `[telegram] Ошибка: ${tg.error}` + c.reset + '\n');
+        }
+      }
+    } else {
+      console.log(c.gray + '\n(без публикации. Добавьте --publish для отправки в Telegram)\n' + c.reset);
+    }
+  } catch (err) {
+    console.log(c.red + 'Ошибка pipeline: ' + (err as Error).message + c.reset + '\n');
+  } finally {
+    db.close();
+  }
+}
+
+function handleDbStatsCommand(): void {
+  const db = new BlogDb(DB_PATH);
+  try {
+    console.log('');
+    console.log(c.bold + '=== БД блог-агентов ===' + c.reset);
+    console.log(c.gray + '  файл:' + c.reset + ' ' + DB_PATH);
+    console.log(c.gray + '  новостей:' + c.reset + ' ' + db.newsCount());
+    console.log(c.gray + '  постов:' + c.reset + '   ' + db.postsCount());
+    console.log(c.gray + '  стилей:' + c.reset + '   ' + db.styleSamplesCount());
+    console.log('');
+  } finally {
+    db.close();
+  }
 }
 
 function printStatus(state: SessionState): void {
