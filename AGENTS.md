@@ -52,16 +52,24 @@
    отдельных подпапок-пакетов на день. Все депсы — в `challenge/package.json`.
 3. **Каждый день = модуль `src/demos/day-NN.ts`**, экспортирует
    `demo: Demo` и регистрируется в `src/demos/registry.ts`. Запускается через
-   CLI `pnpm --filter challenge start -- day-NN`.
-4. **Демонстрационные сценарии — неинтерактивные.** REPL-циклы не лечат в CLI
-   по умолчанию (ломают воспроизводимость). Используйте заготовленные сценарии
-   из массива `turns`. Если нужен интерактив — добавьте флаг `--interactive`.
-5. **Общий код — в `src/core/`.** Если логика повторяется между демо или
+   CLI `pnpm --filter challenge start -- day-NN` (как один прогон сценария,
+   для видео) либо доступен через интерактивный REPL.
+4. **Интерактивный REPL — основной режим CLI.** `pnpm --filter challenge start`
+   (или `start -- chat`) открывает глобальный чат-агент, внутри которого можно
+   переключать дни, стратегии контекста, system-промпт, ветки диалога через
+   команды `/day`, `/strategy`, `/system`, `/branch`, `/switch`, `/usage`,
+   `/reset`, `/quit`. Реализация — в `src/repl.ts`, диспетчер — в `src/cli.ts`.
+   Команды REPL не дублируют код дней, а переиспользуют `core/` (`LlmClient`,
+   `Agent`, `SlidingWindow`/`StickyFacts`/`Branching`).
+5. **Демо дня (`run()`) — неинтерактивные сценарии.** Это нужно для
+   воспроизводимых прогонов в видео. Каждое демо прогоняет заготовленные
+   `turns[]`, без readline. Интерактив лежит отдельно в REPL.
+6. **Общий код — в `src/core/`.** Если логика повторяется между демо или
    планируется к переиспользованию в будущих днях, положите её в `core/`.
    Например, `Agent` (day 6+) и стратегии контекста (day 10+) уже там.
-6. **ESM.** Все импорты внутри `src/` используют расширение `.js`
+7. **ESM.** Все импорты внутри `src/` используют расширение `.js`
    (ESM-конвенция для ts → js, даже если файлы `.ts`).
-7. **Сообщения коммитов** — с префиксом `day-NN:` (например,
+8. **Сообщения коммитов** — с префиксом `day-NN:` (например,
    `day-11: add function-calling demo`).
 8. **Документация** — в `CHANGELOG.md` добавляем запись для каждого дня:
    полный текст задания, что сделано, какие выводы. Обновляем `README.md`
@@ -101,10 +109,14 @@ git push -u origin day-11
 pnpm install
 Copy-Item .env.example .env   # заполнить ключи
 
-# CLI:
-pnpm --filter challenge start -- list           # список всех дней
-pnpm --filter challenge start -- day-03         # конкретный день
-pnpm --filter challenge start                   # последний добавленный
+# основной режим — интерактивный чат-REPL:
+pnpm --filter challenge start
+pnpm --filter challenge start -- chat --strategy sliding --system "Ты ревьюер"
+
+# прогон демо как сценария (для видео):
+pnpm --filter challenge start -- day-03
+pnpm --filter challenge start -- latest
+pnpm --filter challenge start -- list
 ```
 
 ## Типичный паттерн нового дня

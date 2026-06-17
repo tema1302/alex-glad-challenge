@@ -31,23 +31,39 @@ challenge/
 Из корня репозитория:
 
 ```powershell
+# по умолчанию: интерактивный чат-REPL с агентом:
+pnpm --filter challenge start
+
+# то же самое явно + стартовые опции:
+pnpm --filter challenge start -- chat
+pnpm --filter challenge start -- chat --strategy sliding
+pnpm --filter challenge start -- chat --system "Ты суровый код-ревьюер"
+
+# прогнать демо дня как один сценарий (для видео):
+pnpm --filter challenge start -- day-03
+pnpm --filter challenge start -- latest
+
 # список всех демо:
 pnpm --filter challenge start -- list
-
-# конкретный день:
-pnpm --filter challenge start -- day-03
-
-# последний добавленный день:
-pnpm --filter challenge start
-pnpm --filter challenge start -- latest
 ```
 
-Или напрямую через `tsx` (из папки challenge/):
+### Команды внутри REPL
 
-```powershell
-cd challenge
-pnpm exec tsx src/cli.ts day-03
-```
+| Команда                   | Что делает                                                  |
+|---------------------------|-------------------------------------------------------------|
+| `/help`                   | список команд                                               |
+| `/list`                   | все доступные дни                                           |
+| `/day <id>`               | показать заголовок дня                                      |
+| `/strategy <name>`        | `full` / `sliding` / `sticky` / `branching` (reset истории) |
+| `/system <text>`          | сменить system-промпт (reset истории)                       |
+| `/branch <label>`         | новая ветка от текущего чекпойнта (только в branching)      |
+| `/switch <id>`            | переключиться на ветку (только в branching)                 |
+| `/branches`               | список веток (только в branching)                           |
+| `/reset`                  | очистить историю, стратегию, usage                          |
+| `/usage`                  | накопленные токены                                          |
+| `/quit`                   | выход (также Ctrl+D)                                        |
+
+Просто печатаете текст — отправляется в LLM через активную стратегию контекста.
 
 ## Как добавить новый день
 

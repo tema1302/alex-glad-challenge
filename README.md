@@ -98,18 +98,27 @@ notepad .env   # или любой редактор
   доступ к десяткам моделей: OpenAI, Anthropic, Google, Meta и т.д.)
 - `DEEPSEEK_API_KEY=sk-...` — получить на https://platform.deepseek.com/api_keys
 
-### 5. Запустить демо
+### 5. Запустить
 
 ```powershell
+# по умолчанию: интерактивный чат-REPL с агентом:
+pnpm --filter challenge start
+
+# то же явно + стартовые опции:
+pnpm --filter challenge start -- chat
+pnpm --filter challenge start -- chat --strategy sliding
+pnpm --filter challenge start -- chat --system "Ты ревьюер"
+
+# прогон демо дня одним сценарием (для видео):
+pnpm --filter challenge start -- day-03
+pnpm --filter challenge start -- latest
+
 # список всех дней:
 pnpm --filter challenge start -- list
-
-# конкретный день:
-pnpm --filter challenge start -- day-03
-
-# последний добавленный день:
-pnpm --filter challenge start
 ```
+
+Внутри REPL: `/help`, `/strategy <full|sliding|sticky|branching>`, `/system <text>`,
+`/branch <label>`, `/switch <id>`, `/branches`, `/usage`, `/reset`, `/quit`.
 
 ### 6. Проверить типы (опционально)
 
