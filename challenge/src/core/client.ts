@@ -1,8 +1,29 @@
 // HTTP-клиент к OpenAI-совместимому Chat Completions API.
 // Работает с любым провайдером: DeepSeek, OpenRouter, OpenAI, локальные сервера.
 
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, Usage } from './types.js';
+
+// Ищем .env от текущей cwd вверх до корня репозитория. Так скрипты в challenge/
+// видят .env, лежащий в корне репо (стандартное расположение для монорепо).
+function loadEnvUpward(): void {
+  let dir = process.cwd();
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(path.join(dir, '.env'))) {
+      dotenvConfig({ path: path.join(dir, '.env') });
+      return;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Фолбэк: стандартное поведение dotenv (.env от cwd).
+  dotenvConfig();
+}
+
+loadEnvUpward();
 
 export interface ProviderConfig {
   baseUrl: string;
@@ -16,7 +37,7 @@ function pickProvider(): ProviderConfig {
     return {
       baseUrl: 'https://openrouter.ai/api/v1',
       apiKey: orKey,
-      defaultModel: process.env.OPENROUTER_MODEL ?? 'google/gemini-2.0-flash-001',
+      defaultModel: process.env.OPENROUTER_MODEL ?? 'google/gemini-3.5-flash',
     };
   }
   const dsKey = process.env.DEEPSEEK_API_KEY?.trim();

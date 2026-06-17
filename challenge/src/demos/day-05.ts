@@ -22,7 +22,7 @@ function pickTiers(defaultModel: string): Tier[] {
   if (defaultModel.includes('/')) {
     return [
       { label: 'weak', model: 'openai/gpt-4o-mini' },
-      { label: 'medium', model: 'google/gemini-2.0-flash-001' },
+      { label: 'medium', model: 'google/gemini-3.5-flash' },
       { label: 'strong', model: 'anthropic/claude-3.5-sonnet' },
     ];
   }
