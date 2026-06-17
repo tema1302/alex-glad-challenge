@@ -33,18 +33,83 @@ Runtime: Node.js 22+, TypeScript, pnpm workspaces. API: DeepSeek и OpenRouter
 
 ## Быстрый старт
 
+### 1. Установить Node.js 22+ и pnpm
+
+**Windows (PowerShell):**
 ```powershell
-# 1. Установить зависимости:
-pnpm install
+# через winget (встроен в Windows 10/11):
+winget install OpenJS.NodeJS.LTS
+winget install pnpm.pnpm
 
-# 2. Положить ключи:
-Copy-Item .env.example .env
-# заполнить OPENROUTER_API_KEY или DEEPSEEK_API_KEY
-
-# 3. Запустить день:
-pnpm --filter day-01-first-request start
+# либо скачать установщики:
+# Node.js:  https://nodejs.org/
+# pnpm:     https://pnpm.io/installation
 ```
 
+**macOS / Linux:**
+```bash
+# nvm (рекомендуется):
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.0/install.sh | bash
+nvm install 22
+nvm use 22
+
+# pnpm:
+corepack enable
+corepack prepare pnpm@latest --activate
+```
+
+Проверка:
+```powershell
+node --version   # v22.x.x
+pnpm --version   # 10.x.x
+```
+
+### 2. Клонировать репозиторий
+
+```powershell
+git clone <url-вашего-репозитория> alex-glad-challenge
+cd alex-glad-challenge
+```
+
+### 3. Установить зависимости
+
+```powershell
+pnpm install
+```
+
+### 4. Настроить ключи LLM-провайдера
+
+```powershell
+Copy-Item .env.example .env
+notepad .env   # или любой редактор
+```
+
+Заполнить одну из строк (или обе — OpenRouter имеет приоритет):
+- `OPENROUTER_API_KEY=sk-or-...` — получить на https://openrouter.ai/keys (даёт
+  доступ к десяткам моделей: OpenAI, Anthropic, Google, Meta и т.д.)
+- `DEEPSEEK_API_KEY=sk-...` — получить на https://platform.deepseek.com/api_keys
+
+### 5. Запустить день
+
+```powershell
+# конкретный день:
+pnpm --filter day-01-first-request start
+
+# или напрямую через tsx:
+pnpm exec tsx challenge/days/day-01-first-request/index.ts
+
+# день 10 принимает аргумент-стратегию:
+pnpm --filter day-10-strategies start -- sticky
+```
+
+### 6. Проверить типы (опционально)
+
+```powershell
+pnpm typecheck
+```
+
+---
+
 Подробности — в [`AGENTS.md`](AGENTS.md) (для ИИ-ассистентов) и в
-[`challenge/README.md`](challenge/README.md). Лог по дням — в
-[`CHANGELOG.md`](CHANGELOG.md).
+[`challenge/README.md`](challenge/README.md). Полный текст задания каждого дня и
+лог прохождения — в [`CHANGELOG.md`](CHANGELOG.md).
