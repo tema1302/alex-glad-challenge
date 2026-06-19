@@ -1,12 +1,14 @@
 // Менеджер профилей: много профилей, активный один.
 // Каждый профиль — .data/profiles/<name>.json.
-// Редактирование через LLM: /profile-edit <естественный текст>.
+// Структура: фиксированные поля + свободные заметки (notes).
+// Заметки — массив произвольных строк: история, наблюдения, факты.
+// Добавлять может как LLM (через /profile-edit), так и пользователь (/profile-note).
 //
 // Использование:
 //   const mgr = new ProfileManager(dir);
 //   mgr.load('default');
-//   mgr.active?.get('любимый_клуб');  // → 'Челси'
-//   await mgr.editViaLLM('убери эмодзи и добавь сарказма', client);
+//   mgr.addNote('Автор ненавидит тренера сборной Англии');
+//   await mgr.editViaLLM('смени клуб на Арсенал', client);
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -23,6 +25,7 @@ export interface UserProfile {
   табу: string;
   язык: string;
   приемы_юмора: string;
+  notes: string[];
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -35,9 +38,10 @@ const DEFAULT_PROFILE: UserProfile = {
   табу: 'без мата, без политики, без оскорблений игроков',
   язык: 'русский',
   приемы_юмора: '',
+  notes: [],
 };
 
-const PROFILE_FIELDS = Object.keys(DEFAULT_PROFILE) as (keyof UserProfile)[];
+const PROFILE_FIELDS = Object.keys(DEFAULT_PROFILE).filter((k) => k !== 'notes') as (keyof UserProfile)[];
 
 export interface LlmClientLike {
   chat(messages: ChatMessage[], params?: { temperature?: number; maxTokens?: number }): Promise<string>;
@@ -46,7 +50,7 @@ export interface LlmClientLike {
 export class ProfileManager {
   private dir: string;
   private _activeName: string | null = null;
-  private _data: UserProfile = { ...DEFAULT_PROFILE };
+  private _data: UserProfile = { ...DEFAULT_PROFILE, notes: [] };
 
   constructor(dir: string) {
     this.dir = dir;
@@ -75,14 +79,18 @@ export class ProfileManager {
     try {
       const raw = readFileSync(filePath, 'utf-8');
       const parsed = JSON.parse(raw) as Record<string, unknown>;
-      // Жёсткий фильтр: только известные поля, значения к string.
-      const cleaned: UserProfile = { ...DEFAULT_PROFILE };
+      // Фиксированные поля: фильтруем, приводим к string.
+      const cleaned: UserProfile = { ...DEFAULT_PROFILE, notes: [] };
       for (const key of PROFILE_FIELDS) {
         const val = parsed[key];
         if (val !== undefined) {
           (cleaned as unknown as Record<string, string>)[key] =
             Array.isArray(val) ? val.join(', ') : String(val);
         }
+      }
+      // Notes: массив произвольных строк.
+      if (Array.isArray(parsed['notes'])) {
+        cleaned.notes = (parsed['notes'] as unknown[]).map((n) => String(n));
       }
       this._data = cleaned;
       this._activeName = name;
@@ -99,7 +107,7 @@ export class ProfileManager {
   }
 
   create(name: string, base?: Partial<UserProfile>): void {
-    this._data = { ...DEFAULT_PROFILE, ...base };
+    this._data = { ...DEFAULT_PROFILE, notes: base?.notes ?? [], ...stripNotes(base) };
     this._activeName = name;
     this.save();
   }
@@ -130,19 +138,51 @@ export class ProfileManager {
   }
 
   reset(): void {
-    this._data = { ...DEFAULT_PROFILE };
+    this._data = { ...DEFAULT_PROFILE, notes: [] };
   }
 
   get fields(): (keyof UserProfile)[] {
     return PROFILE_FIELDS;
   }
 
+  get notes(): string[] {
+    return [...this._data.notes];
+  }
+
+  addNote(text: string): void {
+    const trimmed = text.trim();
+    if (trimmed) {
+      this._data.notes.push(trimmed);
+      this.save();
+    }
+  }
+
+  removeNote(index: number): boolean {
+    if (index < 0 || index >= this._data.notes.length) return false;
+    this._data.notes.splice(index, 1);
+    this.save();
+    return true;
+  }
+
+  clearNotes(): void {
+    this._data.notes = [];
+    this.save();
+  }
+
   snapshot(): UserProfile {
-    return { ...this._data };
+    return { ...this._data, notes: [...this._data.notes] };
   }
 
   toPromptText(): string {
-    return PROFILE_FIELDS.map((k) => `- ${k}: ${this._data[k]}`).join('\n');
+    const lines = PROFILE_FIELDS.map((k) => `- ${k}: ${this._data[k]}`);
+    if (this._data.notes.length > 0) {
+      lines.push('');
+      lines.push('Заметки и история:');
+      for (const note of this._data.notes) {
+        lines.push(`- ${note}`);
+      }
+    }
+    return lines.join('\n');
   }
 
   toSystemBlock(): string {
@@ -150,8 +190,7 @@ export class ProfileManager {
   }
 
   // Редактирование профиля естественным языком через LLM.
-  // Пример: "убери эмодзи, добавь больше сарказма, длина 300 символов".
-  // LLM получает текущий профиль + инструкцию, возвращает обновлённый JSON.
+  // LLM может менять фиксированные поля И добавлять заметки.
   async editViaLLM(instruction: string, client: LlmClientLike): Promise<string> {
     const current = JSON.stringify(this._data, null, 2);
     const prompt = `Ты редактор профиля Telegram-канала.
@@ -161,8 +200,11 @@ export class ProfileManager {
 ПРАВИЛА:
 - Верни СТРОГО JSON. ПЕРВЫЙ СИМВОЛ — "{".
 - Сохраняй ВСЕ поля, даже если инструкция их не затрагивает.
-- Если инструкция неоднозначна — трактуй в сторону минимальных изменений.
-- Не добавляй новые поля, не удаляй существующие.
+- Поле "notes" — массив произвольных строк. Можешь:
+  - добавлять новые заметки (если инструкция просит что-то запомнить),
+  - изменять существующие,
+  - НЕ удаляй заметки, если пользователь явно не просит.
+- Не добавляй новые поля кроме существующих.
 
 ТЕКУЩИЙ ПРОФИЛЬ:
 ${current}
@@ -174,51 +216,65 @@ ${instruction}
 
     const raw = await client.chat(
       [msg.user(prompt)],
-      { temperature: 0.2, maxTokens: 1500 },
+      { temperature: 0.2, maxTokens: 2000 },
     );
 
     const updated = parseProfileJson(raw);
     if (!updated) {
       throw new Error('LLM вернул невалидный JSON профиля');
     }
-    // Жёсткий фильтр: оставляем только известные поля, значения приводим к string.
-    const allowed = PROFILE_FIELDS.reduce((acc, key) => {
+    const changes: string[] = [];
+
+    // Фиксированные поля.
+    for (const key of PROFILE_FIELDS) {
       const val = (updated as Record<string, unknown>)[key];
       if (val !== undefined) {
-        acc[key] = Array.isArray(val) ? val.join(', ') : String(val);
+        const strVal = Array.isArray(val) ? val.join(', ') : String(val);
+        const oldVal = (this._data as unknown as Record<string, string>)[key];
+        if (oldVal !== strVal) {
+          changes.push(`  ${key}: "${oldVal}" → "${strVal}"`);
+          (this._data as unknown as Record<string, string>)[key] = strVal;
+        }
       }
-      return acc;
-    }, {} as Record<string, string>);
-    // Применяем только валидные поля.
-    for (const [k, v] of Object.entries(allowed)) {
-      (this._data as unknown as Record<string, string>)[k] = v;
     }
+
+    // Notes.
+    if (Array.isArray(updated['notes'])) {
+      const oldNotes = this._data.notes;
+      const newNotes = (updated['notes'] as unknown[]).map((n) => String(n));
+      const added = newNotes.filter((n) => !oldNotes.includes(n));
+      const removed = oldNotes.filter((n) => !newNotes.includes(n));
+      if (added.length > 0) {
+        changes.push(`  notes +${added.length}: ${added.map((n) => `"${n.slice(0, 50)}"`).join(', ')}`);
+      }
+      if (removed.length > 0) {
+        changes.push(`  notes -${removed.length}: ${removed.map((n) => `"${n.slice(0, 50)}"`).join(', ')}`);
+      }
+      this._data.notes = newNotes;
+    }
+
     this.save();
-    return diffProfiles(current, JSON.stringify(this._data, null, 2));
+
+    if (changes.length === 0) return 'Без изменений';
+    return changes.join('\n');
   }
 }
 
-function parseProfileJson(raw: string): Partial<UserProfile> | null {
+function parseProfileJson(raw: string): Record<string, unknown> | null {
   const cleaned = raw.replace(/```(?:json)?/gi, '').trim();
   const start = cleaned.indexOf('{');
   const end = cleaned.lastIndexOf('}');
   if (start === -1 || end === -1 || end <= start) return null;
   try {
-    return JSON.parse(cleaned.slice(start, end + 1)) as Partial<UserProfile>;
+    return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
   } catch {
     return null;
   }
 }
 
-function diffProfiles(before: string, after: string): string {
-  const beforeObj = JSON.parse(before) as Record<string, string>;
-  const afterObj = JSON.parse(after) as Record<string, string>;
-  const changes: string[] = [];
-  for (const key of Object.keys(afterObj)) {
-    if (beforeObj[key] !== afterObj[key]) {
-      changes.push(`  ${key}: "${beforeObj[key]}" → "${afterObj[key]}"`);
-    }
-  }
-  if (changes.length === 0) return 'Без изменений';
-  return changes.join('\n');
+function stripNotes(base?: Partial<UserProfile>): Partial<UserProfile> {
+  if (!base) return {};
+  const { notes: _notes, ...rest } = base;
+  void _notes;
+  return rest;
 }

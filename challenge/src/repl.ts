@@ -490,6 +490,42 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log(c.yellow + 'profile reset' + c.reset + c.gray + '  (значения по умолчанию)\n' + c.reset);
       return;
     }
+    case 'profile-note': {
+      if (!arg) {
+        console.log(c.gray + 'Добавить заметку: /profile-note <текст>\n' + c.reset);
+        return;
+      }
+      state.profile.addNote(arg);
+      console.log(c.magenta + 'note +' + c.reset + ` "${arg.slice(0, 60)}${arg.length > 60 ? '...' : ''}"`);
+      console.log(c.gray + `  (всего заметок: ${state.profile.notes.length})\n` + c.reset);
+      return;
+    }
+    case 'profile-notes': {
+      const notes = state.profile.notes;
+      if (notes.length === 0) {
+        console.log(c.gray + 'Заметок нет. Добавить: /profile-note <текст>\n' + c.reset);
+        return;
+      }
+      console.log(c.bold + `Заметки (${notes.length}):` + c.reset);
+      notes.forEach((n, i) => {
+        console.log(c.gray + `  ${i}.` + c.reset + ` ${n}`);
+      });
+      console.log(c.gray + '\nУдалить: /profile-note-rm <номер>\n' + c.reset);
+      return;
+    }
+    case 'profile-note-rm': {
+      const idx = Number(arg);
+      if (!Number.isFinite(idx)) {
+        console.log(c.gray + 'Использование: /profile-note-rm <номер>\n' + c.reset);
+        return;
+      }
+      if (state.profile.removeNote(idx)) {
+        console.log(c.green + `Заметка ${idx} удалена.` + c.reset + '\n');
+      } else {
+        console.log(c.red + `Нет заметки с номером ${idx}.` + c.reset + '\n');
+      }
+      return;
+    }
     case 'usage': {
       const u = state.usage;
       const bar = '█'.repeat(Math.min(20, Math.round(u.total_tokens / 500))) +
@@ -543,12 +579,15 @@ function printFullHelp(state: SessionState): void {
   row('/memory-off', 'выключить (обычная strategy)');
   console.log('');
   header('Профили (день 12: персонализация)');
-  row('/profile', 'показать активный профиль');
+  row('/profile', 'показать активный профиль + заметки');
   row('/profiles', 'список всех профилей');
   row('/profile-use <name>', 'переключиться на профиль');
   row('/profile-new <name>', 'создать новый профиль (по умолчанию)');
   row('/profile-copy <name>', 'копировать активный профиль');
-  row('/profile-edit <text>', 'редактировать естественным языком через LLM');
+  row('/profile-edit <text>', 'редактировать через LLM (поля + заметки)');
+  row('/profile-note <text>', 'добавить заметку вручную');
+  row('/profile-notes', 'список всех заметок');
+  row('/profile-note-rm <N>', 'удалить заметку по номеру');
   row('/profile-reset', 'сбросить активный профиль к умолчанию');
   console.log('');
   header('Блог-агенты');
@@ -757,6 +796,16 @@ function printProfile(state: SessionState): void {
   const snap = state.profile.snapshot();
   for (const key of state.profile.fields) {
     console.log(c.gray + '  ' + key.padEnd(20) + c.reset + snap[key]);
+  }
+  const notes = state.profile.notes;
+  if (notes.length > 0) {
+    console.log(c.gray + '  ' + 'заметки'.padEnd(20) + c.reset + `${notes.length} шт.`);
+    notes.forEach((n, i) => {
+      const preview = n.length > 70 ? n.slice(0, 67) + '...' : n;
+      console.log(c.gray + `  ${String(i).padStart(20)}. ` + c.reset + preview);
+    });
+  } else {
+    console.log(c.gray + '  ' + 'заметки'.padEnd(20) + c.reset + '(пусто)');
   }
   console.log(line + '\n');
 }
