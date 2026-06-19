@@ -12,6 +12,9 @@ build/
 # Артефакты запуска дней
 day-07-history.json
 
+# Runtime-данные (SQLite, memory.json, etc.)
+challenge/.data/
+
 # OS
 .DS_Store
 Thumbs.db

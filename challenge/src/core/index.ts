@@ -8,3 +8,5 @@ export type { ProviderConfig } from './client.js';
 export { Agent } from './agent.js';
 export type { ContextStrategy, ContextStats } from './strategy.js';
 export { FullHistory, SlidingWindow, StickyFacts, Branching } from './strategy.js';
+export { Memory } from './memory.js';
+export type { LongTermEntry, MemorySnapshot } from './memory.js';
