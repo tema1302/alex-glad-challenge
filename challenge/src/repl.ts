@@ -9,7 +9,7 @@ import readline from 'node:readline';
 import path from 'node:path';
 import pathModule from 'node:path';
 
-import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, ProfileManager, SlidingWindow, StickyFacts } from './core/index.js';
+import { Agent, Branching, Constraints, type ContextStrategy, FullHistory, LlmClient, Memory, msg, ProfileManager, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { rewritePost } from './core/agents/postWriter.js';
@@ -81,6 +81,7 @@ const ALL_COMMANDS = [
   '/pipeline edit ', '/pipeline retry', '/pipeline accept', '/pipeline publish',
   '/pipeline status', '/pipeline resume', '/pipeline reset',
   '/posts', '/post ', '/post-publish ',
+  '/constraints', '/constraint add ', '/constraint rm ',
   '/db-stats',
   '/quit', '/exit',
 ];
@@ -116,6 +117,7 @@ interface SessionState {
   memory: Memory;
   memoryEnabled: boolean;
   profile: ProfileManager;
+  constraints: Constraints;
 }
 
 export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Promise<void> {
@@ -133,13 +135,15 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     memory: new Memory({ filePath: pathModule.join(process.cwd(), '.data', 'memory.json'), shortTermLimit: windowSize }),
     memoryEnabled: false,
     profile: new ProfileManager(pathModule.join(process.cwd(), '.data', 'profiles')),
+    constraints: new Constraints(pathModule.join(process.cwd(), '.data', 'constraints.json')),
   };
 
-  // Загружаем long-term и профиль с диска при старте.
+  // Загружаем long-term, профиль и инварианты с диска при старте.
   const loaded = state.memory.loadLongTerm();
   if (loaded > 0) {
     state.memoryEnabled = true;
   }
+  state.constraints.load();
   // Загружаем профиль 'default' (или первый доступный).
   const profiles = state.profile.list();
   if (profiles.length > 0) {
@@ -195,9 +199,11 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
         context = state.strategy.context();
       }
 
+      // Инъекция инвариантов (день 14): жёсткие правила, LLM не может нарушать.
+      const constraintMessages = state.constraints.toSystemMessages();
       // Инъекция профиля в каждый запрос (день 12).
       const profileSystem = msg.system(state.profile.toSystemBlock());
-      context = [profileSystem, ...context];
+      context = [...constraintMessages, profileSystem, ...context];
 
       const { content, usage: u } = await client.chatWithUsage(context, {
         temperature: 0.7,
@@ -581,6 +587,13 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log(c.gray + '  ' + bar + c.reset + '\n');
       return;
     }
+    case 'constraint':
+    case 'constraints': {
+      const [csub, ...crest] = arg.split(/\s+/);
+      const carg = crest.join(' ').trim();
+      handleConstraintsCommand(csub ?? '', carg, state);
+      return;
+    }
     case 'news': {
       await handleNewsCommand(arg, state);
       return;
@@ -675,6 +688,11 @@ function printFullHelp(state: SessionState): void {
   row('/branch [label]', 'чекпойнт + новая ветка');
   row('/switch <id>', 'переключиться на ветку');
   row('/branches', 'список веток');
+  console.log('');
+  header('Инварианты (день 14: ограничения)');
+  row('/constraints', 'список всех инвариантов');
+  row('/constraint add <type> <t>: <d>', 'добавить (architecture|tech_decision|stack|business|custom)');
+  row('/constraint rm <id>', 'удалить инвариант');
   console.log('');
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
@@ -1175,6 +1193,87 @@ function handlePostCommand(arg: string): void {
     console.log(c.gray + '\nОпубликовать: /post-publish ' + post.id + '\n' + c.reset);
   } finally {
     db.close();
+  }
+}
+
+function handleConstraintsCommand(sub: string, arg: string, state: SessionState): void {
+  const typeLabels: Record<string, string> = {
+    architecture: 'Архитектура',
+    tech_decision: 'Тех. решения',
+    stack: 'Стек',
+    business: 'Бизнес',
+    custom: 'Прочее',
+  };
+  const typeColors: Record<string, string> = {
+    architecture: c.cyan,
+    tech_decision: c.blue,
+    stack: c.magenta,
+    business: c.green,
+    custom: c.yellow,
+  };
+
+  switch (sub) {
+    case '':
+    case 'list': {
+      const items = state.constraints.all;
+      if (items.length === 0) {
+        console.log(c.gray + '\nИнвариантов нет. Добавить: /constraint add <type> <title>: <description>\n' + c.reset);
+        return;
+      }
+      console.log(c.bold + c.red + '\n=== ИНВАРИАНТЫ (' + items.length + ') ===' + c.reset);
+      for (const item of items) {
+        const tc = typeColors[item.type] ?? c.gray;
+        console.log(`  ${tc}${item.id}${c.reset} ${tc}[${typeLabels[item.type] ?? item.type}]${c.reset} ${c.bold}${item.title}${c.reset}`);
+        console.log(`        ${c.gray}${item.description}${c.reset}`);
+      }
+      console.log(c.gray + '\nУдалить: /constraint rm <id>\n' + c.reset);
+      return;
+    }
+
+    case 'add': {
+      // Формат: /constraint add <type> <title>: <description>
+      if (!arg) {
+        console.log(c.gray + 'Формат: /constraint add <type> <title>: <описание>\n' +
+          '  Типы: architecture, tech_decision, stack, business, custom\n' +
+          '  Пример: /constraint add stack язык: только TypeScript, никакого Rust\n' + c.reset);
+        return;
+      }
+      const sep = arg.indexOf(':');
+      if (sep === -1) {
+        console.log(c.red + 'Формат: /constraint add <type> <title>: <описание>' + c.reset + '\n');
+        return;
+      }
+      const before = arg.slice(0, sep).trim();
+      const description = arg.slice(sep + 1).trim();
+      const [type, ...titleParts] = before.split(/\s+/);
+      const title = titleParts.join(' ').trim() || '(без названия)';
+      try {
+        const c_item = state.constraints.add(type as import('./core/index.js').ConstraintType, title, description);
+        console.log(c.red + 'INVARIANT +' + c.reset + ` ${c_item.id} [${type}] ${title}: ${description}\n`);
+      } catch (e) {
+        console.log(c.red + (e as Error).message + c.reset + '\n');
+      }
+      return;
+    }
+
+    case 'rm':
+    case 'remove':
+    case 'del': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /constraint rm <id>\n' + c.reset);
+        return;
+      }
+      if (state.constraints.remove(arg)) {
+        console.log(c.red + 'INVARIANT -' + c.reset + ` ${arg} удалён.\n`);
+      } else {
+        console.log(c.red + `Инвариант ${arg} не найден.\n` + c.reset);
+      }
+      return;
+    }
+
+    default:
+      console.log(c.red + `Неизвестная подкоманда: ${sub}` + c.reset);
+      console.log(c.gray + 'Доступно: list, add <type> <title>: <desc>, rm <id>\n' + c.reset);
   }
 }
 

@@ -13,6 +13,8 @@ export { Memory } from './memory.js';
 export type { LongTermEntry, MemorySnapshot } from './memory.js';
 export { ProfileManager } from './profile.js';
 export type { UserProfile } from './profile.js';
+export { Constraints } from './constraints.js';
+export type { Constraint, ConstraintType } from './constraints.js';
 
 export { BlogDb } from './db.js';
 export type { NewsRow, PostRow, StyleSampleRow } from './db.js';
