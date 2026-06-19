@@ -22,6 +22,7 @@ export interface UserProfile {
   подпись: string;
   табу: string;
   язык: string;
+  приемы_юмора: string;
 }
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -33,6 +34,7 @@ const DEFAULT_PROFILE: UserProfile = {
   подпись: '@lookatfacts',
   табу: 'без мата, без политики, без оскорблений игроков',
   язык: 'русский',
+  приемы_юмора: '',
 };
 
 const PROFILE_FIELDS = Object.keys(DEFAULT_PROFILE) as (keyof UserProfile)[];
