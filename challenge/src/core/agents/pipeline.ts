@@ -1,8 +1,10 @@
 // Pipeline: связывает rss → агент 1 → агент 2 → агент 3.
 // Запускается из CLI командой `news`.
+// Профиль пользователя (день 12) прокидывается в PostWriter.
 
 import { BlogDb } from '../db.js';
 import { LlmClient } from '../index.js';
+import type { Profile } from '../profile.js';
 import { fetchAllFeeds, filterRecent, toNewsRow } from './rss.js';
 import { NewsFetcher, type NewsFetchResult } from './newsFetcher.js';
 import { PostWriter, type WrittenPost } from './postWriter.js';
@@ -17,7 +19,7 @@ export interface PipelineResult {
 export async function runNewsPipeline(
   db: BlogDb,
   client: LlmClient,
-  opts: { maxAgeHours?: number; topK?: number; writeForIndex?: number } = {},
+  opts: { maxAgeHours?: number; topK?: number; writeForIndex?: number; profile?: Profile } = {},
 ): Promise<PipelineResult> {
   const maxAgeHours = opts.maxAgeHours ?? 24;
   const topK = opts.topK ?? 5;
@@ -43,8 +45,8 @@ export async function runNewsPipeline(
   const chosen = news.ranked[idx].news;
   console.log(`[pipeline] Готовим пост про: "${chosen.title}"`);
 
-  // 2. Агент 2 — написать пост.
-  const writer = new PostWriter(client);
+  // 2. Агент 2 — написать пост (с профилем, если есть).
+  const writer = new PostWriter(client, opts.profile);
   const post = await writer.write(db, chosen);
   console.log(`[pipeline] Агент 2: пост написан (${post.content.length} символов)`);
 

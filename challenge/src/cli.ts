@@ -21,12 +21,13 @@ loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { startRepl } from './repl.js';
-import { BlogDb, LlmClient } from './core/index.js';
+import { BlogDb, LlmClient, Profile } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
+const PROFILE_PATH = path.join(process.cwd(), '.data', 'profile.json');
 
 function printHelp(): void {
   console.log('Использование:');
@@ -149,10 +150,13 @@ async function runNewsCommand(argv: string[]): Promise<void> {
   const db = new BlogDb(DB_PATH);
   try {
     console.log('▶ Блог-pipeline: RSS → агент 1 → агент 2 → агент 3\n');
+    const profile = new Profile(PROFILE_PATH);
+    profile.load();
     const result = await runNewsPipeline(db, client, {
       maxAgeHours: flags.hours,
       topK: flags.top,
       writeForIndex: flags.forIndex,
+      profile,
     });
 
     console.log('\n=== Топ-новости (агент 1) ===');

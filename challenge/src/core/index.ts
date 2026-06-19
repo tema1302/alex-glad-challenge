@@ -11,6 +11,8 @@ export { FullHistory, SlidingWindow, StickyFacts, Branching } from './strategy.j
 export { loadEnvUpward } from './env.js';
 export { Memory } from './memory.js';
 export type { LongTermEntry, MemorySnapshot } from './memory.js';
+export { Profile } from './profile.js';
+export type { UserProfile } from './profile.js';
 
 export { BlogDb } from './db.js';
 export type { NewsRow, PostRow, StyleSampleRow } from './db.js';

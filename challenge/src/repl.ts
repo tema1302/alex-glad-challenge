@@ -9,7 +9,7 @@ import { createInterface } from 'node:readline/promises';
 import path from 'node:path';
 import pathModule from 'node:path';
 
-import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, SlidingWindow, StickyFacts } from './core/index.js';
+import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, Profile, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
@@ -72,6 +72,7 @@ interface SessionState {
   usage: Usage;
   memory: Memory;
   memoryEnabled: boolean;
+  profile: Profile;
 }
 
 export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Promise<void> {
@@ -88,13 +89,15 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     memory: new Memory({ filePath: pathModule.join(process.cwd(), '.data', 'memory.json'), shortTermLimit: windowSize }),
     memoryEnabled: false,
+    profile: new Profile(pathModule.join(process.cwd(), '.data', 'profile.json')),
   };
 
-  // Загружаем long-term с диска при старте.
+  // Загружаем long-term и профиль с диска при старте.
   const loaded = state.memory.loadLongTerm();
   if (loaded > 0) {
     state.memoryEnabled = true;
   }
+  state.profile.load();
 
   printBanner(state);
   printCompactHelp();
@@ -141,6 +144,10 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
         state.strategy.addMessage(msg.user(line));
         context = state.strategy.context();
       }
+
+      // Инъекция профиля в каждый запрос (день 12).
+      const profileSystem = msg.system(state.profile.toSystemBlock());
+      context = [profileSystem, ...context];
 
       const { content, usage: u } = await client.chatWithUsage(context, {
         temperature: 0.7,
@@ -404,6 +411,38 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log(c.gray + 'Memory mode OFF' + c.reset + c.gray + '  (context строится из strategy)\n' + c.reset);
       return;
     }
+    case 'profile': {
+      printProfile(state);
+      return;
+    }
+    case 'profile-set': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /profile-set <поле>: <значение>\n  Поля: ' + state.profile.fields.join(', ') + '\n' + c.reset);
+        return;
+      }
+      const sep = arg.indexOf(':');
+      if (sep === -1) {
+        console.log(c.red + 'Формат: /profile-set <поле>: <значение>' + c.reset + '\n');
+        return;
+      }
+      const key = arg.slice(0, sep).trim() as keyof import('./core/index.js').UserProfile;
+      const value = arg.slice(sep + 1).trim();
+      try {
+        state.profile.set(key, value);
+        state.profile.save();
+        console.log(c.magenta + 'profile' + c.reset + ` → ${key}: ${value}`);
+        console.log(c.gray + '  (сохранено в .data/profile.json)\n' + c.reset);
+      } catch (e) {
+        console.log(c.red + (e as Error).message + c.reset + '\n');
+      }
+      return;
+    }
+    case 'profile-reset': {
+      state.profile.reset();
+      state.profile.save();
+      console.log(c.yellow + 'profile reset' + c.reset + c.gray + '  (значения по умолчанию)\n' + c.reset);
+      return;
+    }
     case 'usage': {
       const u = state.usage;
       const bar = '█'.repeat(Math.min(20, Math.round(u.total_tokens / 500))) +
@@ -455,6 +494,11 @@ function printFullHelp(state: SessionState): void {
   row('/memory-save', 'записать long-term на диск');
   row('/memory-on', 'включить memory mode (context из 3 слоёв)');
   row('/memory-off', 'выключить (обычная strategy)');
+  console.log('');
+  header('Профиль (день 12: персонализация)');
+  row('/profile', 'показать профиль (клуб, стиль, формат, табу)');
+  row('/profile-set <field>: <val>', 'изменить поле профиля (сохраняется на диск)');
+  row('/profile-reset', 'сбросить профиль к значениям по умолчанию');
   console.log('');
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
@@ -543,6 +587,7 @@ async function handleNewsCommand(arg: string, state: SessionState): Promise<void
       maxAgeHours: hours,
       topK,
       writeForIndex: forIndex,
+      profile: state.profile,
     });
 
     console.log('\n' + c.bold + '=== Топ-новости (агент 1) ===' + c.reset);
@@ -645,4 +690,17 @@ function printDemosList(): void {
     console.log('  ' + c.cyan + d.id.padEnd(10) + c.reset + d.title);
   }
   console.log('');
+}
+
+function printProfile(state: SessionState): void {
+  const line = c.gray + '─'.repeat(50) + c.reset;
+  console.log('');
+  console.log(line);
+  console.log(c.bold + '  Профиль пользователя (день 12)' + c.reset);
+  console.log(line);
+  const snap = state.profile.snapshot();
+  for (const key of state.profile.fields) {
+    console.log(c.gray + '  ' + key.padEnd(20) + c.reset + snap[key]);
+  }
+  console.log(line + '\n');
 }
