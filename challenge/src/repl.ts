@@ -9,7 +9,7 @@ import { createInterface } from 'node:readline/promises';
 import path from 'node:path';
 import pathModule from 'node:path';
 
-import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, Profile, SlidingWindow, StickyFacts } from './core/index.js';
+import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, ProfileManager, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
@@ -72,7 +72,7 @@ interface SessionState {
   usage: Usage;
   memory: Memory;
   memoryEnabled: boolean;
-  profile: Profile;
+  profile: ProfileManager;
 }
 
 export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Promise<void> {
@@ -89,7 +89,7 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
     memory: new Memory({ filePath: pathModule.join(process.cwd(), '.data', 'memory.json'), shortTermLimit: windowSize }),
     memoryEnabled: false,
-    profile: new Profile(pathModule.join(process.cwd(), '.data', 'profile.json')),
+    profile: new ProfileManager(pathModule.join(process.cwd(), '.data', 'profiles')),
   };
 
   // Загружаем long-term и профиль с диска при старте.
@@ -97,7 +97,13 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
   if (loaded > 0) {
     state.memoryEnabled = true;
   }
-  state.profile.load();
+  // Загружаем профиль 'default' (или первый доступный).
+  const profiles = state.profile.list();
+  if (profiles.length > 0) {
+    state.profile.load(profiles.includes('default') ? 'default' : profiles[0]);
+  } else {
+    state.profile.create('default');
+  }
 
   printBanner(state);
   printCompactHelp();
@@ -415,25 +421,66 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       printProfile(state);
       return;
     }
-    case 'profile-set': {
+    case 'profiles': {
+      const list = state.profile.list();
+      const active = state.profile.activeName;
+      console.log(c.bold + 'Профили:' + c.reset);
+      for (const name of list) {
+        const marker = name === active ? c.green + ' *' + c.reset : '  ';
+        console.log(`${marker} ${name}`);
+      }
+      console.log(c.gray + '\n  * = активный\n' + c.reset);
+      return;
+    }
+    case 'profile-use': {
       if (!arg) {
-        console.log(c.gray + 'Использование: /profile-set <поле>: <значение>\n  Поля: ' + state.profile.fields.join(', ') + '\n' + c.reset);
+        console.log(c.gray + 'Использование: /profile-use <имя>\n' + c.reset);
         return;
       }
-      const sep = arg.indexOf(':');
-      if (sep === -1) {
-        console.log(c.red + 'Формат: /profile-set <поле>: <значение>' + c.reset + '\n');
+      if (state.profile.load(arg)) {
+        console.log(c.green + 'profile → ' + arg + c.reset + '\n');
+      } else {
+        console.log(c.red + `Профиль "${arg}" не найден. /profiles — список.` + c.reset + '\n');
+      }
+      return;
+    }
+    case 'profile-new': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /profile-new <имя>\n' + c.reset);
         return;
       }
-      const key = arg.slice(0, sep).trim() as keyof import('./core/index.js').UserProfile;
-      const value = arg.slice(sep + 1).trim();
+      state.profile.create(arg);
+      console.log(c.green + 'profile + ' + arg + c.reset + c.gray + '  (создан с значениями по умолчанию)\n' + c.reset);
+      return;
+    }
+    case 'profile-copy': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /profile-copy <новое имя>\n' + c.reset);
+        return;
+      }
+      if (state.profile.copy(arg)) {
+        console.log(c.green + 'profile → copy → ' + arg + c.reset + '\n');
+      } else {
+        console.log(c.red + 'Нет активного профиля для копирования.' + c.reset + '\n');
+      }
+      return;
+    }
+    case 'profile-edit': {
+      if (!arg) {
+        console.log(c.gray + 'Редактирование естественным языком:\n  /profile-edit убери эмодзи и добавь сарказма\n' + c.reset);
+        return;
+      }
+      if (!state.profile.activeName) {
+        console.log(c.red + 'Нет активного профиля.' + c.reset + '\n');
+        return;
+      }
+      console.log(c.gray + 'LLM редактирует профиль...' + c.reset);
       try {
-        state.profile.set(key, value);
-        state.profile.save();
-        console.log(c.magenta + 'profile' + c.reset + ` → ${key}: ${value}`);
-        console.log(c.gray + '  (сохранено в .data/profile.json)\n' + c.reset);
+        const diff = await state.profile.editViaLLM(arg, state.client);
+        console.log(c.magenta + 'profile' + c.reset + ' (' + state.profile.activeName + ') обновлён:');
+        console.log(c.gray + diff + c.reset + '\n');
       } catch (e) {
-        console.log(c.red + (e as Error).message + c.reset + '\n');
+        console.log(c.red + 'Ошибка: ' + (e as Error).message + c.reset + '\n');
       }
       return;
     }
@@ -495,10 +542,14 @@ function printFullHelp(state: SessionState): void {
   row('/memory-on', 'включить memory mode (context из 3 слоёв)');
   row('/memory-off', 'выключить (обычная strategy)');
   console.log('');
-  header('Профиль (день 12: персонализация)');
-  row('/profile', 'показать профиль (клуб, стиль, формат, табу)');
-  row('/profile-set <field>: <val>', 'изменить поле профиля (сохраняется на диск)');
-  row('/profile-reset', 'сбросить профиль к значениям по умолчанию');
+  header('Профили (день 12: персонализация)');
+  row('/profile', 'показать активный профиль');
+  row('/profiles', 'список всех профилей');
+  row('/profile-use <name>', 'переключиться на профиль');
+  row('/profile-new <name>', 'создать новый профиль (по умолчанию)');
+  row('/profile-copy <name>', 'копировать активный профиль');
+  row('/profile-edit <text>', 'редактировать естественным языком через LLM');
+  row('/profile-reset', 'сбросить активный профиль к умолчанию');
   console.log('');
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
@@ -696,8 +747,13 @@ function printProfile(state: SessionState): void {
   const line = c.gray + '─'.repeat(50) + c.reset;
   console.log('');
   console.log(line);
-  console.log(c.bold + '  Профиль пользователя (день 12)' + c.reset);
+  console.log(c.bold + '  Профиль: ' + c.cyan + (state.profile.activeName ?? '?') + c.reset);
   console.log(line);
+  if (!state.profile.active) {
+    console.log(c.gray + '  (нет активного профиля)' + c.reset);
+    console.log(line + '\n');
+    return;
+  }
   const snap = state.profile.snapshot();
   for (const key of state.profile.fields) {
     console.log(c.gray + '  ' + key.padEnd(20) + c.reset + snap[key]);

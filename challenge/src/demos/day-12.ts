@@ -5,93 +5,92 @@
 //   ограничения), подключите профиль к каждому запросу. Автоматизируйте
 //   создание постов с учётом профиля.
 //
-// Реализация: core/profile.ts (класс Profile).
-//   Профиль хранится в .data/profile.json, переживает перезапуск.
-//   Подключается к PostWriter (агент 2) и к REPL (каждый запрос).
+// Реализация: core/profile.ts (класс ProfileManager).
+//   Много профилей в .data/profiles/<name>.json, активный один.
+//   Редактирование естественным языком: /profile-edit <текст>.
 //
-// Демо: два прогона блог-pipeline с разным профилем.
-//   1. Профиль "по умолчанию" (Челси, ироничный стиль).
-//   2. Меняем профиль: любимый клуб = Арсенал, стиль = аналитический.
-//   Сравниваем посты — они должны отличаться по тону и углу повествования.
+// Демо:
+//   1. Создаём два профиля: 'default' (Челси) и 'arsenal' (копия + изменения).
+//   2. Редактируем 'arsenal' через LLM: "сделай стиль аналитическим".
+//   3. Прогон pipeline с каждым профилем — сравниваем посты.
 
 import path from 'node:path';
 
-import { LlmClient, Profile } from '../core/index.js';
+import { LlmClient, ProfileManager } from '../core/index.js';
 import { BlogDb } from '../core/db.js';
 import { runNewsPipeline } from '../core/agents/pipeline.js';
 
 export const demo = {
   id: 'day-12',
-  title: 'Персонализация: профиль пользователя в каждом запросе',
+  title: 'Персонализация: мульти-профили + LLM-редактирование',
   run: async (): Promise<void> => {
     const client = new LlmClient();
     const dbPath = path.join(process.cwd(), '.data', 'blog.sqlite');
-    const profilePath = path.join(process.cwd(), '.data', 'profile.json');
+    const profilesDir = path.join(process.cwd(), '.data', 'profiles');
     const db = new BlogDb(dbPath);
-    const profile = new Profile(profilePath);
-    profile.load();
+    const mgr = new ProfileManager(profilesDir);
 
     console.log('=== День 12. Персонализация поверх модели памяти ===\n');
 
-    // 1. Показываем профиль по умолчанию.
-    console.log('1. Профиль по умолчанию:');
-    printProfileBlock(profile);
+    // 1. Профиль по умолчанию.
+    console.log('1. Создаём профиль "default":');
+    mgr.create('default');
+    printProfileBlock(mgr);
 
-    // 2. Прогон pipeline с профилем по умолчанию.
-    console.log('\n2. Прогон #1: блог-pipeline с профилем по умолчанию...\n');
+    // 2. Копируем и редактируем через LLM.
+    console.log('\n2. Копируем в "arsenal" и редактируем через LLM...');
+    mgr.copy('arsenal');
+    mgr.load('arsenal');
+    console.log('   LLM: "смени клуб на Арсенал, стиль сделай аналитическим и спокойным, убери эмодзи"');
+    const diff = await mgr.editViaLLM(
+      'смени клуб на Арсенал, стиль сделай аналитическим и спокойным, убери эмодзи',
+      client,
+    );
+    console.log('   Изменения:\n' + diff);
+
+    // 3. Прогон pipeline с профилем 'default'.
+    console.log('\n3. Прогон pipeline с профилем "default" (Челси, ироничный)...\n');
+    mgr.load('default');
     const result1 = await runNewsPipeline(db, client, {
-      maxAgeHours: 48,
-      topK: 2,
-      writeForIndex: 0,
-      profile,
+      maxAgeHours: 48, topK: 2, writeForIndex: 0, profile: mgr,
     });
-
     if (result1.post) {
-      console.log('\n--- Пост (профиль: Челси, ироничный) ---');
-      console.log(result1.post.content);
+      console.log('\n--- Пост (default) ---');
+      console.log(result1.post.content.slice(0, 300) + '...');
     }
 
-    // 3. Меняем профиль.
-    console.log('\n\n3. Меняем профиль: клуб = Арсенал, стиль = аналитический...');
-    profile.set('любимый_клуб', 'Арсенал');
-    profile.set('стиль', 'аналитический, спокойный, с цифрами');
-    profile.set('подпись', '@gunnersfacts');
-    profile.save();
-    printProfileBlock(profile);
-
-    // 4. Прогон pipeline с новым профилем.
-    console.log('\n4. Прогон #2: блог-pipeline с новым профилем...\n');
+    // 4. Прогон pipeline с профилем 'arsenal'.
+    console.log('\n\n4. Прогон pipeline с профилем "arsenal"...\n');
+    mgr.load('arsenal');
     const result2 = await runNewsPipeline(db, client, {
-      maxAgeHours: 48,
-      topK: 2,
-      writeForIndex: 0,
-      profile,
+      maxAgeHours: 48, topK: 2, writeForIndex: 0, profile: mgr,
     });
-
     if (result2.post) {
-      console.log('\n--- Пост (профиль: Арсенал, аналитический) ---');
-      console.log(result2.post.content);
+      console.log('\n--- Пост (arsenal) ---');
+      console.log(result2.post.content.slice(0, 300) + '...');
     }
 
-    // 5. Восстанавливаем профиль по умолчанию.
-    console.log('\n\n5. Восстанавливаем профиль по умолчанию...');
-    profile.reset();
-    profile.save();
-    printProfileBlock(profile);
+    // 5. Список профилей.
+    console.log('\n\n5. Профили в системе:');
+    for (const name of mgr.list()) {
+      const marker = name === mgr.activeName ? ' *' : '  ';
+      console.log(`${marker} ${name}`);
+    }
 
     db.close();
 
     console.log('\n=== Вывод ===');
-    console.log('Профиль подключается к каждому запросу PostWriter.');
-    console.log('При смене клуба/стила посты меняют угол повествования и тон.');
-    console.log('Профиль хранится в .data/profile.json (переживает перезапуск).');
-    console.log('Управление через REPL: /profile, /profile-set, /profile-reset.');
+    console.log('Профили: мульти, каждый в .data/profiles/<name>.json.');
+    console.log('Активный один, переключение: /profile-use <name>.');
+    console.log('Редактирование через LLM: /profile-edit <естественный текст>.');
+    console.log('Каждый запрос PostWriter работает в рамках активного профиля.');
   },
 };
 
-function printProfileBlock(profile: Profile): void {
-  const snap = profile.snapshot();
-  for (const key of profile.fields) {
+function printProfileBlock(mgr: ProfileManager): void {
+  if (!mgr.active) return;
+  const snap = mgr.snapshot();
+  for (const key of mgr.fields) {
     console.log(`  ${key}: ${snap[key]}`);
   }
 }

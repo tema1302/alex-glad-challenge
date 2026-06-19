@@ -4,7 +4,7 @@
 
 import { BlogDb } from '../db.js';
 import { LlmClient } from '../index.js';
-import type { Profile } from '../profile.js';
+import type { ProfileManager } from '../profile.js';
 import { fetchAllFeeds, filterRecent, toNewsRow } from './rss.js';
 import { NewsFetcher, type NewsFetchResult } from './newsFetcher.js';
 import { PostWriter, type WrittenPost } from './postWriter.js';
@@ -19,7 +19,7 @@ export interface PipelineResult {
 export async function runNewsPipeline(
   db: BlogDb,
   client: LlmClient,
-  opts: { maxAgeHours?: number; topK?: number; writeForIndex?: number; profile?: Profile } = {},
+  opts: { maxAgeHours?: number; topK?: number; writeForIndex?: number; profile?: ProfileManager } = {},
 ): Promise<PipelineResult> {
   const maxAgeHours = opts.maxAgeHours ?? 24;
   const topK = opts.topK ?? 5;

@@ -4,7 +4,7 @@
 
 import type { BlogDb, NewsRow, StyleSampleRow } from '../db.js';
 import { LlmClient, msg } from '../index.js';
-import type { Profile } from '../profile.js';
+import type { ProfileManager } from '../profile.js';
 
 export interface WrittenPost {
   content: string;
@@ -14,7 +14,7 @@ export interface WrittenPost {
 export class PostWriter {
   constructor(
     private client: LlmClient,
-    private profile?: Profile,
+    private profile?: ProfileManager,
   ) {}
 
   async write(db: BlogDb, news: NewsRow): Promise<WrittenPost> {
@@ -23,17 +23,18 @@ export class PostWriter {
       ? formatSamples(samples)
       : DEFAULT_STYLE_HINT;
 
-    const profileBlock = this.profile
-      ? `\n=== ПРОФИЛЬ АВТОРА (персонализация) ===\n${this.profile.toPromptText()}\n`
+    const profileData = this.profile?.active;
+    const profileBlock = profileData
+      ? `\n=== ПРОФИЛЬ АВТОРА (персонализация) ===\n${this.profile!.toPromptText()}\n`
       : '';
 
-    const club = this.profile?.get('любимый_клуб') ?? 'Челси';
-    const style = this.profile?.get('стиль') ?? 'ироничный, резкий';
-    const emojiRule = this.profile?.get('эмодзи') ?? 'умеренно';
-    const signature = this.profile?.get('подпись') ?? '@lookatfacts';
-    const lengthRule = this.profile?.get('длина_постов') ?? '200-500 символов';
-    const formatRule = this.profile?.get('формат_абзацев') ?? '2-4 предложения на абзац';
-    const taboos = this.profile?.get('табу') ?? 'без мата, без политики';
+    const club = profileData?.любимый_клуб ?? 'Челси';
+    const style = profileData?.стиль ?? 'ироничный, резкий';
+    const emojiRule = profileData?.эмодзи ?? 'умеренно';
+    const signature = profileData?.подпись ?? '@lookatfacts';
+    const lengthRule = profileData?.длина_постов ?? '200-500 символов';
+    const formatRule = profileData?.формат_абзацев ?? '2-4 предложения на абзац';
+    const taboos = profileData?.табу ?? 'без мата, без политики';
 
     const prompt = `Ты автор Telegram-канала про футбольный клуб ${club}.
 Напиши пост под новость ниже, СТРОГО соблюдая профиль автора и стиль.
