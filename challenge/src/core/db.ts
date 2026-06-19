@@ -116,6 +116,20 @@ export class BlogDb {
       .all(limit) as unknown as PostRow[];
   }
 
+  getPost(id: number): PostRow | null {
+    const row = this.db.prepare('SELECT * FROM posts WHERE id = ?').get(id);
+    return (row ?? null) as PostRow | null;
+  }
+
+  updatePostContent(id: number, content: string): void {
+    this.db.prepare('UPDATE posts SET content = ? WHERE id = ?').run(content, id);
+  }
+
+  deletePost(id: number): boolean {
+    const result = this.db.prepare('DELETE FROM posts WHERE id = ?').run(id);
+    return result.changes > 0;
+  }
+
   // --- style_samples ---
   addStyleSample(text: string): boolean {
     try {

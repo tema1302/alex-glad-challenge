@@ -77,9 +77,10 @@ const ALL_COMMANDS = [
   '/profile-reset',
   '/news ', '/news --hours ', '/news --top ', '/news --for ', '/news --publish',
   '/news-i ', '/news-interactive ',
-  '/pipeline ', '/pipeline run ', '/pipeline pick ', '/pipeline next', '/pipeline edit ',
-  '/pipeline retry', '/pipeline accept', '/pipeline publish', '/pipeline status',
-  '/pipeline resume', '/pipeline reset',
+  '/pipeline ', '/pipeline auto ', '/pipeline run ', '/pipeline pick ', '/pipeline next',
+  '/pipeline edit ', '/pipeline retry', '/pipeline accept', '/pipeline publish',
+  '/pipeline status', '/pipeline resume', '/pipeline reset',
+  '/posts', '/post ', '/post-publish ',
   '/db-stats',
   '/quit', '/exit',
 ];
@@ -597,6 +598,18 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       await handlePipelineCommand(arg, state);
       return;
     }
+    case 'posts': {
+      handlePostsCommand();
+      return;
+    }
+    case 'post': {
+      handlePostCommand(arg);
+      return;
+    }
+    case 'post-publish': {
+      await handlePostPublishCommand(arg);
+      return;
+    }
     case 'quit':
     case 'exit':
       return;
@@ -645,18 +658,18 @@ function printFullHelp(state: SessionState): void {
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
   row('/news-i [opts]', 'интерактивный: выбор новости, правки поста, решение по фактчекингу');
-  row('/pipeline <sub>', 'FSM pipeline (день 13). Подкоманды:');
-  row('  run [--hours N --top K]', 'запуск: RSS + агент 1');
-  row('  pick <N>', 'выбрать новость → агент 2 + 3');
-  row('  next', 'автопереход: ревизор или фактчекинг');
-  row('  edit <text>', 'ручная правка поста');
-  row('  retry', 'переписать пост с нуля');
-  row('  accept', 'принять как есть → done');
-  row('  publish', 'опубликовать в Telegram');
-  row('  status', 'состояние FSM');
-  row('  resume', 'продолжить с сохранённого места');
-  row('  reset', 'сбросить FSM');
-  row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
+  row('/pipeline auto', 'авто-прогон: 4 агента, FSM, ревизор — без ручного управления');
+  row('/pipeline run', 'ручной запуск: только RSS + агент 1 (топ-новости)');
+  row('/pipeline pick <N>', 'выбрать новость → агент 2 + 3');
+  row('/pipeline next', 'автопереход: ревизор или фактчекинг');
+  row('/pipeline edit <text>', 'ручная правка поста');
+  row('/pipeline accept', 'принять как есть → done');
+  row('/pipeline publish', 'опубликовать в Telegram');
+  row('/pipeline status', 'состояние FSM');
+  row('/posts', 'последние сохранённые посты');
+  row('/post <id>', 'показать пост по номеру');
+  row('/post-publish <id>', 'опубликовать сохранённый пост в Telegram');
+  row('/db-stats', 'статистика БД');
   console.log('');
   header('Ветки диалога  (только в /strategy branching)');
   row('/branch [label]', 'чекпойнт + новая ветка');
@@ -1006,6 +1019,19 @@ async function handlePipelineCommand(arg: string, state: SessionState): Promise<
         return;
       }
 
+      case 'auto': {
+        const parts = subArg.split(/\s+/);
+        let hours = 24, topK = 5;
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i] === '--hours' && parts[i + 1]) hours = Number(parts[++i]);
+          if (parts[i] === '--top' && parts[i + 1]) topK = Number(parts[++i]);
+        }
+        console.log(c.bold + c.cyan + '\n▶ Автоматический pipeline (4 агента, FSM, ревизор)...\n' + c.reset);
+        const r = await fsm.runAuto(hours, topK);
+        console.log(r.output + '\n');
+        return;
+      }
+
       case 'pick': {
         const idx = Number(subArg);
         if (!Number.isFinite(idx)) {
@@ -1095,6 +1121,87 @@ async function handlePipelineCommand(arg: string, state: SessionState): Promise<
     }
   } catch (err) {
     console.log(c.red + 'Ошибка pipeline: ' + (err as Error).message + c.reset + '\n');
+  } finally {
+    db.close();
+  }
+}
+
+function handlePostsCommand(): void {
+  const db = new BlogDb(DB_PATH);
+  try {
+    const posts = db.recentPosts(10);
+    if (posts.length === 0) {
+      console.log(c.gray + '\nНет сохранённых постов.\n' + c.reset);
+      return;
+    }
+    console.log(c.bold + c.cyan + '\n=== Последние посты ===' + c.reset);
+    for (const p of posts) {
+      const preview = p.content.slice(0, 70).replace(/\n/g, ' ');
+      const verdict = p.verdict ? JSON.parse(p.verdict) : null;
+      const vc = verdict?.verdict === 'ok' ? c.green : verdict?.verdict ? c.yellow : c.gray;
+      console.log(`  ${c.cyan}#${p.id}${c.reset} ${vc}${verdict?.verdict ?? '—'}${c.reset} ${c.gray}${p.created_at}${c.reset}`);
+      console.log(`        ${preview}...`);
+    }
+    console.log(c.gray + '\nПоказать: /post <id>, опубликовать: /post-publish <id>\n' + c.reset);
+  } finally {
+    db.close();
+  }
+}
+
+function handlePostCommand(arg: string): void {
+  const id = Number(arg);
+  if (!Number.isFinite(id)) {
+    console.log(c.gray + 'Использование: /post <id>\n' + c.reset);
+    return;
+  }
+  const db = new BlogDb(DB_PATH);
+  try {
+    const post = db.getPost(id);
+    if (!post) {
+      console.log(c.red + `Пост #${id} не найден.\n` + c.reset);
+      return;
+    }
+    console.log(c.bold + c.cyan + `\n=== Пост #${post.id} ===` + c.reset);
+    console.log(c.gray + `Дата: ${post.created_at}${c.reset}`);
+    if (post.verdict) {
+      try {
+        const fc = JSON.parse(post.verdict);
+        const vc = fc.verdict === 'ok' ? c.green : c.yellow;
+        console.log(c.gray + 'Вердикт: ' + c.reset + vc + fc.verdict + c.reset);
+      } catch { /* ignore */ }
+    }
+    console.log('');
+    console.log(post.content);
+    console.log(c.gray + '\nОпубликовать: /post-publish ' + post.id + '\n' + c.reset);
+  } finally {
+    db.close();
+  }
+}
+
+async function handlePostPublishCommand(arg: string): Promise<void> {
+  const id = Number(arg);
+  if (!Number.isFinite(id)) {
+    console.log(c.gray + 'Использование: /post-publish <id>\n' + c.reset);
+    return;
+  }
+  if (!isTelegramConfigured()) {
+    console.log(c.yellow + 'TG не настроен.\n' + c.reset);
+    return;
+  }
+  const db = new BlogDb(DB_PATH);
+  try {
+    const post = db.getPost(id);
+    if (!post) {
+      console.log(c.red + `Пост #${id} не найден.\n` + c.reset);
+      return;
+    }
+    console.log(c.gray + 'Публикую...\n' + c.reset);
+    const tg = await publishPost(post.content);
+    if (tg.ok) {
+      console.log(c.green + `[telegram] Пост #${id} опубликован (message_id=${tg.messageId}).\n` + c.reset);
+    } else {
+      console.log(c.red + `[telegram] Ошибка: ${tg.error}\n` + c.reset);
+    }
   } finally {
     db.close();
   }

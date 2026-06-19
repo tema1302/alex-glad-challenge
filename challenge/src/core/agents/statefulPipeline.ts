@@ -118,6 +118,49 @@ export class StatefulPipeline {
     return { state: this.state, output: lines.join('\n') };
   }
 
+  // Полностью автоматический прогон: planning → execution → validation → revision (loop) → done.
+  // Не требует ручного pick/next. Сохраняет результат в БД.
+  async runAuto(maxAgeHours = 24, topK = 5): Promise<StepResult> {
+    const MAX_RETRIES = 2;
+    const log: string[] = [];
+    let newsRetries = 0;
+
+    const r1 = await this.run(maxAgeHours, topK);
+    log.push(r1.output);
+
+    const r2 = await this.pick(0);
+    log.push(r2.output);
+
+    while (this.state.stage === 'revision') {
+      log.push(`\n[auto] Ревизор (попытка ${this.state.revisionCount + 1})...`);
+      const rRev = await this.autoRevise();
+      log.push(rRev.output);
+
+      const stage: string = this.state.stage;
+      if (stage === 'planning' && newsRetries < MAX_RETRIES) {
+        newsRetries++;
+        const pickIdx = Math.min(newsRetries, (this.state.newsRanked?.length ?? 1) - 1);
+        log.push(`\n[auto] Беру новость №${pickIdx}...`);
+        const rPick = await this.pick(pickIdx);
+        log.push(rPick.output);
+      } else if (stage === 'planning') {
+        log.push('\n[auto] Все новости перебраны. Принимаю последний пост.');
+        this.accept();
+        break;
+      }
+    }
+
+    if (this.state.stage === 'done') {
+      this.finalize();
+    }
+
+    if (this.state.postContent) {
+      log.push('\n=== Финальный пост ===\n' + this.state.postContent);
+    }
+
+    return { state: this.state, output: log.join('\n') };
+  }
+
   // Выбор новости → execution (агент 2).
   async pick(index: number): Promise<StepResult> {
     if (this.state.stage !== 'planning' || !this.state.newsRanked) {
