@@ -89,3 +89,42 @@ function formatSamples(rows: StyleSampleRow[]): string {
     .map((s, i) => `--- ОБРАЗЕЦ ${i + 1} ---\n${s.text}`)
     .join('\n\n');
 }
+
+// Переписать существующий пост по правкам пользователя.
+// edit — естественный язык: "убери абзац про Моуринью", "добавь про xG".
+export async function rewritePost(
+  client: import('../index.js').LlmClient,
+  originalPost: string,
+  edit: string,
+  news: NewsRow,
+  profile?: import('../profile.js').ProfileManager,
+): Promise<string> {
+  const profileText = profile?.active ? profile.toPromptText() : '';
+  const prompt = `Ты автор Telegram-канала. Перепиши пост с учётом правок пользователя.
+
+=== НОВОСТЬ (ИСТОЧНИК) ===
+Заголовок: ${news.title}
+Текст: ${news.summary}
+Источник: ${news.source}
+
+${profileText ? `=== ПРОФИЛЬ АВТОРА ===\n${profileText}\n` : ''}
+=== ТЕКУЩИЙ ПОСТ ===
+${originalPost}
+
+=== ПРАВКИ ОТ АВТОРА ===
+${edit}
+
+ПРАВИЛА:
+- Внеси правки, но сохрани стиль и форматирование оригинала.
+- НЕ выдумывай факты, которых нет в источнике.
+- Сохрани шапку и подпись.
+- НЕ ОБРЕЗАЙ пост на полуслове.
+
+Выдай только готовый пост. ПЕРВЫЙ символ ответа — "И".`;
+
+  const content = await client.chat(
+    [msg.user(prompt)],
+    { temperature: 0.7, maxTokens: 3000 },
+  );
+  return content.trim();
+}

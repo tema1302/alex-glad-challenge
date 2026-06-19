@@ -3,7 +3,7 @@
 export { NewsFetcher } from './newsFetcher.js';
 export type { NewsFetchResult, RankedNews } from './newsFetcher.js';
 
-export { PostWriter } from './postWriter.js';
+export { PostWriter, rewritePost } from './postWriter.js';
 export type { WrittenPost } from './postWriter.js';
 
 export { FactChecker } from './factChecker.js';

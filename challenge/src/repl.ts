@@ -12,6 +12,7 @@ import pathModule from 'node:path';
 import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, ProfileManager, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
+import { rewritePost } from './core/agents/postWriter.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
 
@@ -545,6 +546,11 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       handleDbStatsCommand();
       return;
     }
+    case 'news-i':
+    case 'news-interactive': {
+      await handleNewsInteractiveCommand(arg, state);
+      return;
+    }
     case 'quit':
     case 'exit':
       return;
@@ -592,6 +598,7 @@ function printFullHelp(state: SessionState): void {
   console.log('');
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
+  row('/news-i [opts]', 'интерактивный: выбор новости, правки поста, решение по фактчекингу');
   row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
   console.log('');
   header('Ветки диалога  (только в /strategy branching)');
@@ -750,6 +757,158 @@ function handleDbStatsCommand(): void {
     console.log(c.gray + '  стилей:' + c.reset + '   ' + db.styleSamplesCount());
     console.log('');
   } finally {
+    db.close();
+  }
+}
+
+async function handleNewsInteractiveCommand(arg: string, state: SessionState): Promise<void> {
+  const parts = arg.split(/\s+/);
+  let hours = 24, topK = 5;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '--hours' && parts[i + 1]) { hours = Number(parts[++i]); continue; }
+    if (parts[i] === '--top' && parts[i + 1]) { topK = Number(parts[++i]); continue; }
+  }
+
+  const db = new BlogDb(DB_PATH);
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+  const ask = (q: string): Promise<string> => rl.question(q).then((a) => a.trim());
+
+  try {
+    console.log(c.bold + c.cyan + '\n▶ Интерактивный pipeline\n' + c.reset);
+
+    // --- ШАГ 0: RSS ---
+    console.log(c.gray + '[0] Загружаю RSS...\n' + c.reset);
+    const { fetchAllFeeds, filterRecent, toNewsRow } = await import('./core/agents/rss.js');
+    const items = filterRecent(await fetchAllFeeds(), hours);
+    let added = 0;
+    for (const item of items) { if (db.insertNews(toNewsRow(item))) added++; }
+    console.log(`    получено ${items.length}, новых ${added}\n`);
+
+    // --- ШАГ 1: Агент 1 (топ-новости) ---
+    console.log(c.gray + '[1] Агент 1: выбираю топ-новости...\n' + c.reset);
+    const { NewsFetcher } = await import('./core/agents/newsFetcher.js');
+    const fetcher = new NewsFetcher(state.client);
+    const news = await fetcher.fetch(db, { maxAgeHours: hours, topK });
+
+    if (news.ranked.length === 0) {
+      console.log(c.yellow + 'Нет новостей.\n' + c.reset);
+      return;
+    }
+
+    console.log(c.bold + '    Топ-новости:' + c.reset);
+    news.ranked.forEach((r, i) => {
+      console.log(`    ${c.green}${i}${c.reset} [${r.score}] ${r.news.title}`);
+      console.log(`      ${c.gray}(${r.why})${c.reset}`);
+    });
+
+    // Выбор новости.
+    let chosenIdx = 0;
+    if (news.ranked.length > 1) {
+      const choice = await ask(c.gray + '\nКакую новость берём? (Enter = 0, или номер): ' + c.reset);
+      if (choice && /^\d+$/.test(choice)) {
+        chosenIdx = Math.min(Number(choice), news.ranked.length - 1);
+      }
+    }
+    const chosen = news.ranked[chosenIdx].news;
+    console.log(c.green + `\n→ "${chosen.title}"\n` + c.reset);
+
+    // --- ШАГ 2: Агент 2 (пост) ---
+    console.log(c.gray + '[2] Агент 2: пишу пост...\n' + c.reset);
+    const { PostWriter } = await import('./core/agents/postWriter.js');
+    const writer = new PostWriter(state.client, state.profile);
+    let post = await writer.write(db, chosen);
+
+    // Цикл правок поста.
+    while (true) {
+      console.log(c.bold + '    === Пост ===' + c.reset);
+      console.log(post.content);
+      console.log('');
+
+      const edit = await ask(
+        c.gray + 'Правки? (Enter = дальше, "edit <текст>" = переписать, "rewrite" = заново): ' + c.reset,
+      );
+
+      if (!edit) break;
+
+      if (edit === 'rewrite') {
+        console.log(c.gray + '\n    Переписываю заново...\n' + c.reset);
+        post = await writer.write(db, chosen);
+        continue;
+      }
+
+      if (edit.startsWith('edit ') || edit.startsWith('edit ')) {
+        const instruction = edit.replace(/^edit\s+/, '');
+        console.log(c.gray + '\n    Вношу правки...\n' + c.reset);
+        post = { content: await rewritePost(state.client, post.content, instruction, chosen, state.profile), news: chosen };
+        continue;
+      }
+
+      // Любой другой текст = правка.
+      console.log(c.gray + '\n    Вношу правки...\n' + c.reset);
+      post = { content: await rewritePost(state.client, post.content, edit, chosen, state.profile), news: chosen };
+    }
+
+    // --- ШАГ 3: Агент 3 (фактчекинг) ---
+    console.log(c.gray + '\n[3] Агент 3: фактчекинг...\n' + c.reset);
+    const { FactChecker } = await import('./core/agents/factChecker.js');
+    const checker = new FactChecker(state.client);
+    const factCheck = await checker.check(post.content, chosen);
+
+    if (factCheck.reasoning.trim()) {
+      console.log(c.gray + '    --- рассуждения ---' + c.reset);
+      console.log(factCheck.reasoning.trim());
+      console.log(c.gray + '    --- конец ---\n' + c.reset);
+    }
+    const vc = factCheck.verdict === 'ok' ? c.green : c.yellow;
+    console.log(`    ${c.gray}verdict:${c.reset} ${vc}${factCheck.verdict}${c.reset}`);
+    if (factCheck.issues.length > 0) {
+      for (const issue of factCheck.issues) {
+        console.log(`    ${c.red}[${issue.severity}]${c.reset} ${issue.claim}`);
+        console.log(`           ${c.gray}vs: ${issue.source}${c.reset}`);
+      }
+    }
+
+    // Решение после фактчекинга.
+    const afterFc = await ask(
+      c.gray + '\nДействия? (Enter = финал, "edit <текст>" = правки, "ignore" = игнорить вердикт): ' + c.reset,
+    );
+
+    if (afterFc && afterFc !== 'ignore') {
+      const instruction = afterFc.replace(/^edit\s+/, '');
+      console.log(c.gray + '\n    Вношу правки...\n' + c.reset);
+      post = { content: await rewritePost(state.client, post.content, instruction, chosen, state.profile), news: chosen };
+      console.log(c.bold + '\n    === Финальный пост ===' + c.reset);
+      console.log(post.content + '\n');
+    }
+
+    // --- ШАГ 4: Публикация ---
+    const pub = await ask(
+      c.gray + 'Опубликовать в Telegram? (y/N): ' + c.reset,
+    );
+
+    // Сохранить в БД.
+    db.insertPost(post.content, chosen.id, JSON.stringify(factCheck));
+    db.markUsed(chosen.id);
+
+    if (pub.toLowerCase() === 'y' || pub.toLowerCase() === 'д') {
+      if (!isTelegramConfigured()) {
+        console.log(c.yellow + 'TG не настроен.\n' + c.reset);
+      } else {
+        const tg = await publishPost(post.content);
+        if (tg.ok) {
+          console.log(c.green + `\n[telegram] Опубликовано (message_id=${tg.messageId}).\n` + c.reset);
+        } else {
+          console.log(c.red + `\n[telegram] Ошибка: ${tg.error}\n` + c.reset);
+        }
+      }
+    } else {
+      console.log(c.gray + '\nБез публикации. Пост сохранён в БД.\n' + c.reset);
+    }
+  } catch (err) {
+    console.log(c.red + '\nОшибка: ' + (err as Error).message + c.reset + '\n');
+  } finally {
+    rl.close();
     db.close();
   }
 }
