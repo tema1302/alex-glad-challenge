@@ -7,8 +7,9 @@
 
 import { createInterface } from 'node:readline/promises';
 import path from 'node:path';
+import pathModule from 'node:path';
 
-import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, msg, SlidingWindow, StickyFacts } from './core/index.js';
+import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory, msg, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
@@ -69,6 +70,8 @@ interface SessionState {
   system: string;
   windowSize: number;
   usage: Usage;
+  memory: Memory;
+  memoryEnabled: boolean;
 }
 
 export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Promise<void> {
@@ -83,7 +86,15 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     system,
     windowSize,
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    memory: new Memory({ filePath: pathModule.join(process.cwd(), '.data', 'memory.json'), shortTermLimit: windowSize }),
+    memoryEnabled: false,
   };
+
+  // Загружаем long-term с диска при старте.
+  const loaded = state.memory.loadLongTerm();
+  if (loaded > 0) {
+    state.memoryEnabled = true;
+  }
 
   printBanner(state);
   printCompactHelp();
@@ -117,15 +128,29 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
       return;
     }
 
-    // Обычное сообщение — через стратегию контекста.
-    state.strategy.addMessage(msg.user(line));
+    // Обычное сообщение.
     process.stdout.write(c.dim + '... ' + c.reset);
     try {
-      const { content, usage: u } = await client.chatWithUsage(state.strategy.context(), {
+      let context: import('./core/index.js').ChatMessage[];
+      if (state.memoryEnabled) {
+        // Memory mode: short-term из memory, working + long-term инжектятся.
+        state.memory.addMessage(msg.user(line));
+        context = state.memory.context(state.system);
+      } else {
+        // Strategy mode (по умолчанию).
+        state.strategy.addMessage(msg.user(line));
+        context = state.strategy.context();
+      }
+
+      const { content, usage: u } = await client.chatWithUsage(context, {
         temperature: 0.7,
       });
       accumulateUsage(state.usage, u);
-      state.strategy.addMessage(msg.assistant(content));
+      if (state.memoryEnabled) {
+        state.memory.addMessage(msg.assistant(content));
+      } else {
+        state.strategy.addMessage(msg.assistant(content));
+      }
       process.stdout.write('\r' + ' '.repeat(4) + '\r');
       console.log(c.green + c.bold + 'assistant' + c.reset + ': ' + content);
       console.log(c.gray + `  ↑ ${u.prompt_tokens}/${u.completion_tokens}/${u.total_tokens} tok · Σ ${state.usage.total_tokens}` + c.reset);
@@ -157,12 +182,15 @@ function accumulateUsage(acc: Usage, add: Usage): void {
 }
 
 function formatPrompt(state: SessionState): string {
-  const stratTag = c.magenta + state.strategy.name + c.reset;
+  const stratTag = c.magenta + (state.memoryEnabled ? 'mem' : state.strategy.name) + c.reset;
   const tokTag = c.gray + `${state.usage.total_tokens} tok` + c.reset;
-  const branchInfo = state.strategy instanceof Branching
+  const branchInfo = (!state.memoryEnabled && state.strategy instanceof Branching)
     ? ' ' + c.blue + `#${state.strategy.activeBranchId}` + c.reset
     : '';
-  return `${stratTag}${branchInfo} ${tokTag}> `;
+  const memTag = state.memoryEnabled && state.memory.longTermKeys.length > 0
+    ? ' ' + c.yellow + `★${state.memory.longTermKeys.length}` + c.reset
+    : '';
+  return `${stratTag}${branchInfo}${memTag} ${tokTag}> `;
 }
 
 function printBanner(state: SessionState): void {
@@ -285,8 +313,95 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       state.strategy.clear();
       state.agent.reset();
       state.strategy.addMessage(msg.system(state.system));
+      state.memory.clearShortTerm();
       state.usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-      console.log(c.yellow + 'reset' + c.reset + c.gray + '  история, ветки, usage (system сохранён)\n' + c.reset);
+      console.log(c.yellow + 'reset' + c.reset + c.gray + '  история, ветки, usage (system + long-term сохранены)\n' + c.reset);
+      return;
+    }
+    case 'remember': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /remember <ключ>: <значение>\n  Пример: /remember имя: Артём\n' + c.reset);
+        return;
+      }
+      const sep = arg.indexOf(':');
+      if (sep === -1) {
+        console.log(c.red + 'Формат: /remember <ключ>: <значение>' + c.reset + '\n');
+        return;
+      }
+      const key = arg.slice(0, sep).trim();
+      const value = arg.slice(sep + 1).trim();
+      state.memory.remember(key, value);
+      state.memoryEnabled = true;
+      console.log(c.yellow + '★ long-term' + c.reset + ` + "${key}: ${value}"`);
+      console.log(c.gray + '  (всего в long-term: ' + state.memory.longTermKeys.length + ')\n' + c.reset);
+      return;
+    }
+    case 'forget': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /forget <ключ>\n  Например: /forget имя\n' + c.reset);
+        return;
+      }
+      if (state.memory.forget(arg)) {
+        console.log(c.yellow + '★ long-term' + c.reset + ` - "${arg}"`);
+        console.log(c.gray + '  (осталось: ' + state.memory.longTermKeys.length + ')\n' + c.reset);
+      } else {
+        console.log(c.red + `Ключ "${arg}" не найден в long-term.` + c.reset + '\n');
+      }
+      return;
+    }
+    case 'task': {
+      if (!arg) {
+        if (state.memory.task) {
+          console.log(c.gray + 'Текущая задача: ' + c.reset + state.memory.task + '\n');
+        } else {
+          console.log(c.gray + 'Нет активной задачи. Задать: /task <описание>\n' + c.reset);
+        }
+        return;
+      }
+      state.memory.setTask(arg);
+      state.memoryEnabled = true;
+      console.log(c.blue + 'task' + c.reset + ` → ${arg}\n`);
+      return;
+    }
+    case 'task-add': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /task-add <ключ>: <значение>\n' + c.reset);
+        return;
+      }
+      const sep = arg.indexOf(':');
+      if (sep === -1) {
+        console.log(c.red + 'Формат: /task-add <ключ>: <значение>' + c.reset + '\n');
+        return;
+      }
+      const key = arg.slice(0, sep).trim();
+      const value = arg.slice(sep + 1).trim();
+      state.memory.setWorkingFact(key, value);
+      state.memoryEnabled = true;
+      console.log(c.blue + 'task' + c.reset + ` + "${key}: ${value}"\n`);
+      return;
+    }
+    case 'task-clear': {
+      state.memory.clearWorking();
+      console.log(c.blue + 'task' + c.reset + c.gray + ' cleared (задача + факты)\n' + c.reset);
+      return;
+    }
+    case 'memory': {
+      printMemory(state);
+      return;
+    }
+    case 'memory-save': {
+      state.memory.saveLongTerm();
+      console.log(c.green + 'long-term сохранён на диск.' + c.reset + '\n');
+      return;
+    }
+    case 'memory-on': {
+      state.memoryEnabled = true;
+      console.log(c.green + 'Memory mode ON' + c.reset + c.gray + '  (context строится из 3 слоёв памяти)\n' + c.reset);
+      return;
+    }
+    case 'memory-off': {
+      state.memoryEnabled = false;
+      console.log(c.gray + 'Memory mode OFF' + c.reset + c.gray + '  (context строится из strategy)\n' + c.reset);
       return;
     }
     case 'usage': {
@@ -328,7 +443,18 @@ function printFullHelp(state: SessionState): void {
   header('Контекст');
   row('/strategy [name]', 'full | sliding | sticky | branching');
   row('/system <text>', 'сменить system-промпт');
-  row('/reset', 'очистить историю и usage (system сохраняется)');
+  row('/reset', 'очистить историю и usage (system + long-term сохраняются)');
+  console.log('');
+  header('Память (день 11: 3 слоя)');
+  row('/remember <key>: <val>', 'сохранить в long-term (переживает перезапуск)');
+  row('/forget <key>', 'удалить из long-term');
+  row('/task <description>', 'задать текущую задачу (working memory)');
+  row('/task-add <key>: <val>', 'добавить факт в working memory');
+  row('/task-clear', 'очистить working memory');
+  row('/memory', 'показать все 3 слоя памяти');
+  row('/memory-save', 'записать long-term на диск');
+  row('/memory-on', 'включить memory mode (context из 3 слоёв)');
+  row('/memory-off', 'выключить (обычная strategy)');
   console.log('');
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
@@ -339,6 +465,10 @@ function printFullHelp(state: SessionState): void {
   row('/switch <id>', 'переключиться на ветку');
   row('/branches', 'список веток');
   console.log('');
+  header('Блог-агенты');
+  row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
+  row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
+  console.log('');
   header('Дни');
   row('/list', 'список всех дней');
   row('/day <id>', 'инфо о дне (например /day day-06)');
@@ -347,7 +477,50 @@ function printFullHelp(state: SessionState): void {
   row('/help, /h', 'эта справка');
   row('/quit, /exit', 'выход (или Ctrl+D)');
   console.log('');
-  console.log(c.gray + 'Текущая стратегия: ' + c.magenta + state.strategy.name + c.reset + '\n');
+  const mode = state.memoryEnabled ? c.green + 'memory' + c.reset : c.magenta + state.strategy.name + c.reset;
+  console.log(c.gray + 'Режим контекста: ' + mode + '\n');
+}
+
+function printMemory(state: SessionState): void {
+  const line = c.gray + '─'.repeat(50) + c.reset;
+  console.log('');
+  console.log(line);
+  console.log(c.bold + '  Memory Layers (день 11)' + c.reset);
+  console.log(line);
+
+  // Long-term.
+  console.log(c.yellow + '  LONG-TERM' + c.reset + c.gray + '  (.data/memory.json, переживает перезапуск)' + c.reset);
+  const ltKeys = state.memory.longTermKeys;
+  if (ltKeys.length === 0) {
+    console.log(c.gray + '    (пусто)' + c.reset);
+  } else {
+    for (const k of ltKeys) {
+      console.log(c.gray + '    ' + c.reset + k + ': ' + state.memory.recall(k));
+    }
+  }
+
+  // Working.
+  console.log(c.blue + '\n  WORKING' + c.reset + c.gray + '  (RAM, данные текущей задачи)' + c.reset);
+  if (state.memory.task) {
+    console.log(c.gray + '    задача: ' + c.reset + state.memory.task);
+  }
+  const wKeys = state.memory.workingKeys;
+  if (wKeys.length === 0 && !state.memory.task) {
+    console.log(c.gray + '    (пусто)' + c.reset);
+  } else {
+    for (const k of wKeys) {
+      console.log(c.gray + '    ' + c.reset + k + ': ' + state.memory.getWorkingFact(k));
+    }
+  }
+
+  // Short-term.
+  console.log(c.gray + '\n  SHORT-TERM' + c.reset + c.gray + '  (RAM, последние сообщения)' + c.reset);
+  const snap = state.memory.snapshot();
+  console.log(c.gray + '    сообщений: ' + snap.shortTermCount + c.reset);
+
+  // Mode.
+  console.log(c.gray + '\n  режим: ' + c.reset + (state.memoryEnabled ? c.green + 'memory ON' + c.reset : c.gray + 'memory OFF (strategy mode)' + c.reset));
+  console.log(line + '\n');
 }
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
@@ -453,8 +626,12 @@ function printStatus(state: SessionState): void {
   console.log(c.bold + '  Status' + c.reset);
   console.log(line);
   console.log(c.gray + '  model    ' + c.reset + state.client.defaultModel);
-  console.log(c.gray + '  context  ' + c.reset + state.strategy.name);
-  if (state.strategy instanceof Branching) {
+  const mode = state.memoryEnabled ? c.green + 'memory' + c.reset : state.strategy.name;
+  console.log(c.gray + '  context  ' + c.reset + mode);
+  if (state.memoryEnabled) {
+    console.log(c.gray + '  long-term' + c.reset + ' ' + state.memory.longTermKeys.length + ' entries');
+    console.log(c.gray + '  working  ' + c.reset + ' ' + state.memory.workingKeys.length + ' facts');
+  } else if (state.strategy instanceof Branching) {
     console.log(c.gray + '  branch   ' + c.reset + '#' + state.strategy.activeBranchId);
   }
   console.log(c.gray + '  system   ' + c.reset + trunc(state.system, 50));

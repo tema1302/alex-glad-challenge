@@ -12,7 +12,11 @@ build/
 # Артефакты запуска дней
 day-07-history.json
 
+<<<<<<< HEAD
 # Блог-агенты: SQLite база (runtime-данные, не исходники)
+=======
+# Runtime-данные (SQLite, memory.json, etc.)
+>>>>>>> day-11
 challenge/.data/
 
 # OS
