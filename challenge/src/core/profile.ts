@@ -72,8 +72,17 @@ export class ProfileManager {
     if (!existsSync(filePath)) return false;
     try {
       const raw = readFileSync(filePath, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<UserProfile>;
-      this._data = { ...DEFAULT_PROFILE, ...parsed };
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      // Жёсткий фильтр: только известные поля, значения к string.
+      const cleaned: UserProfile = { ...DEFAULT_PROFILE };
+      for (const key of PROFILE_FIELDS) {
+        const val = parsed[key];
+        if (val !== undefined) {
+          (cleaned as unknown as Record<string, string>)[key] =
+            Array.isArray(val) ? val.join(', ') : String(val);
+        }
+      }
+      this._data = cleaned;
       this._activeName = name;
       return true;
     } catch {
@@ -170,7 +179,18 @@ ${instruction}
     if (!updated) {
       throw new Error('LLM вернул невалидный JSON профиля');
     }
-    this._data = { ...DEFAULT_PROFILE, ...updated };
+    // Жёсткий фильтр: оставляем только известные поля, значения приводим к string.
+    const allowed = PROFILE_FIELDS.reduce((acc, key) => {
+      const val = (updated as Record<string, unknown>)[key];
+      if (val !== undefined) {
+        acc[key] = Array.isArray(val) ? val.join(', ') : String(val);
+      }
+      return acc;
+    }, {} as Record<string, string>);
+    // Применяем только валидные поля.
+    for (const [k, v] of Object.entries(allowed)) {
+      (this._data as unknown as Record<string, string>)[k] = v;
+    }
     this.save();
     return diffProfiles(current, JSON.stringify(this._data, null, 2));
   }

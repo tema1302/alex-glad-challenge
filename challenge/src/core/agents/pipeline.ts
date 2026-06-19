@@ -32,6 +32,11 @@ export async function runNewsPipeline(
   }
   console.log(`[pipeline] RSS: получено ${items.length}, новых в БД ${added}`);
 
+  // Профиль для диагностики.
+  if (opts.profile?.activeName) {
+    console.log(`[pipeline] Профиль: ${opts.profile.activeName} (клуб: ${opts.profile.get('любимый_клуб')})`);
+  }
+
   // 1. Агент 1 — выбрать топ новостей.
   const fetcher = new NewsFetcher(client);
   const news = await fetcher.fetch(db, { maxAgeHours, topK });
