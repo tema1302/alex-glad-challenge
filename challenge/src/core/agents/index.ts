@@ -19,3 +19,10 @@ export { seedStyleSamples } from './seed.js';
 
 export { publishPost, isTelegramConfigured } from './telegram.js';
 export type { PublishResult } from './telegram.js';
+
+export { Reviser } from './reviser.js';
+export type { RevisionResult } from './reviser.js';
+
+export { StatefulPipeline } from './statefulPipeline.js';
+export { createInitialState, loadState, saveState, expectedActionFor, STAGE_INFO } from './stateMachine.js';
+export type { PipelineState, PipelineStage } from './stateMachine.js';

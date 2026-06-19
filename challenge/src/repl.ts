@@ -13,6 +13,7 @@ import { Agent, Branching, type ContextStrategy, FullHistory, LlmClient, Memory,
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { rewritePost } from './core/agents/postWriter.js';
+import { StatefulPipeline } from './core/agents/statefulPipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
 
@@ -551,6 +552,10 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       await handleNewsInteractiveCommand(arg, state);
       return;
     }
+    case 'pipeline': {
+      await handlePipelineCommand(arg, state);
+      return;
+    }
     case 'quit':
     case 'exit':
       return;
@@ -599,6 +604,17 @@ function printFullHelp(state: SessionState): void {
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
   row('/news-i [opts]', 'интерактивный: выбор новости, правки поста, решение по фактчекингу');
+  row('/pipeline <sub>', 'FSM pipeline (день 13). Подкоманды:');
+  row('  run [--hours N --top K]', 'запуск: RSS + агент 1');
+  row('  pick <N>', 'выбрать новость → агент 2 + 3');
+  row('  next', 'автопереход: ревизор или фактчекинг');
+  row('  edit <text>', 'ручная правка поста');
+  row('  retry', 'переписать пост с нуля');
+  row('  accept', 'принять как есть → done');
+  row('  publish', 'опубликовать в Telegram');
+  row('  status', 'состояние FSM');
+  row('  resume', 'продолжить с сохранённого места');
+  row('  reset', 'сбросить FSM');
   row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
   console.log('');
   header('Ветки диалога  (только в /strategy branching)');
@@ -909,6 +925,136 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
     console.log(c.red + '\nОшибка: ' + (err as Error).message + c.reset + '\n');
   } finally {
     rl.close();
+    db.close();
+  }
+}
+
+const PIPELINE_STATE_PATH = path.join(process.cwd(), '.data', 'pipeline-state.json');
+
+async function handlePipelineCommand(arg: string, state: SessionState): Promise<void> {
+  const [sub, ...rest] = arg.split(/\s+/);
+  const subArg = rest.join(' ').trim();
+  const db = new BlogDb(DB_PATH);
+
+  try {
+    const fsm = new StatefulPipeline(db, state.client, state.profile, PIPELINE_STATE_PATH);
+
+    switch (sub) {
+      case '':
+      case 'status': {
+        console.log(c.bold + c.cyan + '\n=== Pipeline FSM ===' + c.reset);
+        console.log(fsm.status());
+        if (fsm.current.postContent) {
+          console.log(c.gray + '\n--- Текущий пост ---' + c.reset);
+          console.log(fsm.current.postContent);
+        }
+        console.log('');
+        return;
+      }
+
+      case 'run': {
+        const parts = subArg.split(/\s+/);
+        let hours = 24, topK = 5;
+        for (let i = 0; i < parts.length; i++) {
+          if (parts[i] === '--hours' && parts[i + 1]) hours = Number(parts[++i]);
+          if (parts[i] === '--top' && parts[i + 1]) topK = Number(parts[++i]);
+        }
+        console.log(c.bold + c.cyan + '\n▶ Запуск pipeline...\n' + c.reset);
+        const r = await fsm.run(hours, topK);
+        console.log(r.output + '\n');
+        return;
+      }
+
+      case 'pick': {
+        const idx = Number(subArg);
+        if (!Number.isFinite(idx)) {
+          console.log(c.red + 'Укажите номер: /pipeline pick <N>\n' + c.reset);
+          return;
+        }
+        console.log(c.gray + 'Пишу пост...\n' + c.reset);
+        const r = await fsm.pick(idx);
+        console.log(r.output + '\n');
+        return;
+      }
+
+      case 'next': {
+        console.log(c.gray + '...\n' + c.reset);
+        const r = await fsm.next();
+        console.log(r.output + '\n');
+        return;
+      }
+
+      case 'edit': {
+        if (!subArg) {
+          console.log(c.gray + 'Правки: /pipeline edit <текст>\n' + c.reset);
+          return;
+        }
+        console.log(c.gray + 'Вношу правки...\n' + c.reset);
+        const r = await fsm.manualEdit(subArg);
+        console.log(r.output + '\n');
+        return;
+      }
+
+      case 'retry': {
+        console.log(c.gray + 'Переписываю...\n' + c.reset);
+        const r = await fsm.retry();
+        console.log(r.output + '\n');
+        return;
+      }
+
+      case 'accept': {
+        const r = fsm.accept();
+        fsm.finalize();
+        console.log(c.green + r.output + '\n' + c.reset);
+        return;
+      }
+
+      case 'publish': {
+        if (fsm.current.stage !== 'done') {
+          console.log(c.yellow + 'Pipeline не завершён. /pipeline accept или пройдите до конца.\n' + c.reset);
+          return;
+        }
+        if (!fsm.current.postContent) {
+          console.log(c.red + 'Нет поста.\n' + c.reset);
+          return;
+        }
+        if (!isTelegramConfigured()) {
+          console.log(c.yellow + 'TG не настроен.\n' + c.reset);
+          return;
+        }
+        const tg = await publishPost(fsm.current.postContent);
+        if (tg.ok) {
+          console.log(c.green + `\n[telegram] Опубликовано (message_id=${tg.messageId}).\n` + c.reset);
+        } else {
+          console.log(c.red + `\n[telegram] Ошибка: ${tg.error}\n` + c.reset);
+        }
+        return;
+      }
+
+      case 'reset': {
+        fsm.reset();
+        console.log(c.yellow + 'Pipeline сброшен.\n' + c.reset);
+        return;
+      }
+
+      case 'resume': {
+        const saved = fsm.current;
+        if (saved.stage === 'idle' || saved.history.length === 0) {
+          console.log(c.gray + 'Нет сохранённого состояния. /pipeline run\n' + c.reset);
+          return;
+        }
+        console.log(c.green + 'Возобновлено:\n' + c.reset);
+        console.log(fsm.status() + '\n');
+        return;
+      }
+
+      default:
+        console.log(c.red + `Неизвестная подкоманда /pipeline ${sub}` + c.reset);
+        console.log(c.gray + 'Доступно: run, pick, next, edit, retry, accept, publish, status, resume, reset\n' + c.reset);
+    }
+  } catch (err) {
+    console.log(c.red + 'Ошибка pipeline: ' + (err as Error).message + c.reset + '\n');
+  } finally {
     db.close();
   }
 }
