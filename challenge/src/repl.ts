@@ -5,7 +5,7 @@
 //   pnpm --filter challenge start
 //   pnpm --filter challenge start -- chat --strategy sliding --system "Ты ревьюер"
 
-import { createInterface } from 'node:readline/promises';
+import readline from 'node:readline';
 import path from 'node:path';
 import pathModule from 'node:path';
 
@@ -59,6 +59,46 @@ function trunc(s: string, n: number): string {
   return s.length <= n ? s : s.slice(0, n - 1) + '…';
 }
 
+// --- Tab-completer: список всех команд для автодополнения по Tab ---
+const ALL_COMMANDS = [
+  '/help', '/h',
+  '/status', '/st',
+  '/usage',
+  '/list',
+  '/day ',
+  '/strategy ', '/strategy full', '/strategy sliding', '/strategy sticky', '/strategy branching',
+  '/system ',
+  '/reset',
+  '/branch ', '/switch ', '/branches',
+  '/remember ', '/forget ', '/task ', '/task-add ', '/task-clear', '/task',
+  '/memory', '/memory-save', '/memory-on', '/memory-off',
+  '/profile', '/profiles', '/profile-use ', '/profile-new ', '/profile-copy ',
+  '/profile-edit ', '/profile-note ', '/profile-notes', '/profile-note-rm ',
+  '/profile-reset',
+  '/news ', '/news --hours ', '/news --top ', '/news --for ', '/news --publish',
+  '/news-i ', '/news-interactive ',
+  '/pipeline ', '/pipeline run ', '/pipeline pick ', '/pipeline next', '/pipeline edit ',
+  '/pipeline retry', '/pipeline accept', '/pipeline publish', '/pipeline status',
+  '/pipeline resume', '/pipeline reset',
+  '/db-stats',
+  '/quit', '/exit',
+];
+
+function makeCompleter(): (line: string) => [string[], string] {
+  return (line: string): [string[], string] => {
+    // Если строка не начинается с / — это обычное сообщение, не дополняем.
+    if (!line.startsWith('/')) return [[], ''];
+
+    // Для команд с подкомандами (/pipeline run, /profile-use default и т.д.)
+    // ищем совпадение по всей строке.
+    const parts = line.split(/\s+/);
+    if (parts.length > 2) return [[], '']; // слишком глубокий путь — не дополняем
+
+    const matches = ALL_COMMANDS.filter((cmd) => cmd.startsWith(line));
+    return [matches, line];
+  };
+}
+
 interface Usage {
   prompt_tokens: number;
   completion_tokens: number;
@@ -110,10 +150,11 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
   printBanner(state);
   printCompactHelp();
 
-  const rl = createInterface({
+  const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
     prompt: formatPrompt(state),
+    completer: makeCompleter(),
   });
 
   rl.prompt();
@@ -222,7 +263,7 @@ function printBanner(state: SessionState): void {
 }
 
 function printCompactHelp(): void {
-  console.log(c.gray + '  Команды начинаются с /. Просто пишите текст — отправится в LLM.' + c.reset);
+  console.log(c.gray + '  Команды начинаются с /. Tab — автодополнение. Просто текст — отправится в LLM.' + c.reset);
   console.log(c.gray + '  /help — полный список, /quit — выход.\n' + c.reset);
 }
 
@@ -786,9 +827,9 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
   }
 
   const db = new BlogDb(DB_PATH);
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-  const ask = (q: string): Promise<string> => rl.question(q).then((a) => a.trim());
+  const ask = (q: string): Promise<string> => new Promise((resolve) => rl.question(q, (a) => resolve(a.trim())));
 
   try {
     console.log(c.bold + c.cyan + '\n▶ Интерактивный pipeline\n' + c.reset);
