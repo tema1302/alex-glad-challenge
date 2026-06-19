@@ -32,6 +32,14 @@ export interface ProviderConfig {
 }
 
 function pickProvider(): ProviderConfig {
+  const dsKey = process.env.DEEPSEEK_API_KEY?.trim();
+  if (dsKey) {
+    return {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: dsKey,
+      defaultModel: process.env.DEEPSEEK_MODEL ?? 'deepseek-chat',
+    };
+  }
   const orKey = process.env.OPENROUTER_API_KEY?.trim();
   if (orKey) {
     return {
@@ -40,16 +48,8 @@ function pickProvider(): ProviderConfig {
       defaultModel: process.env.OPENROUTER_MODEL ?? 'google/gemini-3.5-flash',
     };
   }
-  const dsKey = process.env.DEEPSEEK_API_KEY?.trim();
-  if (dsKey) {
-    return {
-      baseUrl: 'https://api.deepseek.com/v1',
-      apiKey: dsKey,
-      defaultModel: 'deepseek-chat',
-    };
-  }
   throw new Error(
-    'Нет API-ключа. Положите в .env OPENROUTER_API_KEY или DEEPSEEK_API_KEY. См. .env.example.',
+    'Нет API-ключа. Положите в .env DEEPSEEK_API_KEY *** OPENROUTER_API_KEY. См. .env.example.',
   );
 }
 

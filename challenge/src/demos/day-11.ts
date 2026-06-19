@@ -41,7 +41,7 @@ export const demo = {
 
     // 1. Long-term: профиль пользователя.
     console.log('1. Сохраняем в long-term профиль пользователя...');
-    mem.remember('имя', 'Артём');
+    mem.remember('имя', 'Артемий');
     mem.remember('опыт', '5 лет в веб-разработке, TypeScript/Node.js, мало Rust');
     mem.remember('предпочтения', 'прагматичный подход, не любит оверинжиниринг');
     console.log('   long-term:', mem.longTermKeys);
