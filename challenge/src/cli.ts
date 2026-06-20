@@ -38,10 +38,11 @@ function printHelp(): void {
   console.log('  chat             То же самое — глобальный чат, внутри: /day, /strategy, /usage');
   console.log('    --strategy <name>  стартовая стратегия: full | sliding | sticky | branching');
   console.log('    --system <text>    стартовый system-промпт');
-  console.log('  list             Список всех демо');
-  console.log('  latest           Прогнать последний день (один запуск сценария)');
-  console.log('  <id>             Прогнать демо конкретного дня (например day-03)');
-  console.log('  news             Блог-pipeline: RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг)');
+  console.log('  list             Список всех дней');
+  console.log('  latest           Прогнать последний день');
+  console.log('  day-NN           Прогнать демо конкретного дня (day-01, day-14, day-15, ...)');
+  console.log('                   ВАЖНО: дефис, не пробел! "day-14" — верно, "day 14" — не сработает.');
+  console.log('  news             Блог-pipeline: RSS → агент 1 → агент 2 → агент 3');
   console.log('    --hours <N>        окно свежести (по умолчанию 24)');
   console.log('    --top <N>          сколько топ-новостей брать (по умолчанию 5)');
   console.log('    --for <i>          индекс новости из топа для поста (0 = самая хайповая)');

@@ -1,18 +1,18 @@
 // Конечный автомат pipeline блог-агентов (день 13).
 //
 // Состояния:
+//   idle       → ожидание
 //   planning   → выбор новости (агент 1)
 //   execution  → написание поста (агент 2)
 //   validation → фактчекинг (агент 3)
 //   revision   → правка поста / смена новости (агент 4)
 //   done       → завершён, пост готов
 //
+// День 15: строгая проверка переходов. Любой недопустимый переход → TransitionError.
 // Состояние сериализуется в .data/pipeline-state.json.
-// Это позволяет: паузу на любом этапе, продолжение без повторных объяснений,
-// перезапуск процесса с того же места.
+// Это позволяет: паузу на любом этапе, продолжение без повторных объяснений.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
 import type { NewsRow } from '../db.js';
 import type { FactCheckResult } from './factChecker.js';
 
@@ -44,6 +44,38 @@ export const STAGE_INFO: Record<PipelineStage, PipelineStep> = {
   done: { stage: 'done', label: 'Готово' },
 };
 
+// ── Разрешённые переходы (день 15) ──────────────────────────────────
+// Любой переход не из этой таблицы → TransitionError.
+// Нельзя: execution без planning, done без validation, revision без validation.
+const ALLOWED_TRANSITIONS: Record<PipelineStage, PipelineStage[]> = {
+  idle:       ['planning'],
+  planning:   ['execution', 'idle'],
+  execution:  ['validation', 'planning'],
+  validation: ['revision', 'done', 'planning'],
+  revision:   ['validation', 'done', 'planning'],
+  done:       ['idle'],
+};
+
+export function isTransitionAllowed(from: PipelineStage, to: PipelineStage): boolean {
+  return ALLOWED_TRANSITIONS[from]?.includes(to) ?? false;
+}
+
+export function allowedTransitions(from: PipelineStage): PipelineStage[] {
+  return ALLOWED_TRANSITIONS[from] ?? [];
+}
+
+export class TransitionError extends Error {
+  readonly from: PipelineStage;
+  readonly to: PipelineStage;
+  constructor(from: PipelineStage, to: PipelineStage) {
+    const allowed = ALLOWED_TRANSITIONS[from] ?? [];
+    super(`Переход "${from}" → "${to}" запрещён. Разрешено из "${from}": ${allowed.join(', ') || 'ничего'}`);
+    this.from = from;
+    this.to = to;
+    this.name = 'TransitionError';
+  }
+}
+
 export function createInitialState(): PipelineState {
   return {
     stage: 'idle',
@@ -59,6 +91,9 @@ export function createInitialState(): PipelineState {
 }
 
 export function transition(state: PipelineState, stage: PipelineStage, detail: string): PipelineState {
+  if (!isTransitionAllowed(state.stage, stage)) {
+    throw new TransitionError(state.stage, stage);
+  }
   const info = STAGE_INFO[stage];
   state.history.push({
     stage: state.stage,
@@ -86,12 +121,8 @@ export function loadState(filePath: string): PipelineState | null {
 }
 
 export function clearState(filePath: string): void {
-  if (existsSync(filePath)) {
-    const dir = path.dirname(filePath);
-    const state = createInitialState();
-    saveState(state, filePath);
-    void dir;
-  }
+  const state = createInitialState();
+  saveState(state, filePath);
 }
 
 // Что ожидается от пользователя на каждом этапе.
@@ -99,9 +130,9 @@ export function expectedActionFor(stage: PipelineStage): string {
   switch (stage) {
     case 'idle': return 'Запустить: /pipeline run';
     case 'planning': return 'Выбрать новость: /pipeline pick <номер>';
-    case 'execution': return 'Ожидание написания поста... или /pipeline next';
-    case 'validation': return 'Ожидание фактчекинга... или /pipeline next';
-    case 'revision': return 'Правки: /pipeline edit <текст>, или /pipeline retry, или /pipeline accept';
+    case 'execution': return 'Ожидание написания поста...';
+    case 'validation': return 'Ожидание фактчекинга...';
+    case 'revision': return 'Правки: /pipeline edit <текст>, /pipeline retry, /pipeline accept';
     case 'done': return 'Готово. /pipeline publish или /pipeline reset';
     default: return '?';
   }

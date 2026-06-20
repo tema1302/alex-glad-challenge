@@ -24,6 +24,7 @@ import { FactChecker } from './factChecker.js';
 import { Reviser } from './reviser.js';
 import {
   type PipelineState,
+  allowedTransitions,
   createInitialState,
   expectedActionFor,
   loadState,
@@ -63,6 +64,7 @@ export class StatefulPipeline {
     lines.push(`Этап: ${s.stage}`);
     lines.push(`Шаг: ${s.step}`);
     lines.push(`Ожидается: ${expectedActionFor(s.stage)}`);
+    lines.push(`Разрешённые переходы: ${allowedTransitions(s.stage).join(', ')}`);
     if (s.revisionCount > 0) lines.push(`Правок: ${s.revisionCount}`);
     if (s.postContent) lines.push(`Пост: ${s.postContent.length} символов`);
     if (s.factCheck) lines.push(`Вердикт: ${s.factCheck.verdict}`);
@@ -201,7 +203,10 @@ export class StatefulPipeline {
       return { state: this.state, output: 'Нет поста для проверки.' };
     }
 
-    transition(this.state, 'validation', 'Фактчекинг запущен');
+    // Если ещё не в validation — переходим. Если уже в validation — продолжаем.
+    if (this.state.stage !== 'validation') {
+      transition(this.state, 'validation', 'Фактчекинг запущен');
+    }
     const checker = new FactChecker(this.client);
     const fc = await checker.check(this.state.postContent, news);
     this.state.factCheck = fc;
@@ -232,6 +237,9 @@ export class StatefulPipeline {
 
   // Автоправка через агента 4 (Reviser).
   async autoRevise(): Promise<StepResult> {
+    if (this.state.stage !== 'revision') {
+      return { state: this.state, output: `autoRevise доступен только на этапе revision. Сейчас: ${this.state.stage}. ${expectedActionFor(this.state.stage)}` };
+    }
     const news = this.getChosenNews();
     if (!news || !this.state.postContent || !this.state.factCheck) {
       return { state: this.state, output: 'Нечего править.' };
@@ -266,6 +274,9 @@ export class StatefulPipeline {
 
   // Ручная правка → обратно на фактчекинг.
   async manualEdit(instruction: string): Promise<StepResult> {
+    if (this.state.stage !== 'revision') {
+      return { state: this.state, output: `edit доступен только на этапе revision. Сейчас: ${this.state.stage}. ${expectedActionFor(this.state.stage)}` };
+    }
     const news = this.getChosenNews();
     if (!news || !this.state.postContent) {
       return { state: this.state, output: 'Нет поста для правки.' };
@@ -284,8 +295,14 @@ export class StatefulPipeline {
     };
   }
 
-  // Принять пост как есть.
+  // Принять пост как есть (только из revision или validation).
   accept(): StepResult {
+    if (this.state.stage !== 'revision' && this.state.stage !== 'validation') {
+      return {
+        state: this.state,
+        output: `accept доступен только на этапе revision/validation. Сейчас: ${this.state.stage}. ${expectedActionFor(this.state.stage)}`,
+      };
+    }
     transition(this.state, 'done', 'Пост принят пользователем');
     this.save();
     return { state: this.state, output: 'Пост принят. /pipeline publish или /pipeline status' };
@@ -293,9 +310,11 @@ export class StatefulPipeline {
 
   // Переписать с нуля (та же новость).
   async retry(): Promise<StepResult> {
-    if (this.state.stage === 'idle') {
-      return { state: this.state, output: 'Сначала /pipeline run' };
+    // retry доступен только из revision или validation.
+    if (this.state.stage !== 'revision' && this.state.stage !== 'validation') {
+      return { state: this.state, output: `retry доступен только на этапе revision/validation. Сейчас: ${this.state.stage}` };
     }
+    // Возврат к execution для переписывания.
     transition(this.state, 'execution', 'Переписываю пост с нуля');
     this.save();
     return this.executePost();
@@ -304,16 +323,20 @@ export class StatefulPipeline {
   // Продолжить к следующему шагу (авто).
   async next(): Promise<StepResult> {
     switch (this.state.stage) {
-      case 'validation':
-        return this.runFactCheck();
       case 'revision':
         return this.autoRevise();
       case 'execution':
         return this.executePost();
+      case 'validation':
+        return this.runFactCheck();
       case 'done':
         return { state: this.state, output: 'Pipeline завершён. /pipeline publish или /pipeline reset' };
+      case 'idle':
+        return { state: this.state, output: 'Pipeline не запущен. /pipeline run' };
+      case 'planning':
+        return { state: this.state, output: 'Выберите новость: /pipeline pick <номер>' };
       default:
-        return { state: this.state, output: `На этапе "${this.state.stage}" нет авто-перехода. ${expectedActionFor(this.state.stage)}` };
+        return { state: this.state, output: `Неизвестный этап: ${this.state.stage}` };
     }
   }
 
@@ -326,7 +349,10 @@ export class StatefulPipeline {
     const fc = this.state.factCheck;
     this.db.insertPost(this.state.postContent, news.id, fc ? JSON.stringify(fc) : '{}');
     this.db.markUsed(news.id);
-    transition(this.state, 'done', 'Сохранено в БД');
+    // Если уже done — не делаем повторный transition.
+    if (this.state.stage !== 'done') {
+      transition(this.state, 'done', 'Сохранено в БД');
+    }
     this.save();
     return { state: this.state, output: 'Пост сохранён в БД.' };
   }

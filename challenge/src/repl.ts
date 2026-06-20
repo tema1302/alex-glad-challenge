@@ -62,10 +62,10 @@ function trunc(s: string, n: number): string {
 // --- Tab-completer: список всех команд для автодополнения по Tab ---
 const ALL_COMMANDS = [
   '/help', '/h',
-  '/status', '/st',
+  '/status', '/st', '/system-info', '/sysinfo',
   '/usage',
   '/list',
-  '/day ',
+  '/day ', '/run ',
   '/strategy ', '/strategy full', '/strategy sliding', '/strategy sticky', '/strategy branching',
   '/system ',
   '/reset',
@@ -298,6 +298,19 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       const demo = findDemo(arg);
       if (!demo) { console.log(c.red + `День "${arg}" не найден. /list покажет все.` + c.reset + '\n'); return; }
       console.log(c.cyan + demo.id + c.reset + '  ' + demo.title + '\n');
+      return;
+    }
+    case 'run': {
+      if (!arg) { console.log(c.gray + 'Запуск демо: /run day-14 (дефис, не пробел!)\n' + c.reset); return; }
+      const demo = findDemo(arg);
+      if (!demo) { console.log(c.red + `День "${arg}" не найден. /list покажет все.` + c.reset + '\n'); return; }
+      console.log(c.bold + c.cyan + `\n▶ Запуск: ${demo.id} — ${demo.title}\n` + c.reset);
+      try {
+        await demo.run();
+      } catch (err) {
+        console.log(c.red + 'Ошибка демо: ' + (err as Error).message + c.reset + '\n');
+      }
+      console.log('');
       return;
     }
     case 'strategy': {
@@ -587,6 +600,11 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log(c.gray + '  ' + bar + c.reset + '\n');
       return;
     }
+    case 'system-info':
+    case 'sysinfo': {
+      await printSystemInfo(state);
+      return;
+    }
     case 'constraint':
     case 'constraints': {
       const [csub, ...crest] = arg.split(/\s+/);
@@ -637,7 +655,8 @@ function printFullHelp(state: SessionState): void {
 
   console.log('');
   header('Состояние сессии');
-  row('/status', 'текущая модель, стратегия, system, usage');
+  row('/status', 'краткий статус (модель, стратегия, токены)');
+  row('/system-info', 'полная сводка: память, профиль, инварианты, агенты, БД');
   row('/usage', 'накопленные токены с прогресс-баром');
   console.log('');
   header('Контекст');
@@ -700,7 +719,8 @@ function printFullHelp(state: SessionState): void {
   console.log('');
   header('Дни');
   row('/list', 'список всех дней');
-  row('/day <id>', 'инфо о дне (например /day day-06)');
+  row('/day <id>', 'описание дня (например /day day-14)');
+  row('/run <id>', 'запустить демо дня (например /run day-14)');
   console.log('');
   header('Системные');
   row('/help, /h', 'эта справка');
@@ -1371,4 +1391,100 @@ function printProfile(state: SessionState): void {
     console.log(c.gray + '  ' + 'заметки'.padEnd(20) + c.reset + '(пусто)');
   }
   console.log(line + '\n');
+}
+
+async function printSystemInfo(state: SessionState): Promise<void> {
+  const line = c.gray + '═'.repeat(60) + c.reset;
+
+  console.log('\n' + line);
+  console.log(c.bold + c.cyan + '  SYSTEM INFO' + c.reset + c.gray + '  — полная сводка состояния' + c.reset);
+  console.log(line);
+
+  // Модель.
+  console.log(c.bold + '\n  МОДЕЛЬ' + c.reset);
+  console.log(c.gray + '  модель: ' + c.reset + state.client.defaultModel);
+
+  // Память: long-term.
+  console.log(c.bold + '\n  ДОЛГОВРЕМЕННАЯ ПАМЯТЬ' + c.reset + c.gray + '  (.data/memory.json)' + c.reset);
+  const ltKeys = state.memory.longTermKeys;
+  if (ltKeys.length === 0) {
+    console.log(c.gray + '    (пусто)' + c.reset);
+  } else {
+    for (const k of ltKeys) {
+      const v = state.memory.recall(k) ?? '';
+      console.log(c.gray + '    ' + c.reset + k + ': ' + trunc(v, 50));
+    }
+  }
+
+  // Память: working.
+  console.log(c.bold + '\n  РАБОЧАЯ ПАМЯТЬ' + c.reset + c.gray + '  (RAM, текущая задача)' + c.reset);
+  if (state.memory.task) {
+    console.log(c.gray + '    задача: ' + c.reset + state.memory.task);
+  } else {
+    console.log(c.gray + '    задача: (не задана)' + c.reset);
+  }
+  const wKeys = state.memory.workingKeys;
+  if (wKeys.length > 0) {
+    for (const k of wKeys) {
+      console.log(c.gray + '    ' + c.reset + k + ': ' + state.memory.getWorkingFact(k));
+    }
+  } else {
+    console.log(c.gray + '    факты: (пусто)' + c.reset);
+  }
+
+  // Память: short-term.
+  console.log(c.bold + '\n  КРАТКОСРОЧНАЯ ПАМЯТЬ' + c.reset + c.gray + '  (RAM, диалог)' + c.reset);
+  const snap = state.memory.snapshot();
+  console.log(c.gray + '    сообщений: ' + snap.shortTermCount + c.reset);
+
+  // Профиль.
+  console.log(c.bold + '\n  ПРОФИЛЬ' + c.reset + c.gray + '  (.data/profiles/)' + c.reset);
+  console.log(c.gray + '    активный: ' + c.reset + (state.profile.activeName ?? '(нет)'));
+  if (state.profile.active) {
+    const psnap = state.profile.snapshot();
+    for (const key of state.profile.fields) {
+      console.log(c.gray + '    ' + key.padEnd(18) + c.reset + trunc(String(psnap[key]), 45));
+    }
+    const notes = state.profile.notes;
+    console.log(c.gray + '    ' + 'заметки'.padEnd(18) + c.reset + `${notes.length} шт.`);
+  }
+  const allProfiles = state.profile.list();
+  console.log(c.gray + '    все профили:    ' + c.reset + (allProfiles.join(', ') || '(нет)'));
+
+  // Инварианты.
+  console.log(c.bold + '\n  ИНВАРИАНТЫ' + c.reset + c.gray + '  (.data/constraints.json)' + c.reset);
+  const constraints = state.constraints.all;
+  if (constraints.length === 0) {
+    console.log(c.gray + '    (пусто)' + c.reset);
+  } else {
+    for (const ci of constraints) {
+      console.log(c.gray + '    ' + c.reset + `${ci.id} [${ci.type}] ${ci.title}: ${trunc(ci.description, 40)}`);
+    }
+  }
+
+  // Блог-агенты.
+  console.log(c.bold + '\n  БЛОГ-АГЕНТЫ' + c.reset);
+  let dbStats = '(БД недоступна)';
+  try {
+    const { BlogDb } = await import('./core/db.js');
+    const db = new BlogDb(DB_PATH);
+    dbStats = `новостей: ${db.newsCount()}, постов: ${db.postsCount()}, стилей: ${db.styleSamplesCount()}`;
+    db.close();
+  } catch { /* ignore */ }
+  console.log(c.gray + '    БД:           ' + c.reset + dbStats);
+  console.log(c.gray + '    агент 1:      ' + c.reset + 'NewsFetcher — топ-новостей из RSS');
+  console.log(c.gray + '    агент 2:      ' + c.reset + 'PostWriter — пост (стиль + профиль)');
+  console.log(c.gray + '    агент 3:      ' + c.reset + 'FactChecker — фактчекинг (CoT + JSON)');
+  console.log(c.gray + '    агент 4:      ' + c.reset + 'Reviser — правка / смена новости');
+  console.log(c.gray + '    FSM:          ' + c.reset + 'idle → planning → execution → validation → revision → done');
+  console.log(c.gray + '    RSS:          ' + c.reset + 'championat.com, skysports.com x2');
+  const tgStatus = isTelegramConfigured() ? c.green + 'настроен' + c.reset : c.gray + 'не настроен' + c.reset;
+  console.log(c.gray + '    Telegram:     ' + c.reset + tgStatus);
+
+  // Режим.
+  console.log(c.bold + '\n  РЕЖИМ' + c.reset);
+  console.log(c.gray + '    контекст: ' + c.reset + (state.memoryEnabled ? c.green + 'memory' + c.reset : state.strategy.name));
+  console.log(c.gray + '    токенов:  ' + c.reset + '\u03A3 ' + state.usage.total_tokens);
+
+  console.log('\n' + line + '\n');
 }
