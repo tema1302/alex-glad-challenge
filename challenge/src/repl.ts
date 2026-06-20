@@ -1217,16 +1217,27 @@ function handleConstraintsCommand(sub: string, arg: string, state: SessionState)
     case 'list': {
       const items = state.constraints.all;
       if (items.length === 0) {
-        console.log(c.gray + '\nИнвариантов нет. Добавить: /constraint add <type> <title>: <description>\n' + c.reset);
-        return;
+        console.log(c.gray + '\nИнвариантов нет.\n' + c.reset);
+      } else {
+        console.log(c.bold + c.red + '\n=== ИНВАРИАНТЫ (' + items.length + ') ===' + c.reset);
+        for (const item of items) {
+          const tc = typeColors[item.type] ?? c.gray;
+          console.log(`  ${tc}${item.id}${c.reset} ${tc}[${typeLabels[item.type] ?? item.type}]${c.reset} ${c.bold}${item.title}${c.reset}`);
+          console.log(`        ${c.gray}${item.description}${c.reset}`);
+        }
       }
-      console.log(c.bold + c.red + '\n=== ИНВАРИАНТЫ (' + items.length + ') ===' + c.reset);
-      for (const item of items) {
-        const tc = typeColors[item.type] ?? c.gray;
-        console.log(`  ${tc}${item.id}${c.reset} ${tc}[${typeLabels[item.type] ?? item.type}]${c.reset} ${c.bold}${item.title}${c.reset}`);
-        console.log(`        ${c.gray}${item.description}${c.reset}`);
-      }
-      console.log(c.gray + '\nУдалить: /constraint rm <id>\n' + c.reset);
+      // Всегда показываем справку по типам и примерам.
+      console.log(c.bold + '\nТипы инвариантов:' + c.reset);
+      console.log('  ' + c.cyan + 'architecture  ' + c.reset + c.gray + 'выбранная архитектура' + c.reset);
+      console.log('  ' + c.blue + 'tech_decision ' + c.reset + c.gray + 'принятые технические решения' + c.reset);
+      console.log('  ' + c.magenta + 'stack         ' + c.reset + c.gray + 'ограничения по стеку' + c.reset);
+      console.log('  ' + c.green + 'business      ' + c.reset + c.gray + 'бизнес-правила' + c.reset);
+      console.log('  ' + c.yellow + 'custom        ' + c.reset + c.gray + 'произвольные' + c.reset);
+      console.log(c.gray + '\nПримеры:' + c.reset);
+      console.log(c.gray + '  /constraint add stack язык: только TypeScript, никакого Rust' + c.reset);
+      console.log(c.gray + '  /constraint add architecture монолит: единый challenge/, без микросервисов' + c.reset);
+      console.log(c.gray + '  /constraint add business бюджет: 0 рублей, без облака' + c.reset);
+      console.log(c.gray + '  /constraint rm stack-001\n' + c.reset);
       return;
     }
 
