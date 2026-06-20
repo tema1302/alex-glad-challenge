@@ -23,6 +23,14 @@ export type { PublishResult } from './telegram.js';
 export { Reviser } from './reviser.js';
 export type { RevisionResult } from './reviser.js';
 
+export type { SourceAgent, SourceAgentResult, TrendingTopic } from './sourceAgent.js';
+export { RssSourceAgent } from './rssSource.js';
+export { ForumScannerAgent } from './forumScanner.js';
+export { TelegramScannerAgent } from './telegramScanner.js';
+export { Orchestrator } from './orchestrator.js';
+export type { OrchestratorResult } from './orchestrator.js';
+export { runSourceAgents } from './sourcePipeline.js';
+
 export { StatefulPipeline } from './statefulPipeline.js';
 export {
   createInitialState,

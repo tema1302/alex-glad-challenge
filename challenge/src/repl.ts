@@ -13,6 +13,7 @@ import { Agent, Branching, Constraints, type ContextStrategy, FullHistory, LlmCl
 import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { rewritePost } from './core/agents/postWriter.js';
+import { runSourceAgents } from './core/agents/sourcePipeline.js';
 import { StatefulPipeline } from './core/agents/statefulPipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
@@ -81,6 +82,7 @@ const ALL_COMMANDS = [
   '/pipeline edit ', '/pipeline retry', '/pipeline accept', '/pipeline publish',
   '/pipeline status', '/pipeline resume', '/pipeline reset',
   '/posts', '/post ', '/post-publish ',
+  '/scout ', '/scout --hours ', '/scout --top ', '/scout --no-telegram ', '/scout --no-forum ',
   '/constraints', '/constraint add ', '/constraint rm ',
   '/db-stats',
   '/quit', '/exit',
@@ -605,6 +607,10 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       await printSystemInfo(state);
       return;
     }
+    case 'scout': {
+      await handleScoutCommand(arg, state);
+      return;
+    }
     case 'constraint':
     case 'constraints': {
       const [csub, ...crest] = arg.split(/\s+/);
@@ -714,6 +720,7 @@ function printFullHelp(state: SessionState): void {
   row('/constraint rm <id>', 'удалить инвариант');
   console.log('');
   header('Блог-агенты');
+  row('/scout [opts]', '3 агента параллельно (RSS+форумы+TG) → оркестратор: топ-K тем');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
   row('/db-stats', 'статистика БД: новости, посты, образцы стиля');
   console.log('');
@@ -1022,6 +1029,73 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
 }
 
 const PIPELINE_STATE_PATH = path.join(process.cwd(), '.data', 'pipeline-state.json');
+
+async function handleScoutCommand(arg: string, state: SessionState): Promise<void> {
+  // Парсим флаги.
+  const parts = arg.split(/\s+/);
+  let hours = 24, topK = 3;
+  let query = 'самые горячие футбольные новости для Челси';
+  let noTelegram = false;
+  let noForum = false;
+
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '--hours' && parts[i + 1]) { hours = Number(parts[++i]); continue; }
+    if (parts[i] === '--top' && parts[i + 1]) { topK = Number(parts[++i]); continue; }
+    if (parts[i] === '--query' && parts[i + 1]) {
+      const qparts: string[] = [];
+      i++;
+      while (i < parts.length && !parts[i].startsWith('--')) { qparts.push(parts[i]); i++; }
+      query = qparts.join(' ');
+      i--;
+      continue;
+    }
+    if (parts[i] === '--no-telegram') { noTelegram = true; continue; }
+    if (parts[i] === '--no-forum') { noForum = true; continue; }
+  }
+
+  const db = new BlogDb(DB_PATH);
+  try {
+    console.log(c.bold + c.cyan + '\n▶ Scout: 3 агента параллельно → оркестратор\n' + c.reset);
+    console.log(c.gray + `  запрос: ${query}` + c.reset);
+    console.log(c.gray + `  источники: RSS${noForum ? '' : ' + Reddit + Sports.ru'}${noTelegram ? '' : ' + Telegram'}\n` + c.reset);
+
+    const result = await runSourceAgents(db, state.client, {
+      maxAgeHours: hours,
+      userQuery: query,
+      topK,
+      enableTelegram: !noTelegram,
+      enableForum: !noForum,
+    });
+
+    // Показываем результаты каждого агента.
+    for (const r of result.rawResults) {
+      console.log(c.bold + `\n=== ${r.agent} (${r.topics.length} тем) ===` + c.reset);
+      if (r.error) console.log(c.yellow + `  ошибка: ${r.error}` + c.reset);
+      for (const t of r.topics.slice(0, 5)) {
+        const hype = t.hypeScore > 0 ? c.green + ` [${t.hypeScore}]${c.reset}` : '';
+        console.log(`  ${t.title.slice(0, 80)}${hype} ${c.gray}${t.hypeReason}${c.reset}`);
+      }
+    }
+
+    // Финальный топ от оркестратора.
+    console.log(c.bold + c.green + '\n=== ОРКЕСТРАТОР: ТОП-' + topK + ' ===' + c.reset);
+    for (const t of result.ranked) {
+      console.log(`\n  ${c.green}[${t.orchestratorScore}]${c.reset} (${t.source}) ${t.title}`);
+      console.log(`    ${c.gray}${t.orchestratorReason}${c.reset}`);
+      if (t.url) console.log(`    ${c.gray}${t.url}${c.reset}`);
+    }
+
+    if (result.ranked.length === 0) {
+      console.log(c.yellow + '\nОркестратор не выбрал ни одной темы.' + c.reset);
+    }
+
+    console.log(c.gray + '\nДальше: /pipeline run для написания поста по выбранной теме.\n' + c.reset);
+  } catch (err) {
+    console.log(c.red + '\nОшибка scout: ' + (err as Error).message + c.reset + '\n');
+  } finally {
+    db.close();
+  }
+}
 
 async function handlePipelineCommand(arg: string, state: SessionState): Promise<void> {
   const [sub, ...rest] = arg.split(/\s+/);
