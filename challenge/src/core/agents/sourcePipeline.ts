@@ -8,7 +8,7 @@ import type { LlmClient } from '../index.js';
 import type { SourceAgent } from './sourceAgent.js';
 import { RssSourceAgent } from './rssSource.js';
 import { ForumScannerAgent } from './forumScanner.js';
-import { TelegramScannerAgent } from './telegramScanner.js';
+import { TelegramScannerAgent, type AskFn } from './telegramScanner.js';
 import { Orchestrator, type OrchestratorResult } from './orchestrator.js';
 
 export async function runSourceAgents(
@@ -21,6 +21,7 @@ export async function runSourceAgents(
     enableTelegram?: boolean;
     enableForum?: boolean;
     sessionDir?: string;
+    ask?: AskFn;
   } = {},
 ): Promise<OrchestratorResult> {
   const maxAgeHours = opts.maxAgeHours ?? 24;
@@ -37,7 +38,7 @@ export async function runSourceAgents(
   }
 
   if (opts.enableTelegram !== false) {
-    const tgAgent = new TelegramScannerAgent(opts.sessionDir ?? '.data');
+    const tgAgent = new TelegramScannerAgent(opts.sessionDir ?? '.data', opts.ask);
     agents.push(tgAgent);
   }
 

@@ -14,6 +14,7 @@ import { demos, findDemo } from './demos/registry.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { rewritePost } from './core/agents/postWriter.js';
 import { runSourceAgents } from './core/agents/sourcePipeline.js';
+import type { AskFn } from './core/agents/telegramScanner.js';
 import { StatefulPipeline } from './core/agents/statefulPipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
@@ -78,6 +79,7 @@ const ALL_COMMANDS = [
   '/profile-reset',
   '/news ', '/news --hours ', '/news --top ', '/news --for ', '/news --publish',
   '/news-i ', '/news-interactive ',
+  '/write ',
   '/pipeline ', '/pipeline auto ', '/pipeline run ', '/pipeline pick ', '/pipeline next',
   '/pipeline edit ', '/pipeline retry', '/pipeline accept', '/pipeline publish',
   '/pipeline status', '/pipeline resume', '/pipeline reset',
@@ -120,6 +122,7 @@ interface SessionState {
   memoryEnabled: boolean;
   profile: ProfileManager;
   constraints: Constraints;
+  ask: AskFn;
 }
 
 export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Promise<void> {
@@ -138,6 +141,7 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     memoryEnabled: false,
     profile: new ProfileManager(pathModule.join(process.cwd(), '.data', 'profiles')),
     constraints: new Constraints(pathModule.join(process.cwd(), '.data', 'constraints.json')),
+    ask: (q: string) => new Promise((resolve) => { rl?.question(q, (a) => resolve(a.trim())); }),
   };
 
   // Загружаем long-term, профиль и инварианты с диска при старте.
@@ -205,7 +209,20 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
       const constraintMessages = state.constraints.toSystemMessages();
       // Инъекция профиля в каждый запрос (день 12).
       const profileSystem = msg.system(state.profile.toSystemBlock());
-      context = [...constraintMessages, profileSystem, ...context];
+      // Структурный системный промпт: заставляет LLM думать по этапам.
+      const structuralSystem = msg.system(
+        'СТРУКТУРНЫЙ РЕЖИМ. Каждый твой ответ следует шаблону:\n' +
+        '1. ПЛАН — кратко: что собираешься сделать (1-2 строки).\n' +
+        '2. ВАЛИДАЦИЯ — проверка: хватает ли данных? Нет ли противоречий?\n' +
+        '3. ОТВЕТ — сам результат.\n\n' +
+        'Правила:\n' +
+        '- НЕ перепрыгивай к ответу без плана.\n' +
+        '- Если данных недостаточно — скажи это в валидации и спроси.\n' +
+        '- План и валидация — КРАТКО (по 1-2 строки), не раздувай.\n' +
+        '- Отвечай на том же языке, что и пользователь.\n' +
+        '- Для простых вопросов (калькулятор, факт) план может быть в одно слово.'
+      );
+      context = [...constraintMessages, profileSystem, structuralSystem, ...context];
 
       const { content, usage: u } = await client.chatWithUsage(context, {
         temperature: 0.7,
@@ -631,6 +648,10 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       await handleNewsInteractiveCommand(arg, state);
       return;
     }
+    case 'write': {
+      await handleWriteCommand(arg, state);
+      return;
+    }
     case 'pipeline': {
       await handlePipelineCommand(arg, state);
       return;
@@ -696,6 +717,7 @@ function printFullHelp(state: SessionState): void {
   header('Блог-агенты');
   row('/news [opts]', 'pipeline RSS→агенты→пост. Опции: --hours N --top K --for i --publish');
   row('/news-i [opts]', 'интерактивный: выбор новости, правки поста, решение по фактчекингу');
+  row('/write <тема>', 'свободный пост на любую тему (без RSS), + личный комментарий');
   row('/pipeline auto', 'авто-прогон: 4 агента, FSM, ревизор — без ручного управления');
   row('/pipeline run', 'ручной запуск: только RSS + агент 1 (топ-новости)');
   row('/pipeline pick <N>', 'выбрать новость → агент 2 + 3');
@@ -885,9 +907,8 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
   }
 
   const db = new BlogDb(DB_PATH);
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
-  const ask = (q: string): Promise<string> => new Promise((resolve) => rl.question(q, (a) => resolve(a.trim())));
+  const ask = state.ask;
 
   try {
     console.log(c.bold + c.cyan + '\n▶ Интерактивный pipeline\n' + c.reset);
@@ -928,11 +949,29 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
     const chosen = news.ranked[chosenIdx].news;
     console.log(c.green + `\n→ "${chosen.title}"\n` + c.reset);
 
+    // --- Своя тема или комментарий от автора ---
+    let userTopic: string | undefined;
+    let userComment: string | undefined;
+    const customChoice = await ask(
+      c.gray + 'Своя тема или комментарий? (Enter = нет, "topic ..." = своя тема, "comment ..." = личный комментарий): ' + c.reset,
+    );
+    if (customChoice.startsWith('topic ') || customChoice.startsWith('тема ')) {
+      userTopic = customChoice.replace(/^(topic|тема)\s+/, '');
+      console.log(c.gray + `    тема: "${userTopic}"\n` + c.reset);
+    } else if (customChoice.startsWith('comment ') || customChoice.startsWith('коммент ')) {
+      userComment = customChoice.replace(/^(comment|коммент)\s+/, '');
+      console.log(c.gray + `    комментарий: "${userComment}"\n` + c.reset);
+    } else if (customChoice) {
+      // Любой другой текст = комментарий.
+      userComment = customChoice;
+      console.log(c.gray + `    комментарий: "${userComment}"\n` + c.reset);
+    }
+
     // --- ШАГ 2: Агент 2 (пост) ---
     console.log(c.gray + '[2] Агент 2: пишу пост...\n' + c.reset);
     const { PostWriter } = await import('./core/agents/postWriter.js');
     const writer = new PostWriter(state.client, state.profile);
-    let post = await writer.write(db, chosen);
+    let post = await writer.write(db, chosen, { userTopic, userComment });
 
     // Цикл правок поста.
     while (true) {
@@ -948,7 +987,7 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
 
       if (edit === 'rewrite') {
         console.log(c.gray + '\n    Переписываю заново...\n' + c.reset);
-        post = await writer.write(db, chosen);
+        post = await writer.write(db, chosen, { userTopic, userComment });
         continue;
       }
 
@@ -1023,7 +1062,160 @@ async function handleNewsInteractiveCommand(arg: string, state: SessionState): P
   } catch (err) {
     console.log(c.red + '\nОшибка: ' + (err as Error).message + c.reset + '\n');
   } finally {
-    rl.close();
+    db.close();
+  }
+}
+
+/** /write — написать пост на любую тему без RSS.
+ *  Многоэтапный flow: план → подтверждение → черновик → валидация → финал. */
+async function handleWriteCommand(arg: string, state: SessionState): Promise<void> {
+  const db = new BlogDb(DB_PATH);
+  const ask = state.ask;
+
+  try {
+    let topic = arg.trim();
+    if (!topic) {
+      console.log(c.bold + c.cyan + '\n▶ Свободный пост\n' + c.reset);
+      topic = await ask(c.gray + 'О чём пишем? (тема/новость): ' + c.reset);
+    }
+    if (!topic) {
+      console.log(c.yellow + 'Тема не задана.\n' + c.reset);
+      return;
+    }
+
+    const comment = await ask(
+      c.gray + 'Личный комментарий? (Enter = нет): ' + c.reset,
+    );
+
+    const fakeNews = {
+      id: 0,
+      title: topic,
+      source: 'от автора',
+      summary: comment || topic,
+      url: '',
+      published_at: new Date().toISOString(),
+      used: 0,
+    } as import('./core/db.js').NewsRow;
+
+    // === ЭТАП 1: ПЛАН ===
+    const p = state.profile.active;
+    const club = p?.любимый_клуб ?? 'Челси';
+    const style = p?.стиль ?? 'ироничный, резкий';
+    const lengthRule = p?.длина_постов ?? '100-500 символов';
+
+    console.log(c.gray + '\n[план] Думаю над углом подачи...\n' + c.reset);
+    const planPrompt = `Ты автор Telegram-канала «Иди на факты глянь» про ФК «${club}».
+Стиль: ${style}. Объём поста: ${lengthRule}.
+
+Тема: ${topic}
+${comment ? `Комментарий автора: ${comment}` : ''}
+
+Предложи КРАТКИЙ план поста (2-3 строки):
+- Какой угол/крючок?
+- Главная мысль?
+- Какая эмоция?
+
+Выдай только план, без самого поста.`;
+
+    const plan = (await state.client.chat(
+      [msg.system(planPrompt), msg.user('Предложи план поста.')],
+      { temperature: 0.3, maxTokens: 300 },
+    )).trim();
+
+    console.log(c.bold + c.cyan + '\n=== ПЛАН ===' + c.reset);
+    console.log(plan + '\n');
+
+    // Подтверждение плана.
+    let planApproved = false;
+    while (!planApproved) {
+      const planChoice = await ask(
+        c.gray + 'План ок? (Enter = да, "edit ..." = скорректировать, "retry" = новый план): ' + c.reset,
+      );
+      if (!planChoice) {
+        planApproved = true;
+        break;
+      }
+      if (planChoice === 'retry') {
+        console.log(c.gray + '\n[план] Генерирую новый...\n' + c.reset);
+        const newPlan = (await state.client.chat(
+          [msg.system(planPrompt + '\n\nПредыдущий план был отклонён. Предложи ДРУГОЙ угол.'), msg.user('Новый план.')],
+          { temperature: 0.5, maxTokens: 300 },
+        )).trim();
+        console.log(c.bold + c.cyan + '\n=== НОВЫЙ ПЛАН ===' + c.reset);
+        console.log(newPlan + '\n');
+        continue;
+      }
+      // edit — принимаем правки и идём дальше.
+      planApproved = true;
+    }
+
+    // === ЭТАП 2: ЧЕРНОВИК + ВАЛИДАЦИЯ + ФИНАЛ ===
+    console.log(c.gray + '\n[черновик] Пишу пост по плану...\n' + c.reset);
+    const { PostWriter } = await import('./core/agents/postWriter.js');
+    const writer = new PostWriter(state.client, state.profile);
+    let post = await writer.write(db, fakeNews, {
+      userTopic: topic,
+      userComment: comment || undefined,
+    });
+
+    // Валидация: проверяем длину и стиль.
+    const len = post.content.length;
+    const minLen = 80;
+    const maxLen = 600;
+    const issues: string[] = [];
+    if (len < minLen) issues.push(`слишком короткий (${len} симв.)`);
+    if (len > maxLen) issues.push(`слишком длинный (${len} симв.)`);
+    if (!post.content.startsWith('Иди на факты')) issues.push('нет шапки');
+    if (!post.content.includes('@lookatfacts') && !post.content.includes(p?.подпись ?? '@lookatfacts')) {
+      issues.push('нет подписи');
+    }
+
+    if (issues.length > 0) {
+      console.log(c.yellow + '[валидация] Замечания: ' + issues.join(', ') + c.reset);
+      console.log(c.gray + 'Перегенерирую...\n' + c.reset);
+      post = await writer.write(db, fakeNews, { userTopic: topic, userComment: comment || undefined });
+    } else {
+      console.log(c.green + '[валидация] ОК' + c.reset);
+    }
+
+    // Цикл правок.
+    while (true) {
+      console.log(c.bold + '\n    === Пост ===' + c.reset);
+      console.log(post.content + '\n');
+      console.log(c.gray + `    (${post.content.length} симв.)\n` + c.reset);
+
+      const edit = await ask(
+        c.gray + 'Правки? (Enter = дальше, "rewrite" = заново, любой текст = правка): ' + c.reset,
+      );
+      if (!edit) break;
+
+      if (edit === 'rewrite') {
+        post = await writer.write(db, fakeNews, { userTopic: topic, userComment: comment || undefined });
+        continue;
+      }
+      post = { content: await rewritePost(state.client, post.content, edit, fakeNews, state.profile), news: fakeNews };
+    }
+
+    // Публикация.
+    db.insertPost(post.content, null, JSON.stringify({ verdict: 'ok', issues: [], reasoning: 'свободный пост' }));
+    const pub = await ask(c.gray + 'Опубликовать в Telegram? (y/N): ' + c.reset);
+    if (pub.toLowerCase() === 'y' || pub.toLowerCase() === 'д') {
+      if (!isTelegramConfigured()) {
+        console.log(c.yellow + 'TG не настроен.\n' + c.reset);
+      } else {
+        const tg = await publishPost(post.content);
+        if (tg.ok) {
+          console.log(c.green + `\n[telegram] Опубликовано (message_id=${tg.messageId}).\n` + c.reset);
+        } else {
+          console.log(c.red + `\n[telegram] Ошибка: ${tg.error}\n` + c.reset);
+        }
+      }
+    } else {
+      console.log(c.gray + 'Без публикации. Пост сохранён в БД.\n' + c.reset);
+    }
+  } catch (err) {
+    console.log(c.red + '\nОшибка: ' + (err as Error).message + c.reset + '\n');
+  } finally {
     db.close();
   }
 }
@@ -1065,6 +1257,7 @@ async function handleScoutCommand(arg: string, state: SessionState): Promise<voi
       topK,
       enableTelegram: !noTelegram,
       enableForum: !noForum,
+      ask: state.ask,
     });
 
     // Показываем результаты каждого агента.
@@ -1087,9 +1280,89 @@ async function handleScoutCommand(arg: string, state: SessionState): Promise<voi
 
     if (result.ranked.length === 0) {
       console.log(c.yellow + '\nОркестратор не выбрал ни одной темы.' + c.reset);
+      return;
     }
 
-    console.log(c.gray + '\nДальше: /pipeline run для написания поста по выбранной теме.\n' + c.reset);
+    // --- Выбор темы для поста ---
+    let chosenIdx = 0;
+    if (result.ranked.length > 1) {
+      const choice = await state.ask(
+        c.gray + '\nКакую тему берём для поста? (Enter = 0, или номер): ' + c.reset,
+      );
+      if (choice && /^\d+$/.test(choice)) {
+        chosenIdx = Math.min(Number(choice), result.ranked.length - 1);
+      }
+    }
+    const chosen = result.ranked[chosenIdx];
+    console.log(c.green + `\n→ "${chosen.title}"\n` + c.reset);
+
+    // --- Своя тема или комментарий ---
+    let userTopic: string | undefined;
+    let userComment: string | undefined;
+    const customChoice = await state.ask(
+      c.gray + 'Своя тема или комментарий? (Enter = нет, "topic ..." = тема, "comment ..." = комментарий): ' + c.reset,
+    );
+    if (customChoice.startsWith('topic ') || customChoice.startsWith('тема ')) {
+      userTopic = customChoice.replace(/^(topic|тема)\s+/, '');
+      console.log(c.gray + `    тема: "${userTopic}"\n` + c.reset);
+    } else if (customChoice.startsWith('comment ') || customChoice.startsWith('коммент ')) {
+      userComment = customChoice.replace(/^(comment|коммент)\s+/, '');
+      console.log(c.gray + `    комментарий: "${userComment}"\n` + c.reset);
+    } else if (customChoice) {
+      userComment = customChoice;
+      console.log(c.gray + `    комментарий: "${userComment}"\n` + c.reset);
+    }
+
+    // --- Написание поста ---
+    console.log(c.gray + 'Пишу пост...\n' + c.reset);
+    const { PostWriter } = await import('./core/agents/postWriter.js');
+    const writer = new PostWriter(state.client, state.profile);
+    const fakeNews = {
+      id: 0,
+      title: chosen.title,
+      source: chosen.source,
+      summary: chosen.description ?? chosen.title,
+      url: chosen.url ?? '',
+      published_at: new Date().toISOString(),
+      used: 0,
+    } as import('./core/db.js').NewsRow;
+
+    let post = await writer.write(db, fakeNews, { userTopic, userComment });
+
+    // Цикл правок.
+    while (true) {
+      console.log(c.bold + '\n    === Пост ===' + c.reset);
+      console.log(post.content + '\n');
+
+      const edit = await state.ask(
+        c.gray + 'Правки? (Enter = дальше, "rewrite" = заново, любой текст = правка): ' + c.reset,
+      );
+      if (!edit) break;
+
+      if (edit === 'rewrite') {
+        post = await writer.write(db, fakeNews, { userTopic, userComment });
+        continue;
+      }
+      post = { content: await rewritePost(state.client, post.content, edit, fakeNews, state.profile), news: fakeNews };
+    }
+
+    // --- Публикация ---
+    db.insertPost(post.content, null, JSON.stringify({ verdict: 'ok', issues: [], reasoning: 'scout pipeline' }));
+    const pub = await state.ask(c.gray + '\nОпубликовать в Telegram? (y/N): ' + c.reset);
+    if (pub.toLowerCase() === 'y' || pub.toLowerCase() === 'д') {
+      if (!isTelegramConfigured()) {
+        console.log(c.yellow + 'TG не настроен.\n' + c.reset);
+      } else {
+        const tg = await publishPost(post.content);
+        if (tg.ok) {
+          console.log(c.green + `\n[telegram] Опубликовано (message_id=${tg.messageId}).\n` + c.reset);
+        } else {
+          console.log(c.red + `\n[telegram] Ошибка: ${tg.error}\n` + c.reset);
+        }
+      }
+    } else {
+      console.log(c.gray + '\nБез публикации. Пост сохранён в БД.\n' + c.reset);
+    }
   } catch (err) {
     console.log(c.red + '\nОшибка scout: ' + (err as Error).message + c.reset + '\n');
   } finally {
