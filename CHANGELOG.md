@@ -342,3 +342,47 @@
 - `challenge/src/core/agents/{rss,newsFetcher,postWriter,factChecker,pipeline,seed}.ts`
 - `challenge/src/data/style-samples.json` — 13 образцов стиля.
 - Команды в `challenge/src/cli.ts`: `news`, `seed-style`, `db-stats`.
+
+---
+
+## День 16 — MCP-клиент: соединение и список инструментов
+**Дата:** 2026-06-24
+
+**Задание (полный текст):**
+> В рамках шестнадцатого дня необходимо написать код общения с МСП Claude In
+> Mobile. Сделайте минимальный код, который:
+> - устанавливает MCP-соединение
+> - получает от MCP список доступных инструментов
+
+**Сделано:**
+- `core/mcp.ts` — минимальный MCP-клиент: JSON-RPC 2.0 поверх stdio дочернего
+  процесса. Проводит handshake (`initialize` → `notifications/initialized`),
+  затем вызывает `tools/list` (и умеет `tools/call`).
+- `demos/day-16.ts` — сценарий: запускает `claude-in-mobile`, печатает
+  `serverInfo` и список инструментов.
+
+**Выводы:**
+- MCP — это JSON-RPC 2.0. Транспорт stdio: клиент пишет запросы в stdin
+  дочернего процесса, читает ответы из stdout, по одной строке на сообщение.
+- Жизненный цикл строго трёхфазный: `initialize` (обмен версиями протокола и
+  capabilities) → `notifications/initialized` (клиент готов) → обычные запросы.
+  Без `initialize` сервер не отвечает на `tools/list`.
+- Версия протокола согласуется в `initialize`: клиент шлёт `2025-06-18`, сервер
+  подтверждает ту же. Несовпадение — повод разорвать соединение.
+- claude-in-mobile v3.14.0 (profile `core`) отдаёт 14 инструментов: 7
+  мета-инструментов (`device`, `screen`, `input`, `ui`, `app`, `system`,
+  `flow`) + 7 REPL-инструментов (`repl_spawn`, `repl_send`, `repl_key`,
+  `repl_expect`, `repl_snapshot`, `repl_list`, `repl_kill`). Опциональные
+  модули (`browser`, `desktop`, `store`) подгружаются через
+  `device(enable_module)`.
+
+**Smoke-результат** (реальный прогон):
+```
+protocol: 2025-06-18
+server:   claude-in-mobile v3.14.0
+Инструментов доступно: 14
+```
+
+**Код:**
+- `challenge/src/core/mcp.ts` — `McpStdioClient`: connect/handshake/listTools/callTool/disconnect.
+- `challenge/src/demos/day-16.ts` — демо: запуск сервера + печать инструментов.
