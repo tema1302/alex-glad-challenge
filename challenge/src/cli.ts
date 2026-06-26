@@ -20,13 +20,15 @@ import { loadEnvUpward } from './core/env.js';
 loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
+import { runServer } from './demos/day-17-server.js';
 import { startRepl } from './repl.js';
-import { BlogDb, LlmClient } from './core/index.js';
+import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
+const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
 
 function printHelp(): void {
   console.log('Использование:');
@@ -37,22 +39,36 @@ function printHelp(): void {
   console.log('  chat             То же самое — глобальный чат, внутри: /day, /strategy, /usage');
   console.log('    --strategy <name>  стартовая стратегия: full | sliding | sticky | branching');
   console.log('    --system <text>    стартовый system-промпт');
-  console.log('  list             Список всех демо');
-  console.log('  latest           Прогнать последний день (один запуск сценария)');
-  console.log('  <id>             Прогнать демо конкретного дня (например day-03)');
-  console.log('  news             Блог-pipeline: RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг)');
+  console.log('  list             Список всех дней');
+  console.log('  latest           Прогнать последний день');
+  console.log('  day-NN           Прогнать демо конкретного дня (day-01, day-14, day-15, ...)');
+  console.log('                   ВАЖНО: дефис, не пробел! "day-14" — верно, "day 14" — не сработает.');
+  console.log('  news             Блог-pipeline: RSS → агент 1 → агент 2 → агент 3');
   console.log('    --hours <N>        окно свежести (по умолчанию 24)');
   console.log('    --top <N>          сколько топ-новостей брать (по умолчанию 5)');
   console.log('    --for <i>          индекс новости из топа для поста (0 = самая хайповая)');
   console.log('    --publish          опубликовать готовый пост в Telegram (только если verdict=ok)');
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
+  console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
+  console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  help             Эта справка');
 }
 
 interface ChatFlags {
   strategy?: string;
   system?: string;
+}
+
+/** Парсит --port <N> из argv; возвращает default если флаг отсутствует. */
+function parsePort(argv: string[], defaultPort: number): number {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port' && argv[i + 1]) {
+      const n = Number(argv[++i]);
+      if (Number.isInteger(n) && n > 0 && n < 65536) return n;
+    }
+  }
+  return defaultPort;
 }
 
 function parseChatFlags(argv: string[]): ChatFlags {
@@ -114,6 +130,15 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'mcp-server') {
+    const port = parsePort(argv.slice(1), 3001);
+    console.log(`▶ MCP HTTP-сервер: старт на http://localhost:${port}/mcp`);
+    console.log('  Инструменты: get_user_posts, get_todos, add_note, list_notes');
+    console.log('');
+    await runServer(port);
+    return;
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -124,7 +149,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, help');
   process.exit(1);
 }
 
@@ -149,10 +174,18 @@ async function runNewsCommand(argv: string[]): Promise<void> {
   const db = new BlogDb(DB_PATH);
   try {
     console.log('▶ Блог-pipeline: RSS → агент 1 → агент 2 → агент 3\n');
+    const profile = new ProfileManager(PROFILE_DIR);
+    const names = profile.list();
+    if (names.length > 0) {
+      profile.load(names.includes('default') ? 'default' : names[0]);
+    } else {
+      profile.create('default');
+    }
     const result = await runNewsPipeline(db, client, {
       maxAgeHours: flags.hours,
       topK: flags.top,
       writeForIndex: flags.forIndex,
+      profile,
     });
 
     console.log('\n=== Топ-новости (агент 1) ===');

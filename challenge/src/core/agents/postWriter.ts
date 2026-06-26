@@ -1,72 +1,162 @@
 // Агент 2. Написание поста в Telegram-канал.
-// Берёт выбранную новость и few-shot примеры стиля, генерирует пост
-// в стиле «Иди на факты глянь»: резкий, с иронией, с эмодзи и шапкой.
+// Профиль + few-shot примеры → промпт → пост.
+// Ключевая логика:
+//   1. ВСЕ поля профиля инжектируются отдельными блоками (не как текст).
+//   2. Few-shot примеры — главная опора стиля (few-shot сильнее инструкций).
+//   3. Структура промпта: system (роль + стиль) → few-shot → user (новость + правила).
+//   4. Длина жёстко контролируется: 100-500 символов, иначе LLM растягивает.
 
 import type { BlogDb, NewsRow, StyleSampleRow } from '../db.js';
 import { LlmClient, msg } from '../index.js';
+import type { ProfileManager } from '../profile.js';
 
 export interface WrittenPost {
   content: string;
   news: NewsRow;
 }
 
+export interface WriteOptions {
+  userTopic?: string;
+  userComment?: string;
+}
+
 export class PostWriter {
-  constructor(private client: LlmClient) {}
+  constructor(
+    private client: LlmClient,
+    private profile?: ProfileManager,
+  ) {}
 
-  async write(db: BlogDb, news: NewsRow): Promise<WrittenPost> {
-    const samples = db.styleSamples(5);
-    const fewShot = samples.length > 0
-      ? formatSamples(samples)
-      : DEFAULT_STYLE_HINT;
+  async write(db: BlogDb, news: NewsRow, opts: WriteOptions = {}): Promise<WrittenPost> {
+    const samples = db.styleSamples(3);
 
-    const prompt = `Ты автор Telegram-канала «Иди на факты глянь» про футбольный клуб Челси.
-Напиши пост под новость ниже, СТРОГО копируя стиль автора.
+    // --- Извлекаем ВСЕ поля профиля ---
+    const p = this.profile?.active;
+    const club = p?.любимый_клуб ?? 'Челси';
+    const style = p?.стиль ?? 'ироничный, резкий, с подколами';
+    const emojiRule = p?.эмодзи ?? 'без эмодзи';
+    const signature = p?.подпись ?? '@lookatfacts';
+    const lengthRule = p?.длина_постов ?? '100-500 символов';
+    const formatRule = p?.формат_абзацев ?? '2-4 предложения на абзац';
+    const taboos = p?.табу ?? 'без мата, без политики';
+    const humor = p?.приемы_юмора ?? '';
+    const language = p?.язык ?? 'русский';
 
-=== НОВОСТЬ ===
+    // --- System-промпт: роль + жёсткие правила стиля ---
+    const system = `Ты — автор Telegram-канала «Иди на факты глянь» про ФК «${club}».
+Ты пишешь ${style}. Язык: ${language}.
+
+ЖЁСТКИЕ ПРАВИЛА СТИЛЯ:
+- ОБЪЁМ: ${lengthRule}. Если тема мелкая — хватит и 100-150 символов. НЕ РАСТЯГИВАЙ.
+- ФОРМАТ: ${formatRule}.
+- Шапка поста: «Иди на факты глянь: » (без даты/времени). Первый символ ответа — «И».
+- ЭМОДЗИ: ${emojiRule}.
+- Подпись в конце: ${signature}
+${humor ? `- ПРИЁМЫ ЮМОРА которые используй: ${humor}.` : ''}
+- КАПСОМ выделять 1-2 ключевых слова для акцента (не весь текст).
+- Риторические вопросы, разговорная речь.
+- Не выдумывай факты, которых нет в источнике.
+- Не обрезай пост на полуслове.
+- ${taboos}.`;
+
+    // --- Few-shot: примеры реальных постов (главный учитель стиля) ---
+    const fewShotBlock = samples.length > 0
+      ? `=== ПРИМЕРЫ ТВОИХ ПОСТОВ (пиши ТАК ЖЕ) ===\n${formatSamples(samples)}\n`
+      : '';
+
+    // --- User-промпт: конкретная новость + доп. ввод ---
+    const topicBlock = opts.userTopic
+      ? `\nТЕМА ОТ АВТОРА (главный фокус): ${opts.userTopic}\n`
+      : '';
+    const commentBlock = opts.userComment
+      ? `\nКОММЕНТАРИЙ АВТОРА (обязательно вплавь в текст): ${opts.userComment}\n`
+      : '';
+
+    const user = `${fewShotBlock}
+=== НОВОСТЬ ДЛЯ ПОСТА ===
 Заголовок: ${news.title}
 Источник: ${news.source}
 Текст: ${news.summary}
-Дата: ${news.published_at}
+${topicBlock}${commentBlock}
+Напиши пост. Выдай ТОЛЬКО готовый текст поста, без преамбул.`;
 
-=== ОБРАЗЦЫ СТИЛЯ ===
-${fewShot}
+    const messages = [
+      msg.system(system),
+      msg.user(user),
+    ];
 
-=== ПРАВИЛА СТИЛЯ ===
-- Шапка: «Иди на факты глянь: » (без даты и времени).
-- Резкий, уверенный тон, с иронией и подколами.
-- Капсом ВЫДЕЛЯТЬ ключевые слова для акцента (УДОБНЫЙ, ЖЕСТКИХ, ПЛОХО и т.п.).
-- Эмодзи умеренно (🤣, 😁, 🙄, 🎙).
-- Риторические вопросы, разговорная речь (камон, мужики, ну прям).
-- В конце подпись: @lookatfacts
-- Объём: 6-15 предложений.
-- Если новость не про Челси — найди угол связи (Челси должен подписать, Челси сыграл бы так, Челси нужен такой игрок).
-- НЕ выдумывать факты, которых нет в новости (имена, цифры, счета берём только из источника).
-- НЕ ОБРЕЗАЙ пост на полуслове. Если не хватает места — сократи мысль, но допиши до конца.
+    // few-shot сильнее в user-сообщениях после system.
+    // Добавляем 1-2 примера как пары user/assistant для in-context learning.
+    if (samples.length > 0) {
+      const s1 = samples[0];
+      messages.push(msg.user('Напиши пост по образцу выше.'));
+      messages.push(msg.assistant(s1.text));
+      if (samples.length > 1) {
+        const s2 = samples[1];
+        messages.push(msg.user(`Напиши пост на тему: ${s2.text.slice(0, 60)}...`));
+        messages.push(msg.assistant(s2.text));
+      }
+      messages.push(msg.user(`${user}\n\nНапиши СВОЙ пост в том же стиле. Не повторяй примеры.`));
+    }
 
-=== ФОРМАТИРОВАНИЕ ===
-- Разбей пост на абзацы. КАЖДЫЕ 2-4 предложения — новый абзац, отделён пустой строкой.
-- НЕ пиши сплошным текстом в один абзац.
-- Между абзацами — пустая строка (двойной перенос \\n\\n).
+    const content = await this.client.chat(messages, {
+      temperature: 0.7,
+      maxTokens: 2000,
+    });
 
-Выдай только готовый пост, без преамбул и без markdown-разметки.
-НЕ пиши рассуждения типа "Drafting post" или "Body:". ПЕРВЫЙ символ ответа — "И" (от "Иди на факты глянь:").`;
-
-    const content = await this.client.chat(
-      [msg.user(prompt)],
-      { temperature: 0.7, maxTokens: 3000 },
-    );
-
-    return { content: content.trim(), news };
+    const cleaned = cleanPost(content);
+    return { content: cleaned, news };
   }
 }
 
-const DEFAULT_STYLE_HINT =
-  'Образцов нет в БД. Используй типичный стиль канала «Иди на факты глянь»: ' +
-  'резкий, ироничный, с риторическими вопросами, капсом для акцентов и эмодзи. ' +
-  'В конце подпись @lookatfacts.';
+function cleanPost(raw: string): string {
+  let s = raw.trim();
+  // Убираем markdown-обёртку.
+  s = s.replace(/^```[\s\S]*?\n/, '').replace(/\n```$/, '');
+  // Убираем "Вот пост:" и подобные преамбулы.
+  s = s.replace(/^(вот\s+пост|готово|пост:|пост готов)\s*:?\s*/i, '');
+  // Если нет шапки — добавляем.
+  if (!s.startsWith('Иди на факты глянь')) {
+    s = 'Иди на факты глянь: ' + s;
+  }
+  return s.trim();
+}
 
 function formatSamples(rows: StyleSampleRow[]): string {
   return rows
-    .map((s, i) => `--- ОБРАЗЕЦ ${i + 1} ---\n${s.text}`)
+    .map((s, i) => `--- ПРИМЕР ${i + 1} ---\n${s.text}`)
     .join('\n\n');
 }
+
+export async function rewritePost(
+  client: import('../index.js').LlmClient,
+  originalPost: string,
+  edit: string,
+  news: NewsRow,
+  profile?: import('../profile.js').ProfileManager,
+): Promise<string> {
+  const p = profile?.active;
+  const system = `Ты — автор Telegram-канала «Иди на факты глянь».
+${p ? `Стиль: ${p.стиль}. Эмодзи: ${p.эмодзи}. Подпись: ${p.подпись}.` : ''}
+Перепиши пост с учётом правок. Сохрани стиль, шапку, подпись.
+Объём: ${p?.длина_постов ?? '100-500 символов'}.
+НЕ выдумывай факты. НЕ обрезай на полуслове.`;
+
+  const user = `=== НОВОСТЬ (ИСТОЧНИК) ===
+Заголовок: ${news.title}
+Текст: ${news.summary}
+
+=== ТЕКУЩИЙ ПОСТ ===
+${originalPost}
+
+=== ПРАВКИ ===
+${edit}
+
+Выдай только готовый пост.`;
+
+  const content = await client.chat(
+    [msg.system(system), msg.user(user)],
+    { temperature: 0.7, maxTokens: 2000 },
+  );
+  return cleanPost(content);
+}
+

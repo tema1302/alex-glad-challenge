@@ -11,7 +11,18 @@ export { FullHistory, SlidingWindow, StickyFacts, Branching } from './strategy.j
 export { loadEnvUpward } from './env.js';
 export { Memory } from './memory.js';
 export type { LongTermEntry, MemorySnapshot } from './memory.js';
+export { ProfileManager } from './profile.js';
+export type { UserProfile } from './profile.js';
+export { Constraints } from './constraints.js';
+export type { Constraint, ConstraintType } from './constraints.js';
 
 export { BlogDb } from './db.js';
 export type { NewsRow, PostRow, StyleSampleRow } from './db.js';
+export { McpStdioClient } from './mcp.js';
+export type { McpTool, McpServerInfo, McpInitResult } from './mcp.js';
+export { McpStdioServer } from './mcpServer.js';
+export type { McpServerTool, McpToolResult, McpServerConfig } from './mcpServer.js';
+export { McpHttpServer } from './mcpHttpServer.js';
+export { McpHttpClient } from './mcpHttpClient.js';
+export type { McpHttpTool, McpHttpServerInfo } from './mcpHttpClient.js';
 export * as agents from './agents/index.js';
