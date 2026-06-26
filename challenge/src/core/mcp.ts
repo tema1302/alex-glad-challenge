@@ -84,6 +84,7 @@ export class McpStdioClient {
     private readonly command: string,
     private readonly args: string[] = [],
     private readonly env?: Record<string, string>,
+    private readonly useShell: boolean = process.platform === 'win32',
   ) {}
 
   /** Запускает дочерний процесс и проводит MCP-handshake. */
@@ -94,7 +95,7 @@ export class McpStdioClient {
     this.proc = spawn(this.command, this.args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       env: this.env ? { ...process.env, ...this.env } : process.env,
-      shell: process.platform === 'win32',
+      shell: this.useShell,
     });
 
     this.proc.stdout.setEncoding('utf-8');

@@ -386,3 +386,94 @@ server:   claude-in-mobile v3.14.0
 **Код:**
 - `challenge/src/core/mcp.ts` — `McpStdioClient`: connect/handshake/listTools/callTool/disconnect.
 - `challenge/src/demos/day-16.ts` — демо: запуск сервера + печать инструментов.
+
+---
+
+## День 17 — Первый инструмент MCP: standalone HTTP-сервер + агент-клиент
+**Дата:** 2026-06-24
+
+**Задание (полный текст):**
+> Реализуйте свой MCP-сервер вокруг любого API. Сделайте:
+> - регистрацию инструмента
+> - описание входных параметров
+> - возврат результата
+>
+> Подключите инструмент к своему агенту и:
+> - вызовите его из приложения
+> - получите и используйте результат
+>
+> Результат: Агент делает вызов к MCP-инструменту и получает результат.
+
+**Сделано:**
+- `core/mcpHttpServer.ts` — переиспользуемый MCP-сервер поверх HTTP
+  (Streamable HTTP transport): `McpHttpServer` на чистом `node:http`, без
+  зависимостей. Методы: `initialize`, `notifications/initialized`, `tools/list`,
+  `tools/call`. GET — статус-страница, OPTIONS — CORS, POST — JSON-RPC.
+- `core/mcpHttpClient.ts` — MCP-клиент поверх HTTP: `McpHttpClient` на встроенном
+  `fetch`. Методы: `connect` (handshake), `listTools`, `callTool`, `disconnect`.
+- `demos/day-17-server.ts` — standalone MCP HTTP-сервер `challenge-mcp-server`
+  с 4 инструментами: `get_user_posts`, `get_todos` (JSONPlaceholder API),
+  `add_note`, `list_notes` (локальный in-memory стор).
+- `demos/day-17.ts` — демо: агент подключается по HTTP к работающему серверу,
+  через текстовый протокол tool-calling вызывает инструменты, формулирует ответ.
+- CLI: команда `mcp-server [--port N]` запускает сервер в отдельном терминале.
+
+**Архитектура:**
+```
+Терминал 1:                          Терминал 2:
+┌─────────────────────────┐          ┌─────────────────────────┐
+│  MCP HTTP Server        │          │  Day-17 Demo (Agent)    │
+│  pnpm start -- mcp-server│         │  pnpm start -- day-17   │
+│  port :3001/mcp         │◄────────►│  HTTP MCP Client        │
+│                         │  HTTP    │                         │
+│  Tools:                 │  JSON-   │  1. connect (initialize)│
+│  • get_user_posts       │  RPC     │  2. listTools           │
+│  • get_todos            │  2.0     │  3. agent → CALL tool   │
+│  • add_note             │          │  4. callTool → result   │
+│  • list_notes           │          │  5. agent final answer  │
+└─────────────────────────┘          └─────────────────────────┘
+```
+
+**Выводы:**
+- Standalone HTTP MCP-сервер ближе к продакшену, чем stdio child-process.
+  Сервер живёт отдельно, слушает порт, отвечает на HTTP POST с JSON-RPC.
+  Так работают публичные MCP-серверы (mcp.inevitable.fyi и др.).
+- Транспорт Streamable HTTP: каждый JSON-RPC вызов — отдельный POST на `/mcp`.
+  Заголовок `MCP-Protocol-Version: 2025-06-18` обязателен. Уведомления (без id) →
+  HTTP 202. Запросы (с id) → JSON-RPC response в теле.
+- Текстовый протокол tool-calling (`CALL: name {json}` / `RESULT: text`) работает
+  надёжнее нативного `tools`-параметра. Агент узнаёт о всех инструментах из
+  system-промпта, сам выбирает нужный, парсит ответ регэкспом.
+- Разделение сервер/клиент = как у настоящих MCP: Claude Desktop подключается к
+  серверам, агент из демо подключается к нашему серверу. Сервер можно поднять на
+  VPS, поменять только URL — агент продолжит работать.
+
+**Smoke-результат** (2 терминала):
+```
+# Терминал 1
+$ pnpm --filter challenge start -- mcp-server
+▶ MCP HTTP-сервер: старт на http://localhost:3001/mcp
+MCP server 'challenge-mcp-server' listening on http://localhost:3001/mcp
+
+# Терминал 2
+$ pnpm --filter challenge start -- day-17
+✓ Сервер: challenge-mcp-server v1.0.0 (протокол 2025-06-18)
+✓ Инструментов: 4
+--- Сценарий 1 ---
+[итерация 1] LLM → CALL: get_user_posts {"userId":2}
+  → MCP-вызов... Found 10 post(s) for user 2.
+[итерация 2] LLM → финальный ответ: 10 постов
+--- Сценарий 2 ---
+[итерация 1] LLM → CALL: add_note {"text":"Изучить MCP протокол"}
+  → MCP-вызов... Note added with id 1
+[итерация 2] LLM → CALL: list_notes {}
+  → MCP-вызов... 1. [#1] Изучить MCP протокол
+[итерация 3] LLM → финальный ответ: заметка добавлена
+```
+
+**Код:**
+- `challenge/src/core/mcpHttpServer.ts` — `McpHttpServer`: HTTP, node:http, 0 deps.
+- `challenge/src/core/mcpHttpClient.ts` — `McpHttpClient`: HTTP, built-in fetch.
+- `challenge/src/demos/day-17-server.ts` — standalone сервер: 4 инструмента + JSONPlaceholder.
+- `challenge/src/demos/day-17.ts` — демо: агент-клиент, 2 сценария, tool-calling loop.
+- `challenge/src/cli.ts` — команда `mcp-server [--port N]`.

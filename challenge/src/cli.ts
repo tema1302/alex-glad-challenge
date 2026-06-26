@@ -20,6 +20,7 @@ import { loadEnvUpward } from './core/env.js';
 loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
+import { runServer } from './demos/day-17-server.js';
 import { startRepl } from './repl.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
@@ -49,12 +50,25 @@ function printHelp(): void {
   console.log('    --publish          опубликовать готовый пост в Telegram (только если verdict=ok)');
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
+  console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
+  console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  help             Эта справка');
 }
 
 interface ChatFlags {
   strategy?: string;
   system?: string;
+}
+
+/** Парсит --port <N> из argv; возвращает default если флаг отсутствует. */
+function parsePort(argv: string[], defaultPort: number): number {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--port' && argv[i + 1]) {
+      const n = Number(argv[++i]);
+      if (Number.isInteger(n) && n > 0 && n < 65536) return n;
+    }
+  }
+  return defaultPort;
 }
 
 function parseChatFlags(argv: string[]): ChatFlags {
@@ -116,6 +130,15 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'mcp-server') {
+    const port = parsePort(argv.slice(1), 3001);
+    console.log(`▶ MCP HTTP-сервер: старт на http://localhost:${port}/mcp`);
+    console.log('  Инструменты: get_user_posts, get_todos, add_note, list_notes');
+    console.log('');
+    await runServer(port);
+    return;
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -126,7 +149,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, help');
   process.exit(1);
 }
 
