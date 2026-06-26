@@ -1,0 +1,11 @@
+{
+  "name": "alex-glad-challenge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM challenge: понять, как нейронка работает изнутри",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
