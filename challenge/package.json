@@ -4,13 +4,26 @@
   "private": true,
   "type": "module",
   "description": "LLM challenge monolith: понять, как нейронка работает изнутри",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "bufferutil",
+      "es5-ext",
+      "esbuild",
+      "utf-8-validate"
+    ]
+  },
   "scripts": {
     "start": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/qrcode": "^1.5.6",
     "dotenv": "^16.4.0",
-    "fast-xml-parser": "^4.5.0"
+    "fast-xml-parser": "^4.5.0",
+    "qrcode": "^1.5.4",
+    "socks": "^2.8.9",
+    "telegram": "^2.26.22",
+    "undici": "^8.5.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

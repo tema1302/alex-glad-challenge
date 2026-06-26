@@ -25,4 +25,6 @@ export type { McpServerTool, McpToolResult, McpServerConfig } from './mcpServer.
 export { McpHttpServer } from './mcpHttpServer.js';
 export { McpHttpClient } from './mcpHttpClient.js';
 export type { McpHttpTool, McpHttpServerInfo } from './mcpHttpClient.js';
+export { TodoDb } from './todoDb.js';
+export type { TodoRow } from './todoDb.js';
 export * as agents from './agents/index.js';

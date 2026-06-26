@@ -21,6 +21,7 @@ loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { runServer } from './demos/day-17-server.js';
+import { runServer as runDay18Server } from './demos/day-18-server.js';
 import { startRepl } from './repl.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
@@ -51,6 +52,8 @@ function printHelp(): void {
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
   console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
+  console.log('    --port <N>         порт (по умолчанию 3001)');
+  console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  help             Эта справка');
 }
@@ -139,6 +142,13 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'scheduler') {
+    const port = parsePort(argv.slice(1), 3001);
+    console.log(`▶ Day-18 Scheduler MCP-сервер: старт на http://localhost:${port}/mcp`);
+    await runDay18Server(port);
+    return;
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -149,7 +159,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, help');
   process.exit(1);
 }
 
