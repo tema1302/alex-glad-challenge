@@ -31,6 +31,79 @@
 
 ---
 
+## День 18 — MCP-инструмент с фоновым выполнением и Telegram-напоминаниями
+**Дата:** 2026-06-27
+**Ветка:** `day-18`
+
+**Задание (полный текст):**
+> Создать MCP-инструмент с отложенным фоновым/периодическим выполнением,
+> который работает 24/7. Реализовать TODO-планировщик с напоминаниями
+> в Telegram: задачи с настраиваемым интервалом повторения (ежечасно,
+> ежедневно, еженедельно).
+
+**Сделано:**
+- MCP HTTP-сервер (`day-18-server.ts`) с 8 тулзами:
+  `add_todo`, `list_todos`, `complete_todo`, `dismiss_todo`, `delete_todo`,
+  `send_summary`, `call_remote_tool`, `list_remote_tools`.
+- SQLite-хранилище тудушек (`TodoDb`) с поддержкой recurring:
+  `daily` (раз в день), `weekly` (день недели), `hourly` (каждые N часов).
+- Фоновый цикл: каждые 60с проверяет due-задачи и отправляет в Telegram.
+- Telegram-отправка через HTTP-прокси (gost → socks5) + `undici.ProxyAgent`.
+- Systemd-сервисы на VPS: `mcp-server` (scheduler) + `gost-proxy` (HTTP↔socks5).
+- MCP endpoint доступен через Caddy: `https://api.memo7.ru/mcp`.
+
+**Параметры:**
+- Провайдер: Telegram Bot API через HTTP-прокси (GOST).
+- База: `challenge/.data/todos.sqlite`.
+- Прокси: `gost -L http://127.0.0.1:3128 -F socks5://...` (systemd `gost-proxy`).
+- Интервал: 60с проверка, реальная отправка — по расписанию тудушки.
+
+**Архитектура:**
+```
+Компьютер (curl) ──→ VPS: Caddy :443 → MCP :3001
+                                       │
+                                       ├── SQLite (todos.sqlite)
+                                       ├── фоновый цикл (60с)
+                                       └── Telegram Bot API
+                                            └── gost :3128 → socks5 → api.telegram.org
+```
+
+**Примеры использования (curl с компьютера):**
+```powershell
+# Добавить напоминание каждые 2 часа
+curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"add_todo","arguments":{"text":"Проверить почту","recurring":"hourly","interval_hours":2}}}'
+
+# Ежедневная задача
+curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"add_todo","arguments":{"text":"Сделать зарядку","recurring":"daily"}}}'
+
+# Посмотреть все задачи
+curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"list_todos","arguments":{}}}'
+
+# Отправить сводку вручную
+curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
+  -d '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"send_summary","arguments":{}}}'
+```
+
+**Выводы:**
+- socks5-туннель напрямую (SocksClient + TLS) работал в изоляции но завис в tsx+systemd —
+  не удалось найти причину, переключился на gost HTTP-прокси.
+- undici 8.x несовместим с Node 22 встроенным fetch (invalid onRequestStart) —
+  нужен undici 7.x.
+- `Connection: close` + Content-Length парсинг — обязательны для raw HTTP поверх TLS,
+  иначе `end` event не приходит.
+- MCP JSON-RPC протокол — простой и рабочий способ дать CLI-доступ к серверным
+  тулзам без отдельного SDK.
+
+**Код:**
+- `challenge/src/core/todoDb.ts` — SQLite БД тудушек.
+- `challenge/src/core/agents/telegram.ts` — отправка в Telegram.
+- `challenge/src/demos/day-18-server.ts` — MCP HTTP-сервер с 8 тулзами.
+- `challenge/src/demos/day-18.ts` — оригинальный день 18 (демо).
+- Команда: `pnpm --filter challenge start -- scheduler`
+
 ## День 2 — Формат ответа
 **Дата:** 2026-06-02
 
