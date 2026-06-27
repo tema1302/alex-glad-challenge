@@ -70,7 +70,7 @@ export async function runServer(port = 3001): Promise<void> {
         },
         recurring: {
           type: 'string',
-          enum: ['daily', 'weekly'],
+          enum: ['daily', 'weekly', 'hourly'],
           description: 'Recurring frequency (optional)',
         },
         day_of_week: {
@@ -78,6 +78,11 @@ export async function runServer(port = 3001): Promise<void> {
           minimum: 0,
           maximum: 6,
           description: 'Day of week for weekly recurring (0=Sunday, 6=Saturday, optional)',
+        },
+        interval_hours: {
+          type: 'integer',
+          minimum: 1,
+          description: 'Interval in hours for hourly recurring (optional, default=1).',
         },
       },
       required: ['text'],
@@ -93,12 +98,14 @@ export async function runServer(port = 3001): Promise<void> {
 
       const scheduledAt = typeof args.scheduled_at === 'string' ? args.scheduled_at : undefined;
       const recurring =
-        typeof args.recurring === 'string' && (args.recurring === 'daily' || args.recurring === 'weekly')
+        typeof args.recurring === 'string' && (args.recurring === 'daily' || args.recurring === 'weekly' || args.recurring === 'hourly')
           ? args.recurring
           : undefined;
       const dayOfWeek = typeof args.day_of_week === 'number' ? args.day_of_week : undefined;
+      const intervalHours =
+        typeof args.interval_hours === 'number' ? args.interval_hours : undefined;
 
-      const id = todoDb.addTodo(text, scheduledAt, recurring, dayOfWeek);
+      const id = todoDb.addTodo(text, scheduledAt, recurring, dayOfWeek, intervalHours);
       return {
         content: [{ type: 'text', text: `Todo added with id ${id}: ${text}` }],
       };
