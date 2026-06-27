@@ -27,6 +27,8 @@ import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
+import { McpHttpClient } from './core/mcpHttpClient.js';
+import { parseTodoArgs } from './core/todoParser.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
@@ -55,6 +57,24 @@ function printHelp(): void {
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
   console.log('    --port <N>         порт (по умолчанию 3001)');
+  console.log('');
+  console.log('  Команды для MCP-сервера (по умолчанию: https://api.memo7.ru/mcp):');
+  console.log('  todo <text>      Добавить задачу (разовая)');
+  console.log('    --daily            повторять каждый день');
+  console.log('    --weekly <day>     повторять раз в неделю (0=Вс … 6=Сб)');
+  console.log('    --hourly [N]        повторять каждые N часов (по умолчанию 1)');
+  console.log('  remind <text>    Добавить напоминание (синоним todo)');
+  console.log('  todos [--pending|--done|--dismissed]');
+  console.log('                   Список задач (опциональный фильтр по статусу)');
+  console.log('  done <id>        Завершить задачу');
+  console.log('  dismiss <id>     Отклонить задачу');
+  console.log('  rm-todo <id>     Удалить задачу');
+  console.log('  summary          Отправить сводку ожидающих задач в Telegram');
+  console.log('  mcp <tool> [args...]');
+  console.log('                   Вызвать любой MCP-инструмент напрямую');
+  console.log('    --json             вывести сырой JSON-ответ');
+  console.log('  mcp-tools        Список всех MCP-инструментов на сервере');
+  console.log('    --server <url>     для todo/remind/mcp: переопределить URL');
   console.log('  help             Эта справка');
 }
 
@@ -81,6 +101,199 @@ function parseChatFlags(argv: string[]): ChatFlags {
     if (argv[i] === '--system' && argv[i + 1]) { flags.system = argv[++i]; continue; }
   }
   return flags;
+}
+
+// --- MCP-клиент: команды для общения с сервером ---
+
+const DEFAULT_MCP_URL = 'https://api.memo7.ru/mcp';
+
+/** Извлечь --server <url> из argv; возвращает tuple [url, remainder]. */
+function parseServerUrl(argv: string[]): [string, string[]] {
+  const idx = argv.indexOf('--server');
+  if (idx >= 0 && argv[idx + 1]) {
+    return [argv[idx + 1], [...argv.slice(0, idx), ...argv.slice(idx + 2)]];
+  }
+  return [DEFAULT_MCP_URL, argv];
+}
+
+/** Подключиться к MCP-серверу и вызвать tool. */
+async function callMcpTool(serverUrl: string, toolName: string, args?: Record<string, unknown>): Promise<string> {
+  const client = new McpHttpClient(serverUrl);
+  try {
+    await client.connect();
+    const result = await client.callTool(toolName, args);
+    return result;
+  } finally {
+    client.disconnect();
+  }
+}
+
+/** Подключиться и вызвать tool, вернув сырой JSON-RPC response. */
+async function callMcpToolRaw(serverUrl: string, toolName: string, args?: Record<string, unknown>): Promise<unknown> {
+  const client = new McpHttpClient(serverUrl);
+  try {
+    await client.connect();
+    // @ts-expect-error — доступ к внутреннему request для сырого ответа
+    const resp = await client.request('tools/call', { name: toolName, arguments: args ?? {} });
+    return resp;
+  } finally {
+    client.disconnect();
+  }
+}
+
+async function runMcpCommand(argv: string[]): Promise<void> {
+  const [serverUrl, rest] = parseServerUrl(argv);
+  const cmd = rest[0];
+  const tail = rest.slice(1);
+
+  try {
+    switch (cmd) {
+      // --- todo / remind: добавить задачу ---
+      case 'todo':
+      case 'remind': {
+        const { text, args: parsed } = parseTodoArgs(tail);
+        if (!text) {
+          console.error('Укажи текст задачи: pnpm start -- todo "Сделать зарядку"');
+          process.exit(1);
+        }
+
+        const result = await callMcpTool(serverUrl, 'add_todo', parsed);
+        console.log(result);
+        break;
+      }
+
+      // --- todos: список ---
+      case 'todos': {
+        const status = tail.find((a) => a === '--pending' || a === '--done' || a === '--dismissed');
+        const statusMap: Record<string, string> = { '--pending': 'pending', '--done': 'done', '--dismissed': 'dismissed' };
+        const args = status ? { status: statusMap[status] } : {};
+        const result = await callMcpTool(serverUrl, 'list_todos', args);
+        console.log(result);
+        break;
+      }
+
+      // --- done: завершить ---
+      case 'done': {
+        const id = Number(tail.filter((a) => !a.startsWith('--'))[0]);
+        if (!id || isNaN(id)) {
+          console.error('Укажи ID: pnpm start -- done 3');
+          process.exit(1);
+        }
+        const result = await callMcpTool(serverUrl, 'complete_todo', { id });
+        console.log(result);
+        break;
+      }
+
+      // --- dismiss: отклонить ---
+      case 'dismiss': {
+        const id = Number(tail.filter((a) => !a.startsWith('--'))[0]);
+        if (!id || isNaN(id)) {
+          console.error('Укажи ID: pnpm start -- dismiss 3');
+          process.exit(1);
+        }
+        const result = await callMcpTool(serverUrl, 'dismiss_todo', { id });
+        console.log(result);
+        break;
+      }
+
+      // --- rm-todo: удалить ---
+      case 'rm-todo': {
+        const id = Number(tail.filter((a) => !a.startsWith('--'))[0]);
+        if (!id || isNaN(id)) {
+          console.error('Укажи ID: pnpm start -- rm-todo 3');
+          process.exit(1);
+        }
+        const result = await callMcpTool(serverUrl, 'delete_todo', { id });
+        console.log(result);
+        break;
+      }
+
+      // --- summary: отправить в Telegram ---
+      case 'summary': {
+        const result = await callMcpTool(serverUrl, 'send_summary', {});
+        console.log(result);
+        break;
+      }
+
+      // --- mcp: произвольный вызов ---
+      case 'mcp': {
+        const toolName = tail[0];
+        if (!toolName) {
+          console.error('Укажи имя инструмента: pnpm start -- mcp add_todo');
+          process.exit(1);
+        }
+        const toolArgsRaw = tail.slice(1);
+        let toolArgs: Record<string, unknown> = {};
+
+        // Парсим key=value пары, иначе всё как строка
+        if (toolArgsRaw.length > 0) {
+          const jsonIdx = toolArgsRaw.indexOf('--json');
+          const argsPart = jsonIdx >= 0 ? toolArgsRaw.slice(0, jsonIdx) : toolArgsRaw;
+          const useJson = jsonIdx >= 0;
+
+          if (argsPart.length === 1) {
+            // Один аргумент — пытаемся распарсить как JSON, иначе как строку
+            try {
+              toolArgs = JSON.parse(argsPart[0]);
+            } catch {
+              toolArgs = { text: argsPart[0] };
+            }
+          } else {
+            // Несколько аргументов — key=value
+            for (const part of argsPart) {
+              const eqIdx = part.indexOf('=');
+              if (eqIdx > 0) {
+                const key = part.slice(0, eqIdx);
+                const val: unknown = part.slice(eqIdx + 1);
+                // Пытаемся парсить значение
+                try { toolArgs[key] = JSON.parse(val as string); } catch { toolArgs[key] = val; }
+              }
+            }
+          }
+
+          if (useJson) {
+            const raw = await callMcpToolRaw(serverUrl, toolName, toolArgs);
+            console.log(JSON.stringify(raw, null, 2));
+          } else {
+            const result = await callMcpTool(serverUrl, toolName, toolArgs);
+            console.log(result);
+          }
+        } else {
+          const result = await callMcpTool(serverUrl, toolName, {});
+          console.log(result);
+        }
+        break;
+      }
+
+      // --- mcp-tools: список инструментов ---
+      case 'mcp-tools': {
+        const client = new McpHttpClient(serverUrl);
+        try {
+          await client.connect();
+          const tools = await client.listTools();
+          if (tools.length === 0) {
+            console.log('Нет инструментов на сервере.');
+          } else {
+            console.log(`Инструменты (${tools.length}):`);
+            for (const t of tools) {
+              console.log(`  ${t.name}${t.description ? ` — ${t.description}` : ''}`);
+            }
+          }
+        } finally {
+          client.disconnect();
+        }
+        break;
+      }
+
+      default:
+        console.error(`Неизвестная MCP-команда: ${cmd}`);
+        process.exit(1);
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`MCP ошибка: ${msg}`);
+    process.exit(1);
+  }
 }
 
 async function main(): Promise<void> {
@@ -149,6 +362,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- MCP-клиент команды ---
+  if (['todo', 'remind', 'todos', 'done', 'dismiss', 'rm-todo', 'summary', 'mcp', 'mcp-tools'].includes(arg)) {
+    await runMcpCommand(argv);
+    return;
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -159,7 +378,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, todo, remind, todos, done, summary, mcp, mcp-tools, help');
   process.exit(1);
 }
 

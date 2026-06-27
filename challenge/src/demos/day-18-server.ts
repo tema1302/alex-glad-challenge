@@ -20,7 +20,6 @@ import { TodoDb } from '../core/todoDb.js';
 import { publishPost, isTelegramConfigured } from '../core/agents/telegram.js';
 
 const EVERYTHING_SERVER_URL = 'https://everything.mcp.inevitable.fyi/mcp';
-const BG_INTERVAL_MS = 60_000;
 
 /**
  * Создаёт и запускает standalone MCP HTTP-сервер дня 18.
@@ -357,45 +356,9 @@ export async function runServer(port = 3001): Promise<void> {
     port,
   });
 
-  // --- Фоновый цикл: проверка due-задач каждые 60 секунд ---
-
-  const bgTimer = setInterval(async () => {
-    try {
-      const due = todoDb.getDueTodos();
-      if (due.length === 0) return;
-
-      console.error(`[bg] ${due.length} due todo(s) found`);
-
-      const lines = due.map((r) => `- ${r.text} [id=${r.id}]`);
-      const summary = `⏰ Due tasks (${due.length}):\n${lines.join('\n')}`;
-
-      if (isTelegramConfigured()) {
-        const result = await publishPost(summary);
-        if (result.ok) {
-          for (const row of due) {
-            todoDb.markSent(row.id);
-          }
-          console.error(`[bg] Sent ${due.length} due todo(s) to Telegram`);
-        } else {
-          console.error(`[bg] Telegram send failed: ${result.error}`);
-        }
-      } else {
-        console.error(`[bg] Telegram not configured, skipping send`);
-        // Still mark sent so we don't reprocess every cycle
-        for (const row of due) {
-          todoDb.markSent(row.id);
-        }
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[bg] Error in background cycle: ${msg}`);
-    }
-  }, BG_INTERVAL_MS);
-
   // --- Запуск и shutdown ---
 
   const shutdown = (): void => {
-    clearInterval(bgTimer);
     server.stop();
     todoDb.close();
     remoteMcp.disconnect();

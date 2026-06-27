@@ -27,4 +27,6 @@ export { McpHttpClient } from './mcpHttpClient.js';
 export type { McpHttpTool, McpHttpServerInfo } from './mcpHttpClient.js';
 export { TodoDb } from './todoDb.js';
 export type { TodoRow } from './todoDb.js';
+export { parseTodoArgs } from './todoParser.js';
+export type { ParsedTodoArgs } from './todoParser.js';
 export * as agents from './agents/index.js';
