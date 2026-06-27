@@ -48,6 +48,12 @@
 - SQLite-хранилище тудушек (`TodoDb`) с поддержкой recurring:
   `daily` (раз в день), `weekly` (день недели), `hourly` (каждые N часов).
 - Фоновый цикл: каждые 60с проверяет due-задачи и отправляет в Telegram.
+- **Регулярный ежедневный summary** (`runDailySummary`): фоновый таймер каждые
+  5 мин проверяет — если локальный час ≥ `SUMMARY_HOUR` (по умолчанию 9) и сегодня
+  сводка ещё не отправлялась (дата в `todo_meta.last_daily_summary_date`), шлёт
+  список всех pending-задач в Telegram одним сообщением. Guard по дате убирает
+  дубль в тот же день; пустой список не отправляется. Заменил старый «spam-loop»
+  (отправка due-задач каждые 60с), который мешал жить.
 - Telegram-отправка через HTTP-прокси (gost → socks5) + `undici.ProxyAgent`.
 - Systemd-сервисы на VPS: `mcp-server` (scheduler) + `gost-proxy` (HTTP↔socks5).
 - MCP endpoint доступен через Caddy: `https://api.memo7.ru/mcp`.
@@ -56,14 +62,15 @@
 - Провайдер: Telegram Bot API через HTTP-прокси (GOST).
 - База: `challenge/.data/todos.sqlite`.
 - Прокси: `gost -L http://127.0.0.1:3128 -F socks5://...` (systemd `gost-proxy`).
-- Интервал: 60с проверка, реальная отправка — по расписанию тудушки.
+- Интервал: проверка daily-summary каждые 5 мин, реальная отправка — раз в день
+  после `SUMMARY_HOUR` (по умолчанию 9). `SUMMARY_HOUR` задаётся в `.env` (0–23).
 
 **Архитектура:**
 ```
 Компьютер (curl) ──→ VPS: Caddy :443 → MCP :3001
                                        │
                                        ├── SQLite (todos.sqlite)
-                                       ├── фоновый цикл (60с)
+                                       ├── daily-summary таймер (5 мин → раз в день)
                                        └── Telegram Bot API
                                             └── gost :3128 → socks5 → api.telegram.org
 ```

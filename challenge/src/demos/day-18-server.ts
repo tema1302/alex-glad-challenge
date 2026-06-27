@@ -10,7 +10,10 @@
 //   - send_summary (Telegram)
 //   - call_remote_tool, list_remote_tools (MCP→MCP)
 //
-// Фоновый цикл каждые 60 секунд проверяет due-задачи и отправляет в Telegram.
+// Регулярный ежедневный summary: фоновый цикл (каждые 5 мин) проверяет,
+// не настал ли час отправки (SUMMARY_HOUR, по умолчанию 9). Если настал и
+// сегодня сводка ещё не уходила — отправляет список pending-задач в Telegram
+// и фиксирует дату отправки в todo_meta, чтобы не дублировать в тот же день.
 
 import path from 'node:path';
 import { McpHttpServer } from '../core/mcpHttpServer.js';
@@ -356,9 +359,50 @@ export async function runServer(port = 3001): Promise<void> {
     port,
   });
 
+  // --- Регулярный ежедневный summary в Telegram ---
+
+  const SUMMARY_CHECK_MS = 5 * 60_000; // проверка каждые 5 минут
+  const parsedHour = Number(process.env.SUMMARY_HOUR);
+  const SUMMARY_HOUR =
+    Number.isInteger(parsedHour) && parsedHour >= 0 && parsedHour <= 23 ? parsedHour : 9;
+  const META_KEY = 'last_daily_summary_date';
+
+  /** Локальная дата YYYY-MM-DD (консистентна с getHours — тоже локальный час). */
+  const localDate = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+  const runDailySummary = async (): Promise<void> => {
+    if (!isTelegramConfigured()) return;
+    const now = new Date();
+    if (now.getHours() < SUMMARY_HOUR) return; // ещё не настал час отправки
+
+    const today = localDate(now);
+    if (todoDb.getMeta(META_KEY) === today) return; // сегодня уже отправляли
+
+    const rows = todoDb.listTodos('pending');
+    if (rows.length === 0) return; // нечего отправлять — дату не фиксируем, ждём задачи
+
+    const result = await publishPost(todoDb.getPendingSummary());
+    if (result.ok) {
+      todoDb.setMeta(META_KEY, today);
+      console.error(`[daily-summary] Sent ${rows.length} pending todo(s) to Telegram`);
+    } else {
+      console.error(`[daily-summary] Telegram send failed: ${result.error}`);
+    }
+  };
+
+  const bgTimer = setInterval(() => {
+    void runDailySummary().catch((err) => {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[daily-summary] Error: ${msg}`);
+    });
+  }, SUMMARY_CHECK_MS);
+  void runDailySummary(); // сразу при старте — если час уже наступил
+
   // --- Запуск и shutdown ---
 
   const shutdown = (): void => {
+    clearInterval(bgTimer);
     server.stop();
     todoDb.close();
     remoteMcp.disconnect();

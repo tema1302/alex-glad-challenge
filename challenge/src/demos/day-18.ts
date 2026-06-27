@@ -63,7 +63,7 @@ export const demo: Demo = {
       console.log(`• Клиент подключается по HTTP к ${MCP_URL}`);
       console.log(`• Инструменты (${tools.length}): ${tools.map((t) => t.name).join(', ')}`);
       console.log('• MCP→MCP: day-18 сервер проксирует вызовы к Everything Server');
-      console.log('• Фоновый цикл каждые 60с проверяет due-задачи и шлёт в Telegram');
+      console.log('• Регулярный daily-summary: раз в день (SUMMARY_HOUR) шлёт сводку pending в Telegram');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.log(`\nMCP-сервер не запущен или ошибка: ${msg}`);

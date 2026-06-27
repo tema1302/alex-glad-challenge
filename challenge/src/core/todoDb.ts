@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS todos (
 
 CREATE INDEX IF NOT EXISTS idx_todos_status ON todos(status);
 CREATE INDEX IF NOT EXISTS idx_todos_scheduled ON todos(scheduled_at);
+
+CREATE TABLE IF NOT EXISTS todo_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `;
 
 const MIGRATE_INTERVAL = `ALTER TABLE todos ADD COLUMN interval_hours INTEGER`;
@@ -128,6 +133,22 @@ export class TodoDb {
     this.db
       .prepare('UPDATE todos SET last_sent = ? WHERE id = ?')
       .run(now, id);
+  }
+
+  getMeta(key: string): string | null {
+    const row = this.db
+      .prepare('SELECT value FROM todo_meta WHERE key = ?')
+      .get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  }
+
+  setMeta(key: string, value: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO todo_meta (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(key, value);
   }
 
   getPendingSummary(): string {
