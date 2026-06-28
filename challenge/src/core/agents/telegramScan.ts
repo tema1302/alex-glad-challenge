@@ -9,8 +9,6 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { TelegramClient } from 'telegram';
-import { StringSession } from 'telegram/sessions';
 
 export interface ScannedMessage {
   from: string;
@@ -69,7 +67,9 @@ export function isScanConfigured(): boolean {
   return Boolean(process.env.TG_API_ID && process.env.TG_API_HASH && resolveSession());
 }
 
-/** Подключить MTProto-клиента (один раз). false — если не настроено. */
+/** Подключить MTProto-клиента (один раз). false — если не настроено.
+ * GramJS грузится лениво, чтобы сервер поднимался даже без установленного
+ * `telegram` (или при сбое сети/сессии) — scan-тул просто деградирует. */
 export async function connectScanClient(): Promise<boolean> {
   if (!isScanConfigured()) return false;
   if (client) return true;
@@ -78,11 +78,21 @@ export async function connectScanClient(): Promise<boolean> {
   if (!sessionStr) return false;
   const apiId = Number(process.env.TG_API_ID);
   const apiHash = process.env.TG_API_HASH as string;
-  const session = new StringSession(sessionStr);
-  const raw = new TelegramClient(session, apiId, apiHash, { connectionRetries: 5 });
-  await raw.connect();
-  client = raw as unknown as ScanClient;
-  return true;
+
+  try {
+    const { TelegramClient } = await import('telegram');
+    const { StringSession } = await import('telegram/sessions');
+    const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+      connectionRetries: 5,
+    });
+    await raw.connect();
+    client = raw as unknown as ScanClient;
+    return true;
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    console.error(`MTProto connect failed: ${m}`);
+    return false;
+  }
 }
 
 export async function disconnectScanClient(): Promise<void> {
@@ -111,7 +121,10 @@ function msgDateIso(m: MsgLike): string {
  * `chat` — username/@username, числовой id или заголовок (ищется в диалогах).
  */
 export async function scanChatMessages(chat: string, limit: number): Promise<ScanResult> {
-  if (!client) throw new Error('scan client not connected');
+  if (!client) {
+    const ok = await connectScanClient();
+    if (!ok || !client) throw new Error('scan client not connected (MTProto unavailable)');
+  }
 
   let entity: unknown;
   let title = chat;
