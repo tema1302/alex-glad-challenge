@@ -199,6 +199,15 @@ export async function connectScanClient(): Promise<boolean> {
     };
 
     const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, clientParams);
+    // Подменяем IP DC на домен — прокси пропускает домены Telegram, но блокирует IP DC.
+    // api.telegram.org → DC1 (149.154.167.51), порт 443 для WSS.
+    (raw as any)._dcOptions = [
+      { id: 1, ipAddress: 'api.telegram.org', port: 443 },
+      { id: 2, ipAddress: 'api.telegram.org', port: 443 },
+      { id: 3, ipAddress: 'api.telegram.org', port: 443 },
+      { id: 4, ipAddress: 'api.telegram.org', port: 443 },
+      { id: 5, ipAddress: 'api.telegram.org', port: 443 },
+    ];
     await Promise.race([
       raw.connect(),
       new Promise<never>((_, reject) =>
