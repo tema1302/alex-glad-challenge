@@ -64,56 +64,74 @@ function TcpTunnelWebSockets(tunnelHost: string, tunnelPort: number) {
     private socket: net.Socket | null = null;
     private stream = Buffer.alloc(0);
     private closed = true;
-    private canRead: Promise<boolean>;
+    private resolveRead: (() => void) | null = null;
+    private readWait: Promise<void>;
 
     constructor() {
-      this.canRead = new Promise(() => {});
+      this.readWait = new Promise(() => {});
+    }
+
+    /** Signal that data is available for reading. */
+    private wake(): void {
+      if (this.resolveRead) {
+        const fn = this.resolveRead;
+        this.resolveRead = null;
+        fn();
+      }
+    }
+
+    /** Wait until data is available, then return. */
+    private async waitData(): Promise<void> {
+      if (this.stream.length > 0) return;
+      this.readWait = new Promise<void>((resolve) => { this.resolveRead = resolve; });
+      await this.readWait;
     }
 
     async readExactly(number: number): Promise<Buffer> {
       let data = Buffer.alloc(0);
       while (number > 0) {
-        const chunk = await this.read(number);
-        data = Buffer.concat([data, chunk]);
-        number -= chunk.length;
+        await this.waitData();
+        if (this.closed) throw closeError;
+        const take = Math.min(number, this.stream.length);
+        data = Buffer.concat([data, this.stream.slice(0, take)]);
+        this.stream = this.stream.slice(take);
+        number -= take;
         if (number < 0) number = 0;
       }
       return data;
     }
 
     async read(number: number): Promise<Buffer> {
-      if (this.closed) throw closeError;
-      await this.canRead;
+      await this.waitData();
       if (this.closed) throw closeError;
       const ret = this.stream.slice(0, number);
       this.stream = this.stream.slice(number);
-      if (this.stream.length === 0) {
-        this.canRead = new Promise<boolean>(() => {});
-      }
       return ret;
     }
 
     async readAll(): Promise<Buffer> {
-      if (this.closed || !(await this.canRead)) throw closeError;
+      await this.waitData();
+      if (this.closed) throw closeError;
       const ret = this.stream;
       this.stream = Buffer.alloc(0);
-      this.canRead = new Promise<boolean>(() => {});
       return ret;
     }
 
     async connect(_port: number, _ip: string, _testServers = false): Promise<this> {
       this.stream = Buffer.alloc(0);
-      this.canRead = new Promise<boolean>(() => {});
       this.closed = false;
+      this.resolveRead = null;
 
       return new Promise<this>((resolve, reject) => {
         const sock = net.connect(tunnelPort, tunnelHost, () => {
-          this.receive();
+          sock.on('data', (chunk: Buffer) => {
+            this.stream = Buffer.concat([this.stream, chunk]);
+            this.wake();
+          });
+          sock.on('error', (err) => reject(err));
+          sock.on('close', () => { this.closed = true; this.wake(); });
           resolve(this);
         });
-
-        sock.on('error', (err) => reject(err));
-        sock.on('close', () => { this.closed = true; });
         this.socket = sock;
       });
     }
@@ -123,17 +141,10 @@ function TcpTunnelWebSockets(tunnelHost: string, tunnelPort: number) {
       this.socket?.write(data);
     }
 
-    private receive(): void {
-      if (!this.socket) return;
-      this.socket.on('data', (chunk: Buffer) => {
-        this.stream = Buffer.concat([this.stream, chunk]);
-        (this as any).canRead = Promise.resolve(true);
-      });
-    }
-
     async close(): Promise<void> {
       this.socket?.destroy();
       this.closed = true;
+      this.wake();
     }
 
     toString(): string { return 'TcpTunnelWebSocket'; }
@@ -199,7 +210,7 @@ export async function connectScanClient(): Promise<boolean> {
     await Promise.race([
       raw.connect(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('MTProto connect timed out (20s)')), 20_000),
+        setTimeout(() => reject(new Error('MTProto connect timed out (20s)')), 45_000),
       ),
     ]);
     client = raw as unknown as ScanClient;
