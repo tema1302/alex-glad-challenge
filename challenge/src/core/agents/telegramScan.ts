@@ -83,9 +83,14 @@ export async function connectScanClient(): Promise<boolean> {
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions');
     const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
-      connectionRetries: 5,
+      connectionRetries: 3,
     });
-    await raw.connect();
+    await Promise.race([
+      raw.connect(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('MTProto connect timed out (10s)')), 10_000),
+      ),
+    ]);
     client = raw as unknown as ScanClient;
     return true;
   } catch (err) {
