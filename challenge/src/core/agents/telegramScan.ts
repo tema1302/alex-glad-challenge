@@ -56,7 +56,7 @@ function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebS
     if (!_agent) {
       const { HttpsProxyAgent } = await import('https-proxy-agent');
       _agent = new HttpsProxyAgent(proxyUrl);
-      const ws = await import('websocket');
+      const ws = await import('websocket/index.js');
       _w3cwebsocket = (ws as any).w3cwebsocket;
     }
   }
