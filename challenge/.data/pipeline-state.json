@@ -1,0 +1,89 @@
+{
+  "stage": "planning",
+  "step": "Выбор новости",
+  "expectedAction": "/pipeline pick <номер> (0..4)",
+  "newsRanked": [
+    {
+      "news": {
+        "id": 320,
+        "url": "https://www.championat.com/football/news-6514332-luchshij-moment-v-moej-karere-sajbari-ob-igre-za-sbornuyu-marokko-na-chm-2026.html",
+        "title": "«Лучший момент в моей карьере». Сайбари — об игре за сборную Марокко на ЧМ-2026",
+        "summary": "Полузащитник сборной Марокко Исмаэль Сайбари поделился впечатлениями от матча 2-го тура группы С чемпионата мира по футболу 2026 года с национальной командой Шотландии (1:0).",
+        "published_at": "2026-06-20T16:25:53.000Z",
+        "source": "championat.com",
+        "used": 0,
+        "created_at": "2026-06-20 16:28:45"
+      },
+      "score": 10,
+      "why": "ЧМ-2026, топ-матч Марокко"
+    },
+    {
+      "news": {
+        "id": 316,
+        "url": "https://www.championat.com/football/news-6514322-stryomnyj-match-genich-vyskazalsya-pered-igroj-niderlandy-shveciya-na-chm-2026.html",
+        "title": "«Стрёмный матч». Генич высказался перед игрой Нидерланды — Швеция на ЧМ-2026",
+        "summary": "Известный российский комментатор Константин Генич высказался перед матчем 2-го тура группы F чемпионата мира по футболу 2026 года между сборными Нидерландов и Швеции.",
+        "published_at": "2026-06-20T15:55:57.000Z",
+        "source": "championat.com",
+        "used": 0,
+        "created_at": "2026-06-20 16:03:09"
+      },
+      "score": 9,
+      "why": "ЧМ-2026, Нидерланды-Швеция"
+    },
+    {
+      "news": {
+        "id": 317,
+        "url": "https://www.championat.com/football/news-6514312-zheremi-doku-vremenno-pokinul-raspolozhenie-sbornoj-belgii-na-chm-2026.html",
+        "title": "Жереми Доку временно покинул расположение сборной Бельгии на ЧМ-2026",
+        "summary": "Вингер «Манчестер Сити» и сборной Бельгии Жереми Доку временно уехал из лагеря национальной команды на чемпионате мира — 2026, чтобы присутствовать на рождении своего первого ребёнка.",
+        "published_at": "2026-06-20T15:52:00.000Z",
+        "source": "championat.com",
+        "used": 0,
+        "created_at": "2026-06-20 16:03:09"
+      },
+      "score": 8,
+      "why": "Топ-игрок Доку, ЧМ"
+    },
+    {
+      "news": {
+        "id": 321,
+        "url": "https://www.championat.com/football/news-6514338-real-sdelal-zayavlenie-na-fone-sluhov-o-vozmozhnom-transfere-majkla-olise.html",
+        "title": "«Реал» сделал заявление на фоне слухов о возможном трансфере Майкла Олисе",
+        "summary": "Мадридский «Реал» выпустил заявление на фоне слухов о возможном трансфере флангового нападающего «Баварии» Майкла Олисе.",
+        "published_at": "2026-06-20T16:20:18.000Z",
+        "source": "championat.com",
+        "used": 0,
+        "created_at": "2026-06-20 16:28:45"
+      },
+      "score": 7,
+      "why": "Трансфер Реал-Олисе"
+    },
+    {
+      "news": {
+        "id": 313,
+        "url": "https://www.championat.com/football/news-6514306-bubnov-ocenil-perspektivy-sbornoj-brazilii-na-chm-2026-posle-dvuh-sygrannyh-turov.html",
+        "title": "Бубнов оценил перспективы сборной Бразилии на ЧМ-2026 после двух сыгранных туров",
+        "summary": "Футбольный эксперт Александр Бубнов оценил перспективы сборной Бразилии на чемпионате мира 2026 года после двух сыгранных туров в группе С.",
+        "published_at": "2026-06-20T15:39:17.000Z",
+        "source": "championat.com",
+        "used": 0,
+        "created_at": "2026-06-20 15:52:01"
+      },
+      "score": 6,
+      "why": "ЧМ-2026, Бразилия"
+    }
+  ],
+  "chosenNewsId": null,
+  "postContent": null,
+  "factCheck": null,
+  "revisionCount": 0,
+  "history": [
+    {
+      "stage": "idle",
+      "step": "init",
+      "timestamp": "2026-06-20T16:41:51.606Z",
+      "detail": "Запуск pipeline (hours=24, topK=5)"
+    }
+  ]
+}

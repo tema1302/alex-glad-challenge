@@ -1,0 +1,47 @@
+[
+  {
+    "key": "имя",
+    "value": "Артём",
+    "updatedAt": "2026-06-19T12:06:15.328Z"
+  },
+  {
+    "key": "мое имя",
+    "value": "Артемий",
+    "updatedAt": "2026-06-19T12:06:15.329Z"
+  },
+  {
+    "key": "опыт",
+    "value": "5 лет в веб-разработке, TypeScript/Node.js",
+    "updatedAt": "2026-06-19T12:06:15.329Z"
+  },
+  {
+    "key": "тип задач",
+    "value": "автоматизация через ИИ",
+    "updatedAt": "2026-06-19T12:06:15.329Z"
+  },
+  {
+    "key": "сессия-2026-06-20 шаг 1: SOCKS5 для gram.js",
+    "value": "gram.js (MTProto) ходит по raw TCP, HTTPS_PROXY не работает. Установили пакет socks, добавили parseSocksProxy() в telegramScanner.ts (читает TG_SOCKS_PROXY > SOCKS_PROXY > HTTPS_PROXY, отдаёт {socksType:5, ip, port}). Прокси: socks5://127.0.0.1:10808. Результат: connection complete к DC1 и DC2.",
+    "updatedAt": "2026-06-20T19:00:00.000Z"
+  },
+  {
+    "key": "сессия-2026-06-20 шаг 2: дублирование ввода readline",
+    "value": "Проблема: REPL создаёт readline на process.stdin, telegramScanner и handleNewsInteractiveCommand создавали ВТОРОЙ readline на том же потоке — символы делились между буферами, ввод дублировался. Решение: добавили тип AskFn в telegramScanner.ts, конструктор принимает ask-колбек. SessionState.ask привязан к основному rl. handleNewsInteractiveCommand теперь использует state.ask вместо своего rl. /scout передаёт state.ask в runSourceAgents → TelegramScannerAgent.",
+    "updatedAt": "2026-06-20T19:00:00.000Z"
+  },
+  {
+    "key": "сессия-2026-06-20 шаг 3: ручной flow авторизации TG",
+    "value": "Код из TG не приходил. Заменили client.start() на ручной flow: client.connect() → isUserAuthorized() → Api.auth.SendCode через invoke → полный вывод ответа (способ доставки, длина кода, timeout, nextType, phoneCodeHash) → ввод кода → Api.auth.SignIn → обработка SESSION_PASSWORD_NEEDED (2FA через computeCheck), PHONE_CODE_INVALID, PHONE_CODE_EXPIRED, FLOOD_WAIT_N. Причина отсутствия кода: rate-limit от Telegram после нескольких попыток. Нужно ждать 30-60 минут.",
+    "updatedAt": "2026-06-20T19:00:00.000Z"
+  },
+  {
+    "key": "сессия-2026-06-20 шаг 4: свои темы и комментарии в посты",
+    "value": "Добавлена возможность писать свои темы и личные комментарии. PostWriter.write() принимает { userTopic?, userComment? }. В /news-i после выбора новости спрашивает тему/комментарий. Новая команда /write <тема> — пишет пост на любую тему без RSS, спрашивает личный комментарий, цикл правок, публикация в TG. Промпт инжектит тему как главный фокус и комментарий как обязательную часть.",
+    "updatedAt": "2026-06-20T19:00:00.000Z"
+  },
+  {
+    "key": "сессия-2026-06-20 нерешённые задачи",
+    "value": "1) TG MTProto авторизация: код не приходит (rate-limit), повторить через 30-60 мин. 2) Reddit HTTP 403 (ForumScanner) — нужен User-Agent или другой источник. 3) День 15 + параллельные агенты не закоммичены. 4) CHANGELOG не обновлён для дней 11-15. 5) Интеграция /scout с /pipeline (scout выбирает тему → pipeline пишет пост).",
+    "updatedAt": "2026-06-20T19:00:00.000Z"
+  }
+]

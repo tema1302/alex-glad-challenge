@@ -12,12 +12,11 @@ build/
 # Артефакты запуска дней
 day-07-history.json
 
-<<<<<<< HEAD
-# Блог-агенты: SQLite база (runtime-данные, не исходники)
-=======
-# Runtime-данные (SQLite, memory.json, etc.)
->>>>>>> day-11
-challenge/.data/
+# Runtime-данные (SQLite, memory.json, profiles) трекаются локально в main.
+# Игнорируем только транзиентные файлы SQLite и креду MTProto-сессии.
+challenge/.data/*-shm
+challenge/.data/*-wal
+challenge/.data/tg-session.json
 
 # OS
 .DS_Store
