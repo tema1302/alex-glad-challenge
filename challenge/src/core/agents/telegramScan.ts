@@ -6,9 +6,14 @@
 // генерируется одноразовым логином и хранится в .env (TG_SESSION).
 //
 // Сервер подключает клиент один раз (connectScanClient при старте) и переиспользует.
+//
+// PROXY: VPS заблокирован для прямых IP Telegram DC. Используем TCP-туннель
+// через socat на прокси-сервере: 91.199.147.131:8081 → 149.154.167.51:80 (DC2).
+// GramJS подключается как будто к DC напрямую, но байты идут через туннель.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
 
 export interface ScannedMessage {
   from: string;
@@ -43,6 +48,108 @@ interface ScanClient {
 }
 
 let client: ScanClient | null = null;
+
+/**
+ * TCP-туннельный WebSocket transport для gramJS.
+ * Вместо WSS-подключения к Telegram DC, создаёт обычный TCP-сокет
+ * к socat-туннелю на прокси-сервере. Байты MTProto идут прозрачно.
+ *
+ * gramJS думает что подключается через WebSocket, но на самом деле
+ * данные текут через raw TCP → socat → Telegram DC.
+ */
+function TcpTunnelWebSockets(tunnelHost: string, tunnelPort: number) {
+  const closeError = new Error('TCP tunnel was closed');
+
+  return class {
+    private socket: net.Socket | null = null;
+    private stream = Buffer.alloc(0);
+    private closed = true;
+    private resolveRead: (() => void) | null = null;
+    private readWait: Promise<void>;
+
+    constructor() {
+      this.readWait = new Promise(() => {});
+    }
+
+    /** Signal that data is available for reading. */
+    private wake(): void {
+      if (this.resolveRead) {
+        const fn = this.resolveRead;
+        this.resolveRead = null;
+        fn();
+      }
+    }
+
+    /** Wait until data is available, then return. */
+    private async waitData(): Promise<void> {
+      if (this.stream.length > 0) return;
+      this.readWait = new Promise<void>((resolve) => { this.resolveRead = resolve; });
+      await this.readWait;
+    }
+
+    async readExactly(number: number): Promise<Buffer> {
+      let data = Buffer.alloc(0);
+      while (number > 0) {
+        await this.waitData();
+        if (this.closed) throw closeError;
+        const take = Math.min(number, this.stream.length);
+        data = Buffer.concat([data, this.stream.slice(0, take)]);
+        this.stream = this.stream.slice(take);
+        number -= take;
+        if (number < 0) number = 0;
+      }
+      return data;
+    }
+
+    async read(number: number): Promise<Buffer> {
+      await this.waitData();
+      if (this.closed) throw closeError;
+      const ret = this.stream.slice(0, number);
+      this.stream = this.stream.slice(number);
+      return ret;
+    }
+
+    async readAll(): Promise<Buffer> {
+      await this.waitData();
+      if (this.closed) throw closeError;
+      const ret = this.stream;
+      this.stream = Buffer.alloc(0);
+      return ret;
+    }
+
+    async connect(_port: number, _ip: string, _testServers = false): Promise<this> {
+      this.stream = Buffer.alloc(0);
+      this.closed = false;
+      this.resolveRead = null;
+
+      return new Promise<this>((resolve, reject) => {
+        const sock = net.connect(tunnelPort, tunnelHost, () => {
+          sock.on('data', (chunk: Buffer) => {
+            this.stream = Buffer.concat([this.stream, chunk]);
+            this.wake();
+          });
+          sock.on('error', (err) => reject(err));
+          sock.on('close', () => { this.closed = true; this.wake(); });
+          resolve(this);
+        });
+        this.socket = sock;
+      });
+    }
+
+    write(data: Buffer): void {
+      if (this.closed) throw closeError;
+      this.socket?.write(data);
+    }
+
+    async close(): Promise<void> {
+      this.socket?.destroy();
+      this.closed = true;
+      this.wake();
+    }
+
+    toString(): string { return 'TcpTunnelWebSocket'; }
+  };
+}
 
 /** Где лежит файл сессии (тот же .data/, что и остальное runtime-состояние). */
 const SESSION_FILE = path.join(process.cwd(), '.data', 'tg-session.json');
@@ -82,23 +189,28 @@ export async function connectScanClient(): Promise<boolean> {
   try {
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions');
+    const { ConnectionTCPObfuscated } = await import('telegram/network/connection/TCPObfuscated.js');
 
-    const proxy = process.env.TG_SOCKS_PROXY
-      ? (() => {
-          const url = new URL(process.env.TG_SOCKS_PROXY);
-          const socksType = url.protocol === 'socks5:' ? 5 : url.protocol === 'socks4:' ? 4 : 5;
-          return { ip: url.hostname, port: parseInt(url.port) || 1080, socksType } as const;
-        })()
-      : undefined;
+    // TCP-туннель через socat на прокси-сервере → DC2 (149.154.167.51:80)
+    // env TG_TUNNEL_HOST / TG_TUNNEL_PORT (по умолчанию 91.199.147.131:8081)
+    const tunnelHost = process.env.TG_TUNNEL_HOST || '91.199.147.131';
+    const tunnelPort = Number(process.env.TG_TUNNEL_PORT) || 8081;
 
-    const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+    const clientParams: Record<string, unknown> = {
       connectionRetries: 3,
-      proxy,
-    });
+      connection: ConnectionTCPObfuscated,
+      useWSS: false,
+      networkSocket: TcpTunnelWebSockets(tunnelHost, tunnelPort),
+    };
+
+    const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, clientParams);
+    // DC2: 149.154.167.51:80 — но подключаемся через туннель,
+    // поэтому IP/port не имеют значения (connect() игнорирует их в нашем TcpTunnel)
+    (raw as any).session.setDC(2, '149.154.167.51', 80);
     await Promise.race([
       raw.connect(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('MTProto connect timed out (15s)')), 15_000),
+        setTimeout(() => reject(new Error('MTProto connect timed out (20s)')), 45_000),
       ),
     ]);
     client = raw as unknown as ScanClient;
@@ -177,7 +289,7 @@ export function analyzeMessages(s: ScanResult): string {
 
   for (const m of ms) {
     bySender[m.from] = (bySender[m.from] ?? 0) + 1;
-    if (/https?:\/\//i.test(m.text)) links++;
+    if (m.text.includes("http")) links++;
     const tokens = m.text.toLowerCase().match(/[a-zа-яё0-9]{3,}/gi);
     if (tokens) {
       for (const w of tokens) {
