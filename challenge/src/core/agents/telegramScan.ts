@@ -6,9 +6,14 @@
 // генерируется одноразовым логином и хранится в .env (TG_SESSION).
 //
 // Сервер подключает клиент один раз (connectScanClient при старте) и переиспользует.
+//
+// PROXY: VPS заблокирован для прямых IP Telegram DC. Используем TCP-туннель
+// через socat на прокси-сервере: 91.199.147.131:8081 → 149.154.167.51:80 (DC2).
+// GramJS подключается как будто к DC напрямую, но байты идут через туннель.
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import net from 'node:net';
 
 export interface ScannedMessage {
   from: string;
@@ -44,25 +49,19 @@ interface ScanClient {
 
 let client: ScanClient | null = null;
 
-/** Proxy-aware WebSocket transport for gramJS. Replaces PromisedWebSockets
- *  to route WSS connections through an HTTP CONNECT proxy. */
-function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebSockets').PromisedWebSockets, proxyUrl: string) {
-  const closeError = new Error('WebSocket was closed');
-
-  // ESM — lazy-load deps at connect time (not at module scope)
-  let _agent: any;
-  let _w3cwebsocket: any;
-  async function getDeps() {
-    if (!_agent) {
-      const { HttpsProxyAgent } = await import('https-proxy-agent');
-      _agent = new HttpsProxyAgent(proxyUrl);
-      const ws = await import('websocket/index.js');
-      _w3cwebsocket = (ws as any).default?.w3cwebsocket || (ws as any).w3cwebsocket;
-    }
-  }
+/**
+ * TCP-туннельный WebSocket transport для gramJS.
+ * Вместо WSS-подключения к Telegram DC, создаёт обычный TCP-сокет
+ * к socat-туннелю на прокси-сервере. Байты MTProto идут прозрачно.
+ *
+ * gramJS думает что подключается через WebSocket, но на самом деле
+ * данные текут через raw TCP → socat → Telegram DC.
+ */
+function TcpTunnelWebSockets(tunnelHost: string, tunnelPort: number) {
+  const closeError = new Error('TCP tunnel was closed');
 
   return class {
-    private client: any;
+    private socket: net.Socket | null = null;
     private stream = Buffer.alloc(0);
     private closed = true;
     private canRead: Promise<boolean>;
@@ -102,49 +101,42 @@ function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebS
       return ret;
     }
 
-    async connect(port: number, ip: string, testServers = false): Promise<this> {
+    async connect(_port: number, _ip: string, _testServers = false): Promise<this> {
       this.stream = Buffer.alloc(0);
       this.canRead = new Promise<boolean>(() => {});
       this.closed = false;
 
-      const wsUrl = port === 443
-        ? `wss://${ip}:${port}/apiws${testServers ? '_test' : ''}`
-        : `ws://${ip}:${port}/apiws${testServers ? '_test' : ''}`;
-
-      await getDeps();
-      this.client = new _w3cwebsocket(wsUrl, 'binary', undefined, undefined, undefined, { agent: _agent } as never);
-
       return new Promise<this>((resolve, reject) => {
-        if (!this.client) return reject(new Error('ws not created'));
-        this.client.onopen = () => { this.receive(); resolve(this); };
-        this.client.onerror = (e: any) => reject(e);
-        this.client.onclose = () => {
-          this.closed = true;
-        };
+        const sock = net.connect(tunnelPort, tunnelHost, () => {
+          this.receive();
+          resolve(this);
+        });
+
+        sock.on('error', (err) => reject(err));
+        sock.on('close', () => { this.closed = true; });
+        this.socket = sock;
       });
     }
 
     write(data: Buffer): void {
       if (this.closed) throw closeError;
-      this.client?.send(data);
+      this.socket?.write(data);
     }
 
-    private async receive(): Promise<void> {
-      if (!this.client) return;
-      this.client.onmessage = async (msg: any) => {
-        const buf = Buffer.from(await new Response(msg.data).arrayBuffer());
-        this.stream = Buffer.concat([this.stream, buf]);
-        // resolve canRead — hacky but works
+    private receive(): void {
+      if (!this.socket) return;
+      this.socket.on('data', (chunk: Buffer) => {
+        this.stream = Buffer.concat([this.stream, chunk]);
         (this as any).canRead = Promise.resolve(true);
-      };
+      });
     }
 
     async close(): Promise<void> {
-      await this.client?.close();
+      this.socket?.destroy();
       this.closed = true;
     }
 
-    toString(): string { return 'ProxyWebSocket'; }
+    toString(): string { return 'TcpTunnelWebSocket'; }
   };
 }
 
@@ -187,22 +179,23 @@ export async function connectScanClient(): Promise<boolean> {
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions');
     const { ConnectionTCPObfuscated } = await import('telegram/network/connection/TCPObfuscated.js');
-    const { PromisedWebSockets } = await import('telegram/extensions/PromisedWebSockets.js');
 
-    // WebSocket через HTTP-прокси (gost на VPS). Прокси пропускает домены Telegram,
-    // но блокирует прямые IP DC — поэтому используем WSS + веб-домены.
-    const httpProxy = process.env.TG_HTTP_PROXY; // e.g. http://127.0.0.1:3128
+    // TCP-туннель через socat на прокси-сервере → DC2 (149.154.167.51:80)
+    // env TG_TUNNEL_HOST / TG_TUNNEL_PORT (по умолчанию 91.199.147.131:8081)
+    const tunnelHost = process.env.TG_TUNNEL_HOST || '91.199.147.131';
+    const tunnelPort = Number(process.env.TG_TUNNEL_PORT) || 8081;
+
     const clientParams: Record<string, unknown> = {
       connectionRetries: 3,
       connection: ConnectionTCPObfuscated,
-      useWSS: true, // порт 443, wss:// вместо ws://
-      networkSocket: httpProxy ? ProxyWebSockets(PromisedWebSockets, httpProxy) : PromisedWebSockets,
+      useWSS: false,
+      networkSocket: TcpTunnelWebSockets(tunnelHost, tunnelPort),
     };
 
     const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, clientParams);
-    // Подмена DC: используем веб-домены Telegram (pluto.web.telegram.org и т.д.)
-    // вместо IP DC — прокси пропускает домены, но блокирует прямые IP.
-    (raw as any).session.setDC(1, 'pluto.web.telegram.org', 443);
+    // DC2: 149.154.167.51:80 — но подключаемся через туннель,
+    // поэтому IP/port не имеют значения (connect() игнорирует их в нашем TcpTunnel)
+    (raw as any).session.setDC(2, '149.154.167.51', 80);
     await Promise.race([
       raw.connect(),
       new Promise<never>((_, reject) =>
@@ -285,7 +278,7 @@ export function analyzeMessages(s: ScanResult): string {
 
   for (const m of ms) {
     bySender[m.from] = (bySender[m.from] ?? 0) + 1;
-    if (/https?:\/\//i.test(m.text)) links++;
+    if (m.text.includes("http")) links++;
     const tokens = m.text.toLowerCase().match(/[a-zа-яё0-9]{3,}/gi);
     if (tokens) {
       for (const w of tokens) {
