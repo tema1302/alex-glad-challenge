@@ -48,9 +48,18 @@ let client: ScanClient | null = null;
  *  to route WSS connections through an HTTP CONNECT proxy. */
 function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebSockets').PromisedWebSockets, proxyUrl: string) {
   const closeError = new Error('WebSocket was closed');
-  const { HttpsProxyAgent } = require('https-proxy-agent');
-  const { w3cwebsocket } = require('websocket');
-  const agent = new HttpsProxyAgent(proxyUrl);
+
+  // ESM — lazy-load deps at connect time (not at module scope)
+  let _agent: any;
+  let _w3cwebsocket: any;
+  async function getDeps() {
+    if (!_agent) {
+      const { HttpsProxyAgent } = await import('https-proxy-agent');
+      _agent = new HttpsProxyAgent(proxyUrl);
+      const ws = await import('websocket');
+      _w3cwebsocket = (ws as any).w3cwebsocket;
+    }
+  }
 
   return class {
     private client: any;
@@ -102,7 +111,8 @@ function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebS
         ? `wss://${ip}:${port}/apiws${testServers ? '_test' : ''}`
         : `ws://${ip}:${port}/apiws${testServers ? '_test' : ''}`;
 
-      this.client = new w3cwebsocket(wsUrl, 'binary', undefined, undefined, undefined, { agent } as never);
+      await getDeps();
+      this.client = new _w3cwebsocket(wsUrl, 'binary', undefined, undefined, undefined, { agent: _agent } as never);
 
       return new Promise<this>((resolve, reject) => {
         if (!this.client) return reject(new Error('ws not created'));
