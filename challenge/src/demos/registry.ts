@@ -20,6 +20,7 @@ import { demo as day15 } from './day-15.js';
 import { demo as day16 } from './day-16.js';
 import { demo as day17 } from './day-17.js';
 import { demo as day18 } from './day-18.js';
+import { demo as day20 } from './day-20.js';
 
 export const demos: ReadonlyArray<Demo> = [
   day01, day02, day03, day04, day05,
@@ -28,6 +29,7 @@ export const demos: ReadonlyArray<Demo> = [
   day16,
   day17,
   day18,
+  day20,
 ];
 
 export function findDemo(id: string): Demo | undefined {
