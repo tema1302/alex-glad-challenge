@@ -20,6 +20,7 @@ import type { AskFn } from './core/agents/telegramScanner.js';
 import { StatefulPipeline } from './core/agents/statefulPipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
+import { runAgentRequest } from './core/mcpAgentLoop.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -90,6 +91,7 @@ const ALL_COMMANDS = [
   '/constraints', '/constraint add ', '/constraint rm ',
   '/db-stats',
   '/todo ', '/remind ', '/todos', '/todos --pending', '/todos --done', '/done ', '/dismiss ', '/rm-todo ', '/summary', '/mcp ', '/mcp-tools',
+  '/agent ',
   '/quit', '/exit',
 ];
 
@@ -685,6 +687,20 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
     case 'mcp-tools':
       await handleMcpCommand(cmd, arg, state);
       return;
+    case 'agent': {
+      if (!arg) {
+        console.log(c.gray + 'Использование: /agent <запрос>\n  Пример: /agent просканируй последние 200 сообщений в чате "факты в чате" и пришли отчёт\n' + c.reset);
+        return;
+      }
+      console.log(c.gray + 'Агент гонит цепочку MCP-тулов на ' + MCP_SERVER_URL + ' ...\n' + c.reset);
+      try {
+        const answer = await runAgentRequest(state.client, MCP_SERVER_URL, arg);
+        console.log(c.green + 'agent' + c.reset + ': ' + answer + '\n');
+      } catch (err) {
+        console.log(c.red + 'agent error: ' + (err instanceof Error ? err.message : String(err)) + c.reset + '\n');
+      }
+      return;
+    }
     default:
       console.log(c.red + `Неизвестная команда /${cmd}` + c.reset + c.gray + '  /help — список.\n' + c.reset);
   }

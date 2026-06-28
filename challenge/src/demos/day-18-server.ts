@@ -21,8 +21,19 @@ import type { McpServerTool, McpToolResult } from '../core/mcpHttpServer.js';
 import { McpHttpClient } from '../core/mcpHttpClient.js';
 import { TodoDb } from '../core/todoDb.js';
 import { publishPost, isTelegramConfigured } from '../core/agents/telegram.js';
+import {
+  connectScanClient,
+  disconnectScanClient,
+  isScanConfigured,
+  scanChatMessages,
+  analyzeMessages,
+  type ScanResult,
+} from '../core/agents/telegramScan.js';
 
 const EVERYTHING_SERVER_URL = 'https://everything.mcp.inevitable.fyi/mcp';
+
+/** Кеш последнего скана чата (анализ берёт его, не запрашивая TG повторно). */
+let lastScan: ScanResult | null = null;
 
 /**
  * Создаёт и запускает standalone MCP HTTP-сервер дня 18.
@@ -341,6 +352,103 @@ export async function runServer(port = 3001): Promise<void> {
     },
   };
 
+  // --- Инструменты дня 19: пайплайн скана чата (scan → analyze → send) ---
+
+  const scanChatMessagesTool: McpServerTool = {
+    name: 'scan_chat_messages',
+    description:
+      'Scan last N messages from a Telegram chat (step 1: get data). MTProto userbot — needs TG_API_ID/TG_API_HASH/TG_SESSION. chat = @username / numeric id / dialog title.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chat: { type: 'string', description: 'Chat @username, numeric id, or dialog title to resolve' },
+        limit: { type: 'integer', minimum: 1, maximum: 1000, description: 'Recent messages to fetch (default 200)' },
+      },
+      required: ['chat'],
+    },
+    handler: async (args: Record<string, unknown>): Promise<McpToolResult> => {
+      if (!isScanConfigured()) {
+        return {
+          content: [{ type: 'text', text: 'Telegram scan not configured (TG_API_ID/TG_API_HASH/TG_SESSION).' }],
+          isError: true,
+        };
+      }
+      const chat = args.chat;
+      if (typeof chat !== 'string' || chat.trim().length === 0) {
+        return { content: [{ type: 'text', text: 'Invalid chat: expected a non-empty string.' }], isError: true };
+      }
+      const limit =
+        typeof args.limit === 'number' && Number.isInteger(args.limit) && args.limit > 0
+          ? Math.min(args.limit, 1000)
+          : 200;
+      try {
+        const res = await scanChatMessages(chat, limit);
+        lastScan = res;
+        const byAuthor = res.messages.reduce<Record<string, number>>((acc, m) => {
+          acc[m.from] = (acc[m.from] ?? 0) + 1;
+          return acc;
+        }, {});
+        const top = Object.entries(byAuthor)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([k, v]) => `${k}(${v})`)
+          .join(', ');
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Сканировано ${res.total} сообщений из «${res.chat}». Топ авторов: ${top || '—'}. Запусти analyze_messages для отчёта.`,
+            },
+          ],
+        };
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        return { content: [{ type: 'text', text: `scan failed: ${m}` }], isError: true };
+      }
+    },
+  };
+
+  const analyzeMessagesTool: McpServerTool = {
+    name: 'analyze_messages',
+    description:
+      'Build a deterministic report over the last scanned chat (step 2: process). No LLM — counts senders, top terms, links. Call scan_chat_messages first.',
+    inputSchema: { type: 'object', properties: {} },
+    handler: async (): Promise<McpToolResult> => {
+      if (!lastScan) {
+        return {
+          content: [{ type: 'text', text: 'Нет данных: сначала вызови scan_chat_messages.' }],
+          isError: true,
+        };
+      }
+      return { content: [{ type: 'text', text: analyzeMessages(lastScan) }] };
+    },
+  };
+
+  const sendToChatTool: McpServerTool = {
+    name: 'send_to_chat',
+    description:
+      'Send a text to the configured Telegram chat (step 3: deliver). Uses TG_BOT_TOKEN/TG_CHAT_ID (Bot API).',
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string', description: 'Text to send' } },
+      required: ['text'],
+    },
+    handler: async (args: Record<string, unknown>): Promise<McpToolResult> => {
+      const text = args.text;
+      if (typeof text !== 'string' || text.trim().length === 0) {
+        return { content: [{ type: 'text', text: 'Invalid text: expected a non-empty string.' }], isError: true };
+      }
+      if (!isTelegramConfigured()) {
+        return { content: [{ type: 'text', text: 'Telegram not configured (TG_BOT_TOKEN / TG_CHAT_ID).' }], isError: true };
+      }
+      const result = await publishPost(text);
+      if (!result.ok) {
+        return { content: [{ type: 'text', text: `Failed to send: ${result.error}` }], isError: true };
+      }
+      return { content: [{ type: 'text', text: `Sent to Telegram (message_id=${result.messageId}).` }] };
+    },
+  };
+
   // --- Сервер ---
 
   const server = new McpHttpServer({
@@ -355,6 +463,9 @@ export async function runServer(port = 3001): Promise<void> {
       sendSummaryTool,
       callRemoteToolTool,
       listRemoteToolsTool,
+      scanChatMessagesTool,
+      analyzeMessagesTool,
+      sendToChatTool,
     ],
     port,
   });
@@ -406,10 +517,24 @@ export async function runServer(port = 3001): Promise<void> {
     server.stop();
     todoDb.close();
     remoteMcp.disconnect();
+    void disconnectScanClient();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  // --- MTProto userbot (день 19): скан истории чата ---
+  try {
+    const ok = await connectScanClient();
+    console.error(
+      ok
+        ? 'MTProto scan client connected'
+        : 'MTProto scan client not configured (TG_API_ID/TG_API_HASH/TG_SESSION) — scan_chat_messages disabled',
+    );
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    console.error(`MTProto scan client failed to connect: ${m}`);
+  }
 
   await server.start();
 }
