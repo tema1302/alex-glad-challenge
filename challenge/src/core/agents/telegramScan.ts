@@ -44,6 +44,100 @@ interface ScanClient {
 
 let client: ScanClient | null = null;
 
+/** Proxy-aware WebSocket transport for gramJS. Replaces PromisedWebSockets
+ *  to route WSS connections through an HTTP CONNECT proxy. */
+function ProxyWebSockets(BaseWS: typeof import('telegram/extensions/PromisedWebSockets').PromisedWebSockets, proxyUrl: string) {
+  const closeError = new Error('WebSocket was closed');
+  const { HttpsProxyAgent } = require('https-proxy-agent');
+  const { w3cwebsocket } = require('websocket');
+  const agent = new HttpsProxyAgent(proxyUrl);
+
+  return class {
+    private client: any;
+    private stream = Buffer.alloc(0);
+    private closed = true;
+    private canRead: Promise<boolean>;
+
+    constructor() {
+      this.canRead = new Promise(() => {});
+    }
+
+    async readExactly(number: number): Promise<Buffer> {
+      let data = Buffer.alloc(0);
+      while (number > 0) {
+        const chunk = await this.read(number);
+        data = Buffer.concat([data, chunk]);
+        number -= chunk.length;
+        if (number < 0) number = 0;
+      }
+      return data;
+    }
+
+    async read(number: number): Promise<Buffer> {
+      if (this.closed) throw closeError;
+      await this.canRead;
+      if (this.closed) throw closeError;
+      const ret = this.stream.slice(0, number);
+      this.stream = this.stream.slice(number);
+      if (this.stream.length === 0) {
+        this.canRead = new Promise<boolean>(() => {});
+      }
+      return ret;
+    }
+
+    async readAll(): Promise<Buffer> {
+      if (this.closed || !(await this.canRead)) throw closeError;
+      const ret = this.stream;
+      this.stream = Buffer.alloc(0);
+      this.canRead = new Promise<boolean>(() => {});
+      return ret;
+    }
+
+    async connect(port: number, ip: string, testServers = false): Promise<this> {
+      this.stream = Buffer.alloc(0);
+      this.canRead = new Promise<boolean>(() => {});
+      this.closed = false;
+
+      const wsUrl = port === 443
+        ? `wss://${ip}:${port}/apiws${testServers ? '_test' : ''}`
+        : `ws://${ip}:${port}/apiws${testServers ? '_test' : ''}`;
+
+      this.client = new w3cwebsocket(wsUrl, 'binary', undefined, undefined, undefined, { agent } as never);
+
+      return new Promise<this>((resolve, reject) => {
+        if (!this.client) return reject(new Error('ws not created'));
+        this.client.onopen = () => { this.receive(); resolve(this); };
+        this.client.onerror = (e: any) => reject(e);
+        this.client.onclose = () => {
+          this.closed = true;
+        };
+      });
+    }
+
+    write(data: Buffer): void {
+      if (this.closed) throw closeError;
+      this.client?.send(data);
+    }
+
+    private async receive(): Promise<void> {
+      if (!this.client) return;
+      this.client.onmessage = async (msg: any) => {
+        const buf = Buffer.from(await new Response(msg.data).arrayBuffer());
+        this.stream = Buffer.concat([this.stream, buf]);
+        // resolve canRead — hacky but works
+        (this as any).canRead = Promise.resolve(true);
+      };
+    }
+
+    async close(): Promise<void> {
+      await this.client?.close();
+      this.closed = true;
+    }
+
+    toString(): string { return 'ProxyWebSocket'; }
+  };
+}
+
 /** Где лежит файл сессии (тот же .data/, что и остальное runtime-состояние). */
 const SESSION_FILE = path.join(process.cwd(), '.data', 'tg-session.json');
 
@@ -82,23 +176,23 @@ export async function connectScanClient(): Promise<boolean> {
   try {
     const { TelegramClient } = await import('telegram');
     const { StringSession } = await import('telegram/sessions');
+    const { ConnectionTCPObfuscated } = await import('telegram/network/connection/TCPObfuscated.js');
+    const { PromisedWebSockets } = await import('telegram/extensions/PromisedWebSockets.js');
 
-    const proxy = process.env.TG_SOCKS_PROXY
-      ? (() => {
-          const url = new URL(process.env.TG_SOCKS_PROXY);
-          const socksType = url.protocol === 'socks5:' ? 5 : url.protocol === 'socks4:' ? 4 : 5;
-          return { ip: url.hostname, port: parseInt(url.port) || 1080, socksType } as const;
-        })()
-      : undefined;
-
-    const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
+    // WebSocket через HTTP-прокси (gost на VPS). Прокси пропускает домены Telegram,
+    // но блокирует прямые IP DC — поэтому используем WSS + домен.
+    const httpProxy = process.env.TG_HTTP_PROXY; // e.g. http://127.0.0.1:3128
+    const clientParams: Record<string, unknown> = {
       connectionRetries: 3,
-      proxy,
-    });
+      connection: ConnectionTCPObfuscated,
+      networkSocket: httpProxy ? ProxyWebSockets(PromisedWebSockets, httpProxy) : PromisedWebSockets,
+    };
+
+    const raw = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, clientParams);
     await Promise.race([
       raw.connect(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('MTProto connect timed out (15s)')), 15_000),
+        setTimeout(() => reject(new Error('MTProto connect timed out (20s)')), 20_000),
       ),
     ]);
     client = raw as unknown as ScanClient;
