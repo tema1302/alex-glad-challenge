@@ -111,6 +111,60 @@ curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
 - `challenge/src/demos/day-18.ts` — оригинальный день 18 (демо).
 - Команда: `pnpm --filter challenge start -- scheduler`
 
+---
+
+## День 19 — Композиция MCP-инструментов
+**Дата:** 2026-06-27
+**Ветка:** `day-19`
+
+**Задание (полный текст):**
+> Создайте несколько MCP-инструментов, например: `search`, `summarize`, `saveToFile`.
+> Реализуйте пайплайн: первый инструмент получает данные, второй обрабатывает,
+> третий сохраняет результат. Проверьте: автоматическое выполнение цепочки и
+> корректность передачи данных между инструментами.
+> Результат — автоматический пайплайн из нескольких MCP-инструментов.
+> Формат — видео + код.
+
+**Продукт (по задумке автора челленджа):** юзер пишет запрос в REPL/CLI
+(например: «просканируй последние 200 сообщений в чате "факты в чате" и пришли
+отчёт») — после этого агент сам гонит цепочку MCP-тулов. Это НЕ демка с
+авто-прогоном: триггер всегда юзер, агент действует по его запросу. Bot API не
+умеет читать историю — для скана чата нужен MTProto userbot (api_id/api_hash/session).
+
+**Сделано:**
+- 3 инструмента добавлены на ЕДИНЫЙ работающий сервер (`day-18-server.ts` =
+  api.memo7.ru), а не отдельный день-сервер и не демка:
+  `scan_chat_messages` (MTProto, получить) → `analyze_messages` (детерминированный
+  отчёт по авторам/терминам/ссылкам, без LLM) → `send_to_chat` (отправить отчёт в
+  `TG_CHAT_ID` через Bot API).
+- `core/agents/telegramScan.ts` — MTProto-клиент (GramJS, StringSession из env):
+  connect/disconnect, `scanChatMessages(chat, limit)` (по @username / id /
+  заголовку диалога), `analyzeMessages` — чистая функция.
+- Точка входа для юзера — команда `agent` в CLI и `/agent` в REPL, общая через
+  `runAgentRequest` (`core/mcpAgentLoop.ts`). Цепочку вызывает сама LLM в цикле
+  `CALL/RESULT`; данные протекают через кеш последнего скана и контекст модели.
+- `runAgentLoop` вынесен из `day-17.ts` в `core/mcpAgentLoop.ts` (+ `runAgentRequest`,
+  `DEFAULT_AGENT_SYSTEM`), переиспользуется day-17 и `/agent`.
+
+**Параметры:**
+- MTProto (скан истории): `TG_API_ID`, `TG_API_HASH`, `TG_SESSION` (userbot).
+- Доставка отчёта: `TG_BOT_TOKEN`, `TG_CHAT_ID`, `HTTPS_PROXY` (Bot API, как day-18).
+
+**Выводы:**
+- Композиция тулзов — это агентский цикл: LLM сама решает порядок, сервер даёт
+  детерминированные шаги. Поэтому отдельной «демки дня» нет — вход даёт юзер.
+- Чтение истории Telegram — только MTProto; Bot API годится лишь для отправки.
+- «Обработка» (analyze) сделана чистой функцией без LLM — сервер не зависит от
+  модели; 200 сообщений идут в серверный кеш, а не в контекст LLM.
+
+**Код:**
+- `challenge/src/core/agents/telegramScan.ts` — MTProto-сканер + анализ.
+- `challenge/src/core/mcpAgentLoop.ts` — цикл tool-calling + `runAgentRequest`.
+- `challenge/src/demos/day-18-server.ts` — +3 тула скан-пайплайна на живом сервере.
+- Команды: `pnpm --filter challenge start -- agent "<запрос>"`, в REPL — `/agent <запрос>`.
+
+---
+
 ## День 2 — Формат ответа
 **Дата:** 2026-06-02
 

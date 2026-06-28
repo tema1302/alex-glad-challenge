@@ -29,6 +29,7 @@ import { seedStyleSamples } from './core/agents/seed.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { McpHttpClient } from './core/mcpHttpClient.js';
 import { parseTodoArgs } from './core/todoParser.js';
+import { runAgentRequest } from './core/mcpAgentLoop.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
@@ -57,6 +58,8 @@ function printHelp(): void {
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
   console.log('    --port <N>         порт (по умолчанию 3001)');
+  console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
+  console.log('    --server <url>     переопределить сервер (по умолчанию api.memo7.ru)');
   console.log('');
   console.log('  Команды для MCP-сервера (по умолчанию: https://api.memo7.ru/mcp):');
   console.log('  todo <text>      Добавить задачу (разовая)');
@@ -359,6 +362,29 @@ async function main(): Promise<void> {
     const port = parsePort(argv.slice(1), 3001);
     console.log(`▶ Day-18 Scheduler MCP-сервер: старт на http://localhost:${port}/mcp`);
     await runDay18Server(port);
+    return;
+  }
+
+  if (arg === 'agent') {
+    const [serverUrl, rest] = parseServerUrl(argv.slice(1));
+    const request = rest.join(' ').trim();
+    if (!request) {
+      console.error(
+        'Укажи запрос: pnpm --filter challenge start -- agent "просканируй последние 200 сообщений в чате \'факты в чате\' и пришли отчёт"',
+      );
+      process.exit(1);
+    }
+    console.log(`▶ Агент → ${serverUrl}`);
+    console.log(`  запрос: ${request}\n`);
+    const agentClient = new LlmClient();
+    try {
+      const answer = await runAgentRequest(agentClient, serverUrl, request);
+      console.log(`\nОтвет: ${answer}`);
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      console.error(`agent error: ${m}`);
+      process.exit(1);
+    }
     return;
   }
 
