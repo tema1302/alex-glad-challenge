@@ -7,6 +7,8 @@
 //
 // Сервер подключает клиент один раз (connectScanClient при старте) и переиспользует.
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { TelegramClient } from 'telegram';
 import { StringSession } from 'telegram/sessions';
 
@@ -44,8 +46,27 @@ interface ScanClient {
 
 let client: ScanClient | null = null;
 
+/** Где лежит файл сессии (тот же .data/, что и остальное runtime-состояние). */
+const SESSION_FILE = path.join(process.cwd(), '.data', 'tg-session.json');
+
+/**
+ * Откуда брать StringSession: env TG_SESSION имеет приоритет, иначе читаем из
+ * .data/tg-session.json ({ session: "..." }). null — если сессии нет нигде.
+ */
+function resolveSession(): string | null {
+  const env = process.env.TG_SESSION;
+  if (env && env.trim()) return env.trim();
+  try {
+    const obj = JSON.parse(readFileSync(SESSION_FILE, 'utf8')) as { session?: unknown };
+    if (typeof obj.session === 'string' && obj.session.trim()) return obj.session.trim();
+  } catch {
+    /* файла нет или битый — не страшно */
+  }
+  return null;
+}
+
 export function isScanConfigured(): boolean {
-  return Boolean(process.env.TG_API_ID && process.env.TG_API_HASH && process.env.TG_SESSION);
+  return Boolean(process.env.TG_API_ID && process.env.TG_API_HASH && resolveSession());
 }
 
 /** Подключить MTProto-клиента (один раз). false — если не настроено. */
@@ -53,9 +74,11 @@ export async function connectScanClient(): Promise<boolean> {
   if (!isScanConfigured()) return false;
   if (client) return true;
 
+  const sessionStr = resolveSession();
+  if (!sessionStr) return false;
   const apiId = Number(process.env.TG_API_ID);
   const apiHash = process.env.TG_API_HASH as string;
-  const session = new StringSession(process.env.TG_SESSION as string);
+  const session = new StringSession(sessionStr);
   const raw = new TelegramClient(session, apiId, apiHash, { connectionRetries: 5 });
   await raw.connect();
   client = raw as unknown as ScanClient;
