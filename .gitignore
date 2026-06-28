@@ -12,11 +12,8 @@ build/
 # Артефакты запуска дней
 day-07-history.json
 
-# Runtime-данные (SQLite, memory.json, profiles) трекаются локально в main.
-# Игнорируем только транзиентные файлы SQLite и креду MTProto-сессии.
-challenge/.data/*-shm
-challenge/.data/*-wal
-challenge/.data/tg-session.json
+# Runtime-данные (.data) — НЕ в git: SQLite, memory.json, profiles, MTProto-сессия.
+challenge/.data/
 
 # OS
 .DS_Store
