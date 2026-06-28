@@ -34,6 +34,9 @@ importers:
       undici:
         specifier: ^7.28.0
         version: 7.28.0
+      websocket:
+        specifier: ^1.0.35
+        version: 1.0.35
     devDependencies:
       '@types/node':
         specifier: ^24.0.0
