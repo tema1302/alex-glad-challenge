@@ -190,11 +190,12 @@ export async function connectScanClient(): Promise<boolean> {
     const { PromisedWebSockets } = await import('telegram/extensions/PromisedWebSockets.js');
 
     // WebSocket через HTTP-прокси (gost на VPS). Прокси пропускает домены Telegram,
-    // но блокирует прямые IP DC — поэтому используем WSS + домен.
+    // но блокирует прямые IP DC — поэтому используем WSS + веб-домены.
     const httpProxy = process.env.TG_HTTP_PROXY; // e.g. http://127.0.0.1:3128
     const clientParams: Record<string, unknown> = {
       connectionRetries: 3,
       connection: ConnectionTCPObfuscated,
+      useWSS: true, // порт 443, wss:// вместо ws://
       networkSocket: httpProxy ? ProxyWebSockets(PromisedWebSockets, httpProxy) : PromisedWebSockets,
     };
 
