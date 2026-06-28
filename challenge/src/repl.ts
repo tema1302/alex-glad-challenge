@@ -692,9 +692,10 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
         console.log(c.gray + 'Использование: /agent <запрос>\n  Пример: /agent просканируй последние 200 сообщений в чате "факты в чате" и пришли отчёт\n' + c.reset);
         return;
       }
-      console.log(c.gray + 'Агент гонит цепочку MCP-тулов на ' + MCP_SERVER_URL + ' ...\n' + c.reset);
+      const serverUrl = mcpUrl();
+      console.log(c.gray + 'Агент гонит цепочку MCP-тулов на ' + serverUrl + ' ...\n' + c.reset);
       try {
-        const answer = await runAgentRequest(state.client, MCP_SERVER_URL, arg);
+        const answer = await runAgentRequest(state.client, serverUrl, arg);
         console.log(c.green + 'agent' + c.reset + ': ' + answer + '\n');
       } catch (err) {
         console.log(c.red + 'agent error: ' + (err instanceof Error ? err.message : String(err)) + c.reset + '\n');
@@ -708,10 +709,11 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
 
 // --- MCP-команды в REPL ---
 
-const MCP_SERVER_URL = 'https://api.memo7.ru/mcp';
+/** URL MCP-сервера: env MCP_SERVER_URL (локальный режим), иначе prod. */
+const mcpUrl = (): string => process.env.MCP_SERVER_URL ?? 'https://api.memo7.ru/mcp';
 
 async function mcpCall(toolName: string, args?: Record<string, unknown>): Promise<string> {
-  const client = new McpHttpClient(MCP_SERVER_URL);
+  const client = new McpHttpClient(mcpUrl());
   try {
     await client.connect();
     return await client.callTool(toolName, args);
@@ -774,7 +776,7 @@ async function handleMcpCommand(cmd: string, arg: string, _state: SessionState):
         break;
       }
       case 'mcp-tools': {
-        const client = new McpHttpClient(MCP_SERVER_URL);
+        const client = new McpHttpClient(mcpUrl());
         try {
           await client.connect();
           const tools = await client.listTools();

@@ -108,7 +108,7 @@ function parseChatFlags(argv: string[]): ChatFlags {
 
 // --- MCP-клиент: команды для общения с сервером ---
 
-const DEFAULT_MCP_URL = 'https://api.memo7.ru/mcp';
+const DEFAULT_MCP_URL = process.env.MCP_SERVER_URL ?? 'https://api.memo7.ru/mcp';
 
 /** Извлечь --server <url> из argv; возвращает tuple [url, remainder]. */
 function parseServerUrl(argv: string[]): [string, string[]] {
