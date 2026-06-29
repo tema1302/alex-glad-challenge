@@ -21,6 +21,7 @@ import { StatefulPipeline } from './core/agents/statefulPipeline.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
+import { runDay20 } from './demos/day-20.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -92,6 +93,7 @@ const ALL_COMMANDS = [
   '/db-stats',
   '/todo ', '/remind ', '/todos', '/todos --pending', '/todos --done', '/done ', '/dismiss ', '/rm-todo ', '/summary', '/mcp ', '/mcp-tools',
   '/agent ',
+  '/briefing ', '/briefing --write',
   '/quit', '/exit',
 ];
 
@@ -702,6 +704,32 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       }
       return;
     }
+    case 'briefing': {
+      // /briefing <запрос> [--write] — оркестрация дня 20 (filesystem+world+telegram).
+      const write = arg.includes('--write');
+      const request = arg.replace('--write', '').trim();
+      console.log(
+        c.gray +
+          `Оркентсрация дня 20 (${write ? 'write: vault + Telegram' : 'dry-run'})...` +
+          c.reset +
+          '\n',
+      );
+      console.log(
+        c.gray +
+          'Нужен поднятый day-20-server: pnpm --filter challenge start -- day-20-server' +
+          c.reset +
+          '\n',
+      );
+      try {
+        await runDay20(request || undefined, write);
+      } catch (err) {
+        console.log(
+          c.red + 'briefing error: ' + (err instanceof Error ? err.message : String(err)) + c.reset + '\n',
+        );
+      }
+      console.log('');
+      return;
+    }
     default:
       console.log(c.red + `Неизвестная команда /${cmd}` + c.reset + c.gray + '  /help — список.\n' + c.reset);
   }
@@ -902,6 +930,10 @@ function printFullHelp(state: SessionState): void {
   row('/summary', 'отправить сводку в Telegram');
   row('/mcp-tools', 'список инструментов на MCP-сервере');
   row('/mcp <tool> key=val ...', 'вызвать любой MCP-инструмент');
+  console.log('');
+  header('Оркестрация дня 20 (filesystem + world + telegram)');
+  row('/briefing <запрос>', 'мульти-MCP брифинг по vault (dry-run, только чтение)');
+  row('/briefing <запрос> --write', 'записать брифинг в vault и отправить в Telegram');
   console.log('');
   header('Системные');
   row('/help, /h', 'эта справка');

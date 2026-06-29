@@ -1,33 +1,24 @@
-// День 20. Серверная часть оркестрации «Брифинг дня».
+// День 20. Серверная часть: world-mcp + telegram-mcp (оба HTTP) в одном процессе.
 //
-// Один процесс поднимает ДВА MCP-сервера (требование дня Orchestration MCP):
-//   • obsidian-mcp (порт 3020) — vault: read_note / search_notes / create_note
-//   • world-mcp   (порт 3021) — внешний мир: get_current_time / fetch_url
-// Это не демка и не in-process mock: персистентный сервис, как scheduler day-18.
-// Деплоится на сервер и стоит. Клиент (day-20.ts / команда `agent`) подключается
-// к обоим endpoint'ам и гонит кросс-серверный агентский флоу.
+// filesystem-mcp спавнится самим оркестратором (stdio-child), поэтому здесь его
+// нет — эти серверы поднимают HTTP-части: «внешний мир» (дата/fetch) и доставку
+// брифинга в Telegram. Стоят персистентно как один сервис (как scheduler day-18).
 //
-// Запуск: pnpm --filter challenge start -- day-20-server [--obsidian-port N] [--world-port N]
+// Запуск: pnpm --filter challenge start -- day-20-server [--port N]
+//   --port задаёт порт world-mcp (по умолч. 3021); telegram-mcp = port+1 (3022).
 
-import { runObsidianServer } from './day-20-obsidian-server.js';
 import { runWorldServer } from './day-20-world-server.js';
+import { runTelegramServer } from './day-20-telegram-server.js';
 
-/**
- * Поднять оба MCP-сервера оркестрации в одном процессе и держать до SIGINT/SIGTERM.
- */
-export async function runDay20Server(
-  obsidianPort = 3020,
-  worldPort = 3021,
-): Promise<void> {
-  const obsidian = await runObsidianServer(obsidianPort);
+/** Поднять world-mcp (HTTP) + telegram-mcp (HTTP) и держать до SIGINT/SIGTERM. */
+export async function runDay20Server(worldPort = 3021, telegramPort = worldPort + 1): Promise<void> {
   const world = await runWorldServer(worldPort);
-  console.error(
-    `day-20 orchestration servers up: obsidian-mcp :${obsidianPort}, world-mcp :${worldPort}`,
-  );
+  const telegram = await runTelegramServer(telegramPort);
+  console.error(`day-20 servers up: world-mcp :${worldPort}, telegram-mcp :${telegramPort}`);
 
   const shutdown = (): void => {
-    obsidian.stop();
     world.stop();
+    telegram.stop();
     process.exit(0);
   };
   process.on('SIGINT', shutdown);

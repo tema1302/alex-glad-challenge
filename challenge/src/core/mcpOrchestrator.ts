@@ -12,15 +12,22 @@
 import { msg } from './types.js';
 import type { ChatMessage } from './types.js';
 import type { LlmClient } from './client.js';
-import { McpHttpClient } from './mcpHttpClient.js';
 import type { McpHttpTool } from './mcpHttpClient.js';
 import { parseCall } from './mcpAgentLoop.js';
+
+/** Минимальный интерфейс клиента для оркестратора — HTTP и stdio ему подчиняются.
+ *  Оба реализуют callTool(name, args) → текст первого content-блока. */
+export interface McpClientLike {
+  callTool(name: string, args: Record<string, unknown>): Promise<string>;
+}
 
 /** Один зарегистрированный сервер: имя + живой клиент + его инструменты. */
 export interface OrchestratorServer {
   name: string;
-  client: McpHttpClient;
+  client: McpClientLike;
   tools: McpHttpTool[];
+  /** Если задано — агенту видны только эти имена инструментов сервера (dry-run scope). */
+  allowTools?: string[];
 }
 
 /** Инструмент, разрешённый до сервера, который его исполняет. */
@@ -98,9 +105,12 @@ export async function runOrchestrator(
   options: OrchestratorOptions = {},
 ): Promise<OrchestratorResult> {
   const maxIterations = options.maxIterations ?? 8;
-  const routed: RoutedTool[] = servers.flatMap((s) =>
-    s.tools.map((t) => ({ server: s, tool: t })),
-  );
+  const routed: RoutedTool[] = servers.flatMap((s) => {
+    const allow = s.allowTools ? new Set(s.allowTools) : null;
+    return s.tools
+      .filter((t) => !allow || allow.has(t.name))
+      .map((t) => ({ server: s, tool: t }));
+  });
   const byName = new Map<string, RoutedTool>();
   for (const r of routed) byName.set(r.tool.name, r);
 
@@ -134,7 +144,20 @@ export async function runOrchestrator(
       continue;
     }
 
-    const resultText = await hit.server.client.callTool(call.name, call.args);
+    let resultText: string;
+    try {
+      resultText = await hit.server.client.callTool(call.name, call.args);
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      console.log(`[итерация ${iter}] CALL ${call.name} → ошибка: ${m}`);
+      history.push(msg.assistant(lastResponse));
+      history.push(
+        msg.user(
+          `RESULT: Ошибка вызова ${call.name}: ${m}. Попробуй другие аргументы (например абсолютный путь внутри vault).`,
+        ),
+      );
+      continue;
+    }
     const summary = (resultText.split('\n')[0] ?? '').trim();
     console.log(
       `[итерация ${iter}] CALL ${call.name} → сервер "${hit.server.name}" → ${summary || '(пусто)'}`,

@@ -143,6 +143,16 @@ export class McpStdioClient {
     return resp.result;
   }
 
+  /** Вызвать инструмент и достать текст первого content-блока (для оркестратора). */
+  async callToolText(name: string, args: Record<string, unknown> = {}): Promise<string> {
+    const result = (await this.callTool(name, args)) as
+      | { content?: Array<{ type: string; text?: string }>; isError?: boolean }
+      | undefined;
+    const text = result?.content?.find((c) => c.type === 'text')?.text ?? '';
+    if (result?.isError) throw new Error(text || `tools/call "${name}" вернул ошибку`);
+    return text;
+  }
+
   /** Полный прогон: connect → listTools → disconnect. Возвращает инструменты и serverInfo. */
   async connectAndList(): Promise<McpInitResult> {
     await this.connect();

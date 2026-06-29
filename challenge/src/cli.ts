@@ -23,7 +23,7 @@ import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { runServer } from './demos/day-17-server.js';
 import { runServer as runDay18Server } from './demos/day-18-server.js';
 import { runDay20Server } from './demos/day-20-server.js';
-import { ensureVaultSeeded, DEFAULT_VAULT_DIR } from './demos/day-20-obsidian-server.js';
+import { runDay20 } from './demos/day-20.js';
 import { startRepl } from './repl.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
@@ -60,10 +60,10 @@ function printHelp(): void {
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
   console.log('    --port <N>         порт (по умолчанию 3001)');
-  console.log('  day-20-server    Поднять 2 MCP-сервера оркестрации (obsidian-mcp + world-mcp)');
-  console.log('    --obsidian-port <N>  порт obsidian-mcp (по умолчанию 3020)');
-  console.log('    --world-port <N>     порт world-mcp (по умолчанию 3021)');
-  console.log('  seed-vault       Записать в vault (.data/vault) примеры заметок (опционально, для отладки)');
+  console.log('  day-20-server    Поднять world-mcp + telegram-mcp (HTTP) для оркентсрации дня 20');
+  console.log('    --port <N>         порт world-mcp (по умолчанию 3021); telegram-mcp = port+1');
+  console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
+  console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
   console.log('    --server <url>     переопределить сервер (по умолчанию api.memo7.ru)');
   console.log('');
@@ -99,16 +99,6 @@ function parsePort(argv: string[], defaultPort: number): number {
       const n = Number(argv[++i]);
       if (Number.isInteger(n) && n > 0 && n < 65536) return n;
     }
-  }
-  return defaultPort;
-}
-
-/** Парсит именованный --flag <N> (порт) из argv; возвращает default если отсутствует. */
-function parseNamedPort(argv: string[], flag: string, defaultPort: number): number {
-  const i = argv.indexOf(flag);
-  if (i >= 0 && argv[i + 1]) {
-    const n = Number(argv[i + 1]);
-    if (Number.isInteger(n) && n > 0 && n < 65536) return n;
   }
   return defaultPort;
 }
@@ -382,17 +372,18 @@ async function main(): Promise<void> {
   }
 
   if (arg === 'day-20-server') {
-    const rest = argv.slice(1);
-    const obsidianPort = parseNamedPort(rest, '--obsidian-port', 3020);
-    const worldPort = parseNamedPort(rest, '--world-port', 3021);
-    console.log(`▶ Day-20 оркестрация: obsidian-mcp :${obsidianPort}, world-mcp :${worldPort}`);
-    await runDay20Server(obsidianPort, worldPort);
+    const port = parsePort(argv.slice(1), 3021);
+    console.log(`▶ Day-20 world-mcp: старт на http://localhost:${port}/mcp`);
+    await runDay20Server(port);
     return;
   }
 
-  if (arg === 'seed-vault') {
-    await ensureVaultSeeded(DEFAULT_VAULT_DIR);
-    console.log(`Vault готов: ${DEFAULT_VAULT_DIR}`);
+  if (arg === 'day-20') {
+    const rest = argv.slice(1);
+    const write = rest.includes('--write');
+    const text = rest.filter((a) => a !== '--write').join(' ').trim();
+    console.log(`▶ Day-20 оркестрация (${write ? 'write' : 'dry-run'})`);
+    await runDay20(text || undefined, write);
     return;
   }
 
@@ -435,7 +426,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, day-20-server, seed-vault, todo, remind, todos, done, summary, mcp, mcp-tools, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
   process.exit(1);
 }
 
