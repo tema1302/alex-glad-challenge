@@ -165,6 +165,66 @@ curl https://api.memo7.ru/mcp -X POST -H "Content-Type: application/json" `
 
 ---
 
+## День 20 — Orchestration MCP: «Брифинг дня»
+**Дата:** 2026-06-28
+**Ветка:** `day-20`
+
+**Задание (полный текст):**
+> Зарегистрируйте несколько MCP-серверов. Сделайте, чтобы:
+> - агент выбирал нужный инструмент;
+> - корректно маршрутизировал запросы;
+> - выполнял длинный флоу взаимодействия.
+> Проверьте:
+> - сценарий с инструментами с РАЗНЫХ серверов;
+> - корректность выбора и порядка вызовов.
+> Результат: длинный флоу с несколькими MCP-серверами и инструментами.
+
+**Продукт:** «Брифинг дня» для тимлида-отца-фаната. Триггер — юзер (команда
+`day-20`); агент сам собирает сводку: дата + заметки из Obsidian-vault
+(+ опционально web) → записывает заметку «Брифинг <дата>» обратно в vault.
+
+**Сделано:**
+- Два MCP-сервера в одном персистентном процессе (`day-20-server.ts`, деплоится
+  как сервис — не демка и не in-process mock):
+  - `obsidian-mcp` :3020 — `read_note` / `search_notes` / `create_note` над vault
+    (`.data/vault/*.md`, filesystem, без плагина Obsidian и без Local REST API);
+  - `world-mcp` :3021 — `get_current_time` (часы сервера) + `fetch_url` (web).
+- `core/mcpOrchestrator.ts` — кросс-серверный роутер: подключается к N серверам,
+  мержит их инструменты в один список, каждый `CALL` адресует на сервер-владелец.
+  Обобщение односерверного `mcpAgentLoop`; на cap-hit делает forced final summary,
+  иначе «ответом» остался бы сырой CALL последней итерации.
+- `demos/day-20.ts` — тонкий клиент (как `day-18.ts`): коннект к обоим серверам,
+  агентский цикл, trace маршрутизации. URL'ы через env `OBSIDIAN_MCP_URL` / `WORLD_MCP_URL`.
+- CLI: `day-20-server` (поднять серверы), `seed-vault` (опциональные примеры заметок).
+- Текстовый протокол `CALL/RESULT` (как day-17/19) — надёжнее нативного tools-API.
+
+**Параметры:**
+- LLM: `DEEPSEEK_API_KEY` / `OPENROUTER_API_KEY` (как везде).
+- Серверы: `OBSIDIAN_MCP_URL` (по умолч. `http://localhost:3020/mcp`),
+  `WORLD_MCP_URL` (`http://localhost:3021/mcp`); порты — `--obsidian-port` / `--world-port`.
+- Vault: `OBSIDIAN_VAULT_DIR` (по умолч. `.data/vault`).
+
+**Выводы:**
+- Кросс-серверная оркестрация = агентский цикл над объединённым списком тулзов:
+  шаг N на сервере A, шаг N+1 на сервере B — порядок выбирает модель, адрес — роутер.
+  Замер прогона: `get_current_time` (world) → `read_note`/`search_notes` (obsidian)
+  → `create_note` (obsidian).
+- Obsidian как домен = filesystem-MCP над `.md`, без плагина/REST API — vault это
+  просто папка.
+- Промпт НЕ должен bait'ить ненадёжный web (Google JS-gate выдаёт бесполезный HTML),
+  если данные уже есть в vault — иначе агент зацикливается на `fetch_url`.
+
+**Код:**
+- `challenge/src/core/mcpOrchestrator.ts` — мульти-серверный роутер.
+- `challenge/src/demos/day-20-server.ts` — персистентный процесс (2 MCP-сервера).
+- `challenge/src/demos/day-20-obsidian-server.ts` — vault MCP + сид.
+- `challenge/src/demos/day-20-world-server.ts` — time + fetch MCP.
+- `challenge/src/demos/day-20.ts` — клиент/демо.
+- Команды: `pnpm --filter challenge start -- day-20-server` (поднять),
+  `pnpm --filter challenge start -- day-20` (брифинг), `... seed-vault` (опционально).
+
+---
+
 ## День 2 — Формат ответа
 **Дата:** 2026-06-02
 

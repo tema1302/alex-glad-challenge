@@ -66,10 +66,17 @@ function buildSystemPrompt(tools: McpHttpTool[], extraSystem?: string): string {
   return lines.join('\n');
 }
 
-/** Пытается разобрать ответ модели как вызов инструмента `CALL: <name> <json>`. */
+/**
+ * Пытается разобрать ответ модели как вызов инструмента `CALL: <name> <json>`.
+ * Толерантно: модели часто пишут рассуждение перед CALL, поэтому берём
+ * ПОСЛЕДНЕЕ вхождение «CALL:» и парсим хвост от него. Если CALL нет — это
+ * финальный ответ.
+ */
 export function parseCall(content: string): ParsedCall | null {
-  const trimmed = content.trim();
-  const match = trimmed.match(/^CALL:\s*(\w+)\s*(\{[\s\S]*\})\s*$/);
+  const idx = content.lastIndexOf('CALL:');
+  if (idx < 0) return null;
+  const tail = content.slice(idx);
+  const match = tail.match(/^CALL:\s*(\w+)\s*(\{[\s\S]*\})\s*$/);
   if (!match) return null;
   try {
     const args = JSON.parse(match[2]) as Record<string, unknown>;
