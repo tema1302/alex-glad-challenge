@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "q": "Какой пакетный менеджер использует проект и сколько пакетов в workspace?",
+    "expectation": "pnpm 10.28.0, workspace состоит из единственного пакета challenge/",
+    "sources": ["stack.md"]
+  },
+  {
+    "id": 2,
+    "q": "Какая СУБД используется и через какой драйвер?",
+    "expectation": "SQLite через node:sqlite (встроен в Node 24, без нативных сборок)",
+    "sources": ["stack.md"]
+  },
+  {
+    "id": 3,
+    "q": "Какие LLM-провайдеры поддерживаются и какой у них эндпоинт?",
+    "expectation": "DeepSeek и OpenRouter, оба OpenAI-совместимы, /chat/completions",
+    "sources": ["stack.md"]
+  },
+  {
+    "id": 4,
+    "q": "Какой командой запустить конкретный день челленджа?",
+    "expectation": "pnpm --filter challenge start -- day-NN, дефис обязателен",
+    "sources": ["cli.md"]
+  },
+  {
+    "id": 5,
+    "q": "Есть ли в проекте lint, unit-тесты и шаг сборки?",
+    "expectation": "Нет. Единственный статический гейт — typecheck",
+    "sources": ["cli.md"]
+  },
+  {
+    "id": 6,
+    "q": "Какие стратегии контекста доступны в чат-REPL?",
+    "expectation": "full, sliding, sticky, branching",
+    "sources": ["cli.md"]
+  },
+  {
+    "id": 7,
+    "q": "Что делает агент 2 (PostWriter) и на чём он обучает стиль?",
+    "expectation": "Пишет пост в стиле канала, используя 5 случайных образцов style_samples как few-shot",
+    "sources": ["agents.md"]
+  },
+  {
+    "id": 8,
+    "q": "Какие источники RSS парсит агент 1 (NewsFetcher)?",
+    "expectation": "sports.ru, championat.com, BBC Sport",
+    "sources": ["agents.md"]
+  },
+  {
+    "id": 9,
+    "q": "Когда готовый пост публикуется в Telegram через флаг --publish?",
+    "expectation": "Только если verdict фактчекинга = ok",
+    "sources": ["cli.md"]
+  },
+  {
+    "id": 10,
+    "q": "Зачем новость помечается used=1 в базе?",
+    "expectation": "Чтобы не брать её повторно при следующих прогонах pipeline",
+    "sources": ["agents.md"]
+  }
+]
