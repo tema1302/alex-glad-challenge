@@ -15,6 +15,7 @@
 //   pnpm --filter challenge start -- help
 
 import path from 'node:path';
+import readline from 'node:readline';
 
 import { loadEnvUpward } from './core/env.js';
 loadEnvUpward();
@@ -78,6 +79,7 @@ function printHelp(): void {
   console.log('    --strategy <name>   fixed (по умолч.) | structure');
   console.log('    --k <N>             сколько чанков брать (по умолчанию 4)');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
+  console.log('  rag chat         Интерактивный режим: вопрос за вопросом (/norag, /quit)');
   console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
@@ -679,7 +681,62 @@ async function runRagCommand(argv: string[]): Promise<void> {
       return;
     }
 
-    console.error('Использование: rag index|query|eval');
+    if (sub === 'chat') {
+      const { flags } = parseRagFlags(argv.slice(1));
+      const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
+      const k = flags.k ?? 4;
+      const client = makeLocalLlmClient();
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        if (store.count(strategy) === 0) {
+          console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
+          process.exit(1);
+        }
+        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        console.log(`▶ RAG чат (${strategy}, k=${k}). Источник — мануал в индексе.`);
+        console.log('  /norag — переключить режим (с RAG / без RAG)');
+        console.log('  /quit — выход\n');
+
+        let noRag = false;
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const prompt = (): void => rl.prompt();
+        rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
+        rl.on('line', async (line) => {
+          const q = line.trim();
+          if (!q) { prompt(); return; }
+          if (q === '/quit' || q === '/exit') { rl.close(); return; }
+          if (q === '/norag') {
+            noRag = !noRag;
+            rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
+            console.log(`режим: ${noRag ? 'без RAG (общие знания)' : 'с RAG (по мануалу)'}`);
+            prompt();
+            return;
+          }
+          try {
+            if (noRag) {
+              console.log('\n' + (await answerNoRag(client, q)) + '\n');
+            } else {
+              const { answer, sources } = await answerWithRag(client, retriever, q, k);
+              const src = sources
+                .map((s) => `${s.chunk.metadata.section}[${s.score.toFixed(2)}]`)
+                .join(', ');
+              console.log(`\nисточники: ${src}`);
+              console.log(answer + '\n');
+            }
+          } catch (err) {
+            const m = err instanceof Error ? err.message : String(err);
+            console.error(`ошибка: ${m}`);
+          }
+          prompt();
+        });
+        await new Promise<void>((res) => rl.once('close', res));
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    console.error('Использование: rag index|query|eval|chat');
     process.exit(1);
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);

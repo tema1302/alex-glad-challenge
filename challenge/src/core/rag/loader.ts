@@ -20,8 +20,12 @@ function listFiles(dir: string, out: string[]): void {
   let entries: string[];
   try {
     entries = readdirSync(dir);
-  } catch {
-    return; // каталог недоступен — пропуск
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT') {
+      throw new Error(`Каталог не существует: ${dir}`);
+    }
+    return; // иной сбой доступа — пропуск
   }
   for (const name of entries) {
     const full = path.join(dir, name);
