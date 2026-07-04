@@ -29,7 +29,7 @@ import type { Demo } from './types.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'rag.sqlite');
 const EVAL_FILE = path.join(process.cwd(), 'src', 'data', 'rag-eval.json');
-const DEMO_IDS = [1, 5, 8];
+const DEMO_IDS = [11, 12, 13, 14, 15];
 const POOL = 20;
 const TOP_K = 4;
 const THRESHOLD = DEFAULT_RAG_THRESHOLD;
