@@ -25,11 +25,25 @@ export { Retriever } from './retriever.js';
 export { makeLocalLlmClient, localLlmConfig } from './llm.js';
 export type { LocalLlmConfig } from './llm.js';
 
-export { answerWithRag, answerNoRag, buildRagPrompt } from './rag.js';
-export type { RagAnswer } from './rag.js';
+export {
+  answerWithRag,
+  answerNoRag,
+  buildRagPrompt,
+  filterByThreshold,
+  DEFAULT_RAG_THRESHOLD,
+} from './rag.js';
+export type { RagAnswer, RagDebug, RagOptions, RagStage } from './rag.js';
+
+export { rerankWithLlm } from './rerank.js';
+export type { RerankResult } from './rerank.js';
+
+export { rewriteQuery } from './rewrite.js';
+
+export { detectHardware } from './hardware.js';
+export type { HardwareInfo } from './hardware.js';
 
 export { indexDocuments, runIndexing, RAG_STRATEGIES } from './pipeline.js';
 export type { IndexingResult, RunIndexingOptions } from './pipeline.js';
 
-export { loadEval, runEval } from './eval.js';
-export type { EvalQuestion, EvalRow } from './eval.js';
+export { loadEval, runEval, runEvalAB } from './eval.js';
+export type { EvalQuestion, EvalRow, EvalMetrics, EvalAbRow, EvalAbResult } from './eval.js';

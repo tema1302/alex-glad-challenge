@@ -1,10 +1,11 @@
-// Контрольные вопросы для оценки RAG (день 22, усиление).
+// Контрольные вопросы для оценки RAG (день 22, усиление; день 23 — A/B).
 // 10 вопросов с ожиданием и (опционально) ожидаемыми источниками.
 // Хранятся в src/data/rag-eval.json — пользователь редактирует под свой корпус.
 
 import { readFile } from 'node:fs/promises';
 import type { LlmClient } from '../client.js';
-import { answerNoRag, answerWithRag } from './rag.js';
+import { answerNoRag, answerWithRag, DEFAULT_RAG_THRESHOLD } from './rag.js';
+import type { RagAnswer } from './rag.js';
 import type { Retriever } from './retriever.js';
 import { formatDuration } from './pipeline.js';
 
@@ -39,7 +40,8 @@ export async function runEval(
   for (let i = 0; i < questions.length; i++) {
     const question = questions[i];
     const noRag = await answerNoRag(client, question.q);
-    const { answer: withRag, sources } = await answerWithRag(client, retriever, question.q, k);
+    // pool по умолч. = k → поведение идентично дню 22 (retrieve(k) → filter → slice(k)).
+    const { answer: withRag, sources } = await answerWithRag(client, retriever, question.q, { k });
     rows.push({
       question,
       noRag,
@@ -60,4 +62,109 @@ export async function runEval(
     console.log(`  [eval ${done}/${total} · ${pct}% · ~${formatDuration(eta)} left]`);
   }
   return rows;
+}
+
+// --- A/B (день 23): baseline (cosine-only) vs improved (+LLM rerank). ---
+
+export interface EvalMetrics {
+  coversSources: number;   // доля вопросов (с ожидаемыми sources), где все ожидаемые найдены
+  meanScore: number;       // средний cosine-скор финальных источников
+  keptAfterFilter: number; // среднее число чанков, прошедших cosine pre-filter
+  avgRankDelta: number;    // средний сдвиг позиций после реранка (0 если реранк off)
+  questions: number;
+}
+
+export interface EvalAbRow {
+  question: EvalQuestion;
+  baseline: RagAnswer;     // threshold=0.5, rerank OFF, rewrite OFF
+  improved: RagAnswer;     // threshold=0.5, rerank ON
+}
+
+export interface EvalAbResult {
+  baseline: EvalMetrics;
+  improved: EvalMetrics;
+  perQuestion: EvalAbRow[];
+}
+
+export async function runEvalAB(
+  client: LlmClient,
+  retriever: Retriever,
+  questions: EvalQuestion[],
+  opts: { k?: number; pool?: number; threshold?: number } = {},
+): Promise<EvalAbResult> {
+  const k = opts.k ?? 4;
+  const pool = opts.pool ?? 20;
+  const threshold = opts.threshold ?? DEFAULT_RAG_THRESHOLD;
+  const total = questions.length;
+  const start = Date.now();
+
+  const perQuestion: EvalAbRow[] = [];
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
+    const baseline = await answerWithRag(client, retriever, question.q, {
+      k,
+      pool,
+      threshold,
+      rerank: false,
+      rewrite: false,
+    });
+    const improved = await answerWithRag(client, retriever, question.q, {
+      k,
+      pool,
+      threshold,
+      rerank: true,
+      rewrite: false,
+    });
+    perQuestion.push({ question, baseline, improved });
+
+    const done = i + 1;
+    const pct = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 100;
+    const elapsed = Date.now() - start;
+    // 3 LLM-вызова на вопрос (retrieve-embed + 2× answer), плюс rerank-вызов в improved.
+    const rate = done > 0 ? elapsed / done : 0;
+    const eta = rate * (total - done);
+    console.log(`  [eval A/B ${done}/${total} · ${pct}% · ~${formatDuration(eta)} left]`);
+  }
+
+  return {
+    baseline: computeMetrics(perQuestion.map((r) => ({ question: r.question, answer: r.baseline }))),
+    improved: computeMetrics(perQuestion.map((r) => ({ question: r.question, answer: r.improved }))),
+    perQuestion,
+  };
+}
+
+// Метрики строго из RagAnswer.debug и sources — БЕЗ LLM-judge (медленно + циркулярно).
+// coversSources: вопросы без ожидаемых sources исключаются и из числителя, и из знаменателя.
+function computeMetrics(rows: { question: EvalQuestion; answer: RagAnswer }[]): EvalMetrics {
+  const questions = rows.length;
+  if (questions === 0) {
+    return { coversSources: 0, meanScore: 0, keptAfterFilter: 0, avgRankDelta: 0, questions: 0 };
+  }
+  let covered = 0;
+  let withSources = 0;
+  let scoreSum = 0;
+  let scoreCount = 0;
+  let filterSum = 0;
+  let deltaSum = 0;
+  for (const r of rows) {
+    const retrievedSources = new Set(r.answer.sources.map((s) => s.chunk.metadata.source));
+    if (r.question.sources && r.question.sources.length > 0) {
+      withSources++;
+      const hit = r.question.sources.every((src) => retrievedSources.has(src));
+      if (hit) covered++;
+    }
+    for (const s of r.answer.sources) {
+      scoreSum += s.score;
+      scoreCount++;
+    }
+    filterSum += r.answer.debug?.filteredSize ?? 0;
+    deltaSum += r.answer.debug?.rankDelta ?? 0;
+  }
+  return {
+    coversSources: withSources > 0 ? covered / withSources : 0,
+    meanScore: scoreCount > 0 ? scoreSum / scoreCount : 0,
+    keptAfterFilter: filterSum / questions,
+    avgRankDelta: deltaSum / questions,
+    questions,
+  };
 }

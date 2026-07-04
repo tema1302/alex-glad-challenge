@@ -41,10 +41,12 @@ import {
   runIndexing,
   loadEval,
   runEval,
+  runEvalAB,
   answerWithRag,
   answerNoRag,
+  DEFAULT_RAG_THRESHOLD,
 } from './core/rag/index.js';
-import type { ChunkingStrategy } from './core/rag/index.js';
+import type { ChunkingStrategy, RagOptions } from './core/rag/index.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
@@ -576,24 +578,75 @@ function runDbStatsCommand(): void {
 
 interface RagFlags {
   strategy?: ChunkingStrategy;
-  k?: number;
+  k?: number;        // финальный topK (alias --topk)
+  topk?: number;     // финальный topK (явный)
+  pool?: number;     // candidate pool для retrieve
+  threshold?: number;
+  rerank?: boolean;
+  rewrite?: boolean;
   noRag?: boolean;
+  ab?: boolean;
 }
 
 function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
   const flags: RagFlags = {};
   const rest: string[] = [];
+  const num = (v: string): number | undefined => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === '--strategy' && argv[i + 1]) {
+    const a = argv[i];
+    if (a === '--strategy' && argv[i + 1]) {
       const v = argv[++i];
       if (v === 'fixed' || v === 'structure') flags.strategy = v;
       continue;
     }
-    if (argv[i] === '--k' && argv[i + 1]) { flags.k = Number(argv[++i]); continue; }
-    if (argv[i] === '--no-rag') { flags.noRag = true; continue; }
-    rest.push(argv[i]);
+    if (a === '--k' && argv[i + 1]) { flags.k = num(argv[++i]); continue; }
+    if (a === '--topk' && argv[i + 1]) { flags.topk = num(argv[++i]); continue; }
+    if (a === '--pool' && argv[i + 1]) { flags.pool = num(argv[++i]); continue; }
+    if (a === '--threshold' && argv[i + 1]) { flags.threshold = num(argv[++i]); continue; }
+    if (a === '--no-rag') { flags.noRag = true; continue; }
+    if (a === '--rerank') { flags.rerank = true; continue; }
+    if (a === '--no-rerank') { flags.rerank = false; continue; }
+    if (a === '--rewrite') { flags.rewrite = true; continue; }
+    if (a === '--no-rewrite') { flags.rewrite = false; continue; }
+    if (a === '--ab') { flags.ab = true; continue; }
+    rest.push(a);
   }
   return { flags, rest };
+}
+
+// Собирает RagOptions из флагов. --topk имеет приоритет над --k; pool по умолч. 20
+// (candidate pool для реранка/фильтра); threshold по умолч. DEFAULT_RAG_THRESHOLD.
+function buildRagOpts(flags: RagFlags): RagOptions {
+  return {
+    k: flags.topk ?? flags.k ?? 4,
+    pool: flags.pool ?? 20,
+    threshold: flags.threshold ?? DEFAULT_RAG_THRESHOLD,
+    rerank: flags.rerank ?? false,
+    rewrite: flags.rewrite ?? false,
+  };
+}
+
+// Компактная печать этапов пайплайна (rewrite/retrieve/filter/rerank/llm) в rag query.
+function printRagStage(stage: { step: string; detail: Record<string, unknown> }): void {
+  if (stage.step === 'rewrite') {
+    const d = stage.detail as { original: string; rewritten: string };
+    console.log(`  [rewrite] "${d.original}" → "${d.rewritten}"`);
+  } else if (stage.step === 'retrieve') {
+    const d = stage.detail as { query: string; pool: number };
+    console.log(`  [retrieve] pool=${d.pool}`);
+  } else if (stage.step === 'filter') {
+    const d = stage.detail as { before: number; after: number; threshold: number };
+    console.log(`  [filter] ${d.before} → ${d.after} (threshold=${d.threshold})`);
+  } else if (stage.step === 'rerank') {
+    const d = stage.detail as { before: number; after: number; fallback: boolean; rankDelta: number };
+    console.log(`  [rerank] ${d.before} → ${d.after} (fallback=${d.fallback}, Δrank=${d.rankDelta.toFixed(2)})`);
+  } else if (stage.step === 'llm') {
+    const d = stage.detail as { topK: number };
+    console.log(`  [llm] topK=${d.topK}`);
+  }
 }
 
 // live-индикатор ожидания локальной модели в RAG-чате: крутится, пока идёт
@@ -661,12 +714,24 @@ async function runRagCommand(argv: string[]): Promise<void> {
           process.exit(1);
         }
         const retriever = new Retriever(store, makeEmbedder(), strategy);
-        const k = flags.k ?? 4;
-        console.log(`▶ RAG query (${strategy}, k=${k}): ${question}\n`);
-        const { answer, sources } = await answerWithRag(client, retriever, question, k);
+        const opts = buildRagOpts(flags);
+        console.log(
+          `▶ RAG query (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, rerank=${opts.rerank}, rewrite=${opts.rewrite}): ${question}\n`,
+        );
+        const { answer, sources, debug } = await answerWithRag(client, retriever, question, {
+          ...opts,
+          onProgress: printRagStage,
+        });
         console.log('Источники:');
         for (const s of sources) {
           console.log(`  [${s.score.toFixed(3)}] ${s.chunk.metadata.source} | ${s.chunk.metadata.section}`);
+        }
+        if (debug) {
+          console.log(
+            `\nОтладка: pool=${debug.poolSize} filtered=${debug.filteredSize} threshold=${debug.threshold} ` +
+              `rerank=${debug.rerankApplied} fallback=${debug.fallback} Δrank=${debug.rankDelta.toFixed(2)} ` +
+              `rewritten=${debug.rewritten}`,
+          );
         }
         console.log('\nОтвет:');
         console.log(answer);
@@ -688,15 +753,52 @@ async function runRagCommand(argv: string[]): Promise<void> {
         }
         const retriever = new Retriever(store, makeEmbedder(), strategy);
         const questions = await loadEval(RAG_EVAL_FILE);
-        console.log(`▶ RAG eval: ${questions.length} вопросов, стратегия ${strategy}\n`);
-        const rows = await runEval(client, retriever, questions);
-        for (let i = 0; i < rows.length; i++) {
-          const r = rows[i];
-          console.log(`Q${i + 1}: ${r.question.q}`);
-          console.log(`  без RAG: ${r.noRag.replace(/\s+/g, ' ').slice(0, 160)}`);
-          console.log(`  с RAG:   ${r.withRag.replace(/\s+/g, ' ').slice(0, 160)}`);
-          const src = r.sources.map((s) => `${s.source}(${s.score.toFixed(2)})`).join(', ');
-          console.log(`  источники: ${src}\n`);
+        if (flags.ab) {
+          const opts = buildRagOpts(flags);
+          console.log(
+            `▶ RAG eval A/B: ${questions.length} вопросов, стратегия ${strategy}, ` +
+              `pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}\n`,
+          );
+          const result = await runEvalAB(client, retriever, questions, {
+            k: opts.k,
+            pool: opts.pool,
+            threshold: opts.threshold,
+          });
+          console.log(`\n=== A/B: baseline (cosine-only) vs improved (+LLM rerank) ===`);
+          const metrics: [string, number, number][] = [
+            ['coversSources', result.baseline.coversSources, result.improved.coversSources],
+            ['meanScore', result.baseline.meanScore, result.improved.meanScore],
+            ['keptAfterFilter', result.baseline.keptAfterFilter, result.improved.keptAfterFilter],
+            ['avgRankDelta', result.baseline.avgRankDelta, result.improved.avgRankDelta],
+            ['questions', result.baseline.questions, result.improved.questions],
+          ];
+          console.log('  metric            | baseline | improved |     Δ');
+          console.log('  ------------------|----------|----------|------');
+          for (const [name, b, im] of metrics) {
+            const d = im - b;
+            const sign = d > 0 ? '+' : '';
+            const fmt = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(3));
+            const dv = Number.isInteger(d) ? `${sign}${d}` : `${sign}${d.toFixed(3)}`;
+            console.log(
+              `  ${name.padEnd(18)} | ${fmt(b).padStart(8)} | ${fmt(im).padStart(8)} | ${dv.padStart(5)}`,
+            );
+          }
+          const fbRate = result.improved.questions > 0
+            ? result.perQuestion.filter((r) => r.improved.debug?.fallback).length / result.improved.questions
+            : 0;
+          console.log(`\n  fallback rate (improved): ${(fbRate * 100).toFixed(0)}%`);
+          console.log(`  avgRankDelta (improved): ${result.improved.avgRankDelta.toFixed(2)}`);
+        } else {
+          console.log(`▶ RAG eval: ${questions.length} вопросов, стратегия ${strategy}\n`);
+          const rows = await runEval(client, retriever, questions);
+          for (let i = 0; i < rows.length; i++) {
+            const r = rows[i];
+            console.log(`Q${i + 1}: ${r.question.q}`);
+            console.log(`  без RAG: ${r.noRag.replace(/\s+/g, ' ').slice(0, 160)}`);
+            console.log(`  с RAG:   ${r.withRag.replace(/\s+/g, ' ').slice(0, 160)}`);
+            const src = r.sources.map((s) => `${s.source}(${s.score.toFixed(2)})`).join(', ');
+            console.log(`  источники: ${src}\n`);
+          }
         }
       } finally {
         store.close();
@@ -707,7 +809,7 @@ async function runRagCommand(argv: string[]): Promise<void> {
     if (sub === 'chat') {
       const { flags } = parseRagFlags(argv.slice(1));
       const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
-      const k = flags.k ?? 4;
+      const opts = buildRagOpts(flags);
       const client = makeLocalLlmClient();
       const store = new RagStore(RAG_DB_PATH);
       try {
@@ -716,7 +818,11 @@ async function runRagCommand(argv: string[]): Promise<void> {
           process.exit(1);
         }
         const retriever = new Retriever(store, makeEmbedder(), strategy);
-        console.log(`▶ RAG чат (${strategy}, k=${k}). Источник — мануал в индексе.`);
+        const stagesOn = opts.rerank || opts.rewrite;
+        console.log(
+          `▶ RAG чат (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, ` +
+            `rerank=${opts.rerank}, rewrite=${opts.rewrite}). Источник — мануал в индексе.`,
+        );
         console.log('  /norag — переключить режим (с RAG / без RAG)');
         console.log('  /quit — выход\n');
 
@@ -746,7 +852,7 @@ async function runRagCommand(argv: string[]): Promise<void> {
               console.log('\n' + answer);
               console.log(`[model: ${modelName} | rag: — | ${dt}ms]\n`);
             } else {
-              const { answer, sources } = await answerWithRag(client, retriever, q, k);
+              const { answer, sources, debug } = await answerWithRag(client, retriever, q, opts);
               spinner.stop();
               const dt = Date.now() - t0;
               const src = sources
@@ -754,7 +860,16 @@ async function runRagCommand(argv: string[]): Promise<void> {
                 .join(', ');
               console.log(`\nисточники: ${src}`);
               console.log(answer);
-              console.log(`[model: ${modelName} | rag: ${sources.length} chunks | ${dt}ms]\n`);
+              // Базовая метка — как в дне 22. При включённых стадиях (rerank/rewrite)
+              // показываем состав пайплайна: pool → filt → rerank → topK.
+              let label = `[model: ${modelName} | rag: ${sources.length} chunks | ${dt}ms]`;
+              if (stagesOn && debug) {
+                const stages =
+                  `pool ${debug.poolSize} → filt ${debug.filteredSize}` +
+                  (debug.rerankApplied ? ` → rerank ${sources.length}` : '');
+                label = `[model: ${modelName} | rag: ${stages} | ${dt}ms]`;
+              }
+              console.log(`${label}\n`);
             }
           } catch (err) {
             spinner.stop();
