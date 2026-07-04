@@ -15,6 +15,7 @@
 //   pnpm --filter challenge start -- help
 
 import path from 'node:path';
+import readline from 'node:readline';
 
 import { loadEnvUpward } from './core/env.js';
 loadEnvUpward();
@@ -32,9 +33,24 @@ import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { McpHttpClient } from './core/mcpHttpClient.js';
 import { parseTodoArgs } from './core/todoParser.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
+import {
+  RagStore,
+  Retriever,
+  makeEmbedder,
+  makeLocalLlmClient,
+  runIndexing,
+  loadEval,
+  runEval,
+  answerWithRag,
+  answerNoRag,
+} from './core/rag/index.js';
+import type { ChunkingStrategy } from './core/rag/index.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
+const RAG_DB_PATH = path.join(process.cwd(), '.data', 'rag.sqlite');
+const RAG_DOCS_DIR = path.join(process.cwd(), 'src', 'data', 'rag-sample');
+const RAG_EVAL_FILE = path.join(process.cwd(), 'src', 'data', 'rag-eval.json');
 
 function printHelp(): void {
   console.log('Использование:');
@@ -56,6 +72,14 @@ function printHelp(): void {
   console.log('    --publish          опубликовать готовый пост в Telegram (только если verdict=ok)');
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
+  console.log('  rag index [path] Индексировать каталог документов в RAG-индекс (день 21, локальные эмбеддинги)');
+  console.log('    --strategy <name>   только fixed | structure (по умолчанию обе)');
+  console.log('  rag query "<q>"  Вопрос по индексу (день 22); нужен локальный LLM');
+  console.log('    --no-rag            ответ без индекса (общие знания)');
+  console.log('    --strategy <name>   fixed (по умолч.) | structure');
+  console.log('    --k <N>             сколько чанков брать (по умолчанию 4)');
+  console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
+  console.log('  rag chat         Интерактивный режим: вопрос за вопросом (/norag, /quit)');
   console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
@@ -387,6 +411,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'rag') {
+    await runRagCommand(argv.slice(1));
+    return;
+  }
+
   if (arg === 'agent') {
     const [serverUrl, rest] = parseServerUrl(argv.slice(1));
     const request = rest.join(' ').trim();
@@ -426,7 +455,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
   process.exit(1);
 }
 
@@ -540,6 +569,213 @@ function runDbStatsCommand(): void {
     console.log(`style_samples:  ${db.styleSamplesCount()}`);
   } finally {
     db.close();
+  }
+}
+
+// --- RAG (дни 21–22): индекс / запрос / eval. Только локальные модели. ---
+
+interface RagFlags {
+  strategy?: ChunkingStrategy;
+  k?: number;
+  noRag?: boolean;
+}
+
+function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
+  const flags: RagFlags = {};
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--strategy' && argv[i + 1]) {
+      const v = argv[++i];
+      if (v === 'fixed' || v === 'structure') flags.strategy = v;
+      continue;
+    }
+    if (argv[i] === '--k' && argv[i + 1]) { flags.k = Number(argv[++i]); continue; }
+    if (argv[i] === '--no-rag') { flags.noRag = true; continue; }
+    rest.push(argv[i]);
+  }
+  return { flags, rest };
+}
+
+// live-индикатор ожидания локальной модели в RAG-чате: крутится, пока идёт
+// LLM-вызов, чтобы REPL не выглядел зависшим. stop() затирает линию пробелами
+// (без ANSI — работает в любом терминале).
+function startSpinner(label: string): { stop: () => void } {
+  const frames = ['|', '/', '-', '\\'];
+  let i = 0;
+  let maxLen = 0;
+  const render = (): void => {
+    const s = `  ${label}… ${frames[i % frames.length]}`;
+    if (s.length > maxLen) maxLen = s.length;
+    process.stdout.write('\r' + s);
+    i++;
+  };
+  render();
+  const id = setInterval(render, 150);
+  return {
+    stop() {
+      clearInterval(id);
+      process.stdout.write('\r' + ' '.repeat(maxLen) + '\r');
+    },
+  };
+}
+
+async function runRagCommand(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  try {
+    if (sub === 'index') {
+      const { flags, rest } = parseRagFlags(argv.slice(1));
+      const docsDir = rest[0] ?? RAG_DOCS_DIR;
+      const strategies = flags.strategy ? [flags.strategy] : undefined;
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        console.log(`▶ RAG index: ${docsDir} → ${RAG_DB_PATH}`);
+        const result = await runIndexing(store, { docsDir, strategies });
+        for (const s of Object.keys(result)) {
+          const st = result[s];
+          console.log(`  ${s}: ${st.chunks} чанков, среднее ${st.avgLen} симв, dim=${st.dim ?? '-'}`);
+        }
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    if (sub === 'query') {
+      const { flags, rest } = parseRagFlags(argv.slice(1));
+      const question = rest.join(' ').trim();
+      if (!question) {
+        console.error('Укажи вопрос: pnpm --filter challenge start -- rag query "..."');
+        process.exit(1);
+      }
+      const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
+      const client = makeLocalLlmClient();
+      if (flags.noRag) {
+        console.log(`▶ RAG query (без RAG): ${question}\n`);
+        console.log(await answerNoRag(client, question));
+        return;
+      }
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        if (store.count(strategy) === 0) {
+          console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
+          process.exit(1);
+        }
+        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        const k = flags.k ?? 4;
+        console.log(`▶ RAG query (${strategy}, k=${k}): ${question}\n`);
+        const { answer, sources } = await answerWithRag(client, retriever, question, k);
+        console.log('Источники:');
+        for (const s of sources) {
+          console.log(`  [${s.score.toFixed(3)}] ${s.chunk.metadata.source} | ${s.chunk.metadata.section}`);
+        }
+        console.log('\nОтвет:');
+        console.log(answer);
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    if (sub === 'eval') {
+      const { flags } = parseRagFlags(argv.slice(1));
+      const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
+      const client = makeLocalLlmClient();
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        if (store.count(strategy) === 0) {
+          console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
+          process.exit(1);
+        }
+        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        const questions = await loadEval(RAG_EVAL_FILE);
+        console.log(`▶ RAG eval: ${questions.length} вопросов, стратегия ${strategy}\n`);
+        const rows = await runEval(client, retriever, questions);
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          console.log(`Q${i + 1}: ${r.question.q}`);
+          console.log(`  без RAG: ${r.noRag.replace(/\s+/g, ' ').slice(0, 160)}`);
+          console.log(`  с RAG:   ${r.withRag.replace(/\s+/g, ' ').slice(0, 160)}`);
+          const src = r.sources.map((s) => `${s.source}(${s.score.toFixed(2)})`).join(', ');
+          console.log(`  источники: ${src}\n`);
+        }
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    if (sub === 'chat') {
+      const { flags } = parseRagFlags(argv.slice(1));
+      const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
+      const k = flags.k ?? 4;
+      const client = makeLocalLlmClient();
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        if (store.count(strategy) === 0) {
+          console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
+          process.exit(1);
+        }
+        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        console.log(`▶ RAG чат (${strategy}, k=${k}). Источник — мануал в индексе.`);
+        console.log('  /norag — переключить режим (с RAG / без RAG)');
+        console.log('  /quit — выход\n');
+
+        let noRag = false;
+        const modelName = client.defaultModel;
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        const prompt = (): void => rl.prompt();
+        rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
+        rl.on('line', async (line) => {
+          const q = line.trim();
+          if (!q) { prompt(); return; }
+          if (q === '/quit' || q === '/exit') { rl.close(); return; }
+          if (q === '/norag') {
+            noRag = !noRag;
+            rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
+            console.log(`режим: ${noRag ? 'без RAG (общие знания)' : 'с RAG (по мануалу)'}`);
+            prompt();
+            return;
+          }
+          const t0 = Date.now();
+          const spinner = startSpinner('думаю');
+          try {
+            if (noRag) {
+              const answer = await answerNoRag(client, q);
+              spinner.stop();
+              const dt = Date.now() - t0;
+              console.log('\n' + answer);
+              console.log(`[model: ${modelName} | rag: — | ${dt}ms]\n`);
+            } else {
+              const { answer, sources } = await answerWithRag(client, retriever, q, k);
+              spinner.stop();
+              const dt = Date.now() - t0;
+              const src = sources
+                .map((s) => `${s.chunk.metadata.section}[${s.score.toFixed(2)}]`)
+                .join(', ');
+              console.log(`\nисточники: ${src}`);
+              console.log(answer);
+              console.log(`[model: ${modelName} | rag: ${sources.length} chunks | ${dt}ms]\n`);
+            }
+          } catch (err) {
+            spinner.stop();
+            const m = err instanceof Error ? err.message : String(err);
+            console.error(`ошибка: ${m}`);
+          }
+          prompt();
+        });
+        await new Promise<void>((res) => rl.once('close', res));
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    console.error('Использование: rag index|query|eval|chat');
+    process.exit(1);
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    console.error(`RAG ошибка: ${m}`);
+    process.exit(1);
   }
 }
 
