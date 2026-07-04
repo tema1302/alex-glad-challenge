@@ -9,10 +9,11 @@
 
 import type { LlmClient } from '../client.js';
 import { msg } from '../types.js';
-import type { ScoredChunk } from './types.js';
+import type { Quote, ScoredChunk } from './types.js';
 import type { Retriever } from './retriever.js';
 import { rerankWithLlm } from './rerank.js';
 import { rewriteQuery } from './rewrite.js';
+import { extractQuotes } from './quotes.js';
 
 // Фиксация языка вынесена в НАЧАЛО промпта: qwen2.5:7b-instruct склонен дрейфить
 // в zh, короткой фразы в конце недостаточно. Явный запрет доп. языков обязателен.
@@ -31,6 +32,14 @@ const SYSTEM_NO_RAG =
 // что-то вернёт, даже для нерелевантного запроса). День 23: вынесен в экспорт,
 // переопределяется через RagOptions.threshold.
 export const DEFAULT_RAG_THRESHOLD = 0.5;
+
+// Фиксированный ответ guard'а «не знаю» (день 24). Возвращается БЕЗ вызова LLM,
+// когда retrieve ничего не дал после cosine pre-filter (filtered.length === 0)
+// или когда лучший скор ниже opts.minScore (default-off, включается через --floor).
+// Детерминированный шорт-кёркт гасит галлюцинации qwen2.5:7b на пустом/слабом контексте.
+export const GUARD_ANSWER =
+  'Не знаю. В базе знаний нет релевантного фрагмента по этому вопросу. ' +
+  'Уточните вопрос — например, укажите раздел или особенность автомобиля EVOLUTE i-SPACE.';
 
 // buildRagPrompt принимает УЖЕ отфильтрованные чанки. Повторной фильтрации нет:
 // фильтрация — отдельная стадия пайплайна (filterByThreshold), чтобы порог был
@@ -60,6 +69,25 @@ export function filterByThreshold(chunks: ScoredChunk[], threshold: number): Sco
   return chunks.filter((c) => c.score >= threshold);
 }
 
+// Guard «не знаю» (день 24): детерминированное решение, отказаться ли от LLM-вызова
+// при пустом/слабом контексте. Pure-функция, не зовёт ни сеть, ни модель.
+//   - empty: filtered.length === 0 (всё отсеялось порогом threshold).
+//   - floor: opts.minScore задан и лучший скор ниже него (опц. закалка, default-off).
+// store.search сортирует по убыванию score, поэтому filtered[0] — топ-1 (store.ts:131).
+export function decideGuard(
+  filtered: ScoredChunk[],
+  minScore?: number,
+): { gaveUp: boolean; reason?: 'empty' | 'floor'; maxScore: number } {
+  const maxScore = filtered.length > 0 ? filtered[0].score : 0;
+  if (filtered.length === 0) {
+    return { gaveUp: true, reason: 'empty', maxScore: 0 };
+  }
+  if (minScore !== undefined && maxScore < minScore) {
+    return { gaveUp: true, reason: 'floor', maxScore };
+  }
+  return { gaveUp: false, maxScore };
+}
+
 export interface RagDebug {
   poolSize: number;        // сколько достали из индекса (candidate pool)
   filteredSize: number;    // сколько прошло cosine pre-filter
@@ -69,11 +97,13 @@ export interface RagDebug {
   rankDelta: number;       // средний сдвиг позиций после реранка
   rewritten: boolean;      // был ли переформулирован запрос
   effectiveQuery?: string; // переформулированный запрос (если rewrite сработал)
+  gaveUp?: boolean;        // день 24: сработал ли guard «не знаю» без LLM-вызова
 }
 
 export interface RagAnswer {
   answer: string;
   sources: ScoredChunk[]; // финальные чанки, попавшие в промпт (filtered/ranked)
+  quotes?: Quote[];       // день 24: детерминированные цитаты из sources (без LLM)
   debug?: RagDebug;
 }
 
@@ -82,6 +112,7 @@ export type RagStage =
   | { step: 'retrieve'; detail: { query: string; pool: number } }
   | { step: 'filter'; detail: { before: number; after: number; threshold: number } }
   | { step: 'rerank'; detail: { before: number; after: number; fallback: boolean; rankDelta: number } }
+  | { step: 'guard'; detail: { reason: 'empty' | 'floor'; filteredSize: number; maxScore: number } }
   | { step: 'llm'; detail: { topK: number } };
 
 export interface RagOptions {
@@ -90,6 +121,7 @@ export interface RagOptions {
   threshold?: number;  // косинусный pre-filter; по умолч. DEFAULT_RAG_THRESHOLD
   rerank?: boolean;    // LLM-reranker on/off (по умолч. off — совместимость с днём 22)
   rewrite?: boolean;   // query rewrite on/off (по умолч. off)
+  minScore?: number;   // день 24: опц. floor лучшего скора для guard'а (default-off)
   onProgress?: (stage: RagStage) => void;
 }
 
@@ -130,6 +162,38 @@ export async function answerWithRag(
     detail: { before: candidates.length, after: filtered.length, threshold },
   });
 
+  // 3.5 (день 24). Guard «не знаю»: если после cosine pre-filter контекст пуст
+  //    или лучший скор ниже opts.minScore — возвращаем фиксированный ответ БЕЗ
+  //    вызова LLM. Шорт-кёркт гасит галлюцинации qwen2.5:7b на пустом/слабом
+  //    контексте. minScore default-off → guard работает только по empty.
+  const guard = decideGuard(filtered, opts.minScore);
+  if (guard.gaveUp) {
+    onProgress?.({
+      step: 'guard',
+      detail: {
+        reason: guard.reason ?? 'empty',
+        filteredSize: filtered.length,
+        maxScore: guard.maxScore,
+      },
+    });
+    return {
+      answer: GUARD_ANSWER,
+      sources: [],
+      quotes: [],
+      debug: {
+        poolSize: candidates.length,
+        filteredSize: filtered.length,
+        threshold,
+        rerankApplied: useRerank,
+        fallback: false,
+        rankDelta: 0,
+        rewritten,
+        effectiveQuery: rewritten ? effectiveQuery : undefined,
+        gaveUp: true,
+      },
+    };
+  }
+
   // 4. Опциональный LLM-reranker → topK. Без реранка — просто slice(topK).
   let ranked: ScoredChunk[];
   let fallback = false;
@@ -154,6 +218,7 @@ export async function answerWithRag(
   return {
     answer,
     sources: ranked,
+    quotes: extractQuotes(ranked, question),
     debug: {
       poolSize: candidates.length,
       filteredSize: filtered.length,
@@ -163,6 +228,7 @@ export async function answerWithRag(
       rankDelta,
       rewritten,
       effectiveQuery: rewritten ? effectiveQuery : undefined,
+      gaveUp: false,
     },
   };
 }

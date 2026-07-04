@@ -7,7 +7,10 @@ export type {
   Embedder,
   ScoredChunk,
   IndexStats,
+  Quote,
 } from './types.js';
+
+export { extractQuotes } from './quotes.js';
 
 export type { LoadedDoc } from './loader.js';
 export { loadDocs, isCodeSource } from './loader.js';
@@ -30,6 +33,8 @@ export {
   answerNoRag,
   buildRagPrompt,
   filterByThreshold,
+  decideGuard,
+  GUARD_ANSWER,
   DEFAULT_RAG_THRESHOLD,
 } from './rag.js';
 export type { RagAnswer, RagDebug, RagOptions, RagStage } from './rag.js';
@@ -45,5 +50,12 @@ export type { HardwareInfo } from './hardware.js';
 export { indexDocuments, runIndexing, RAG_STRATEGIES } from './pipeline.js';
 export type { IndexingResult, RunIndexingOptions } from './pipeline.js';
 
-export { loadEval, runEval, runEvalAB } from './eval.js';
-export type { EvalQuestion, EvalRow, EvalMetrics, EvalAbRow, EvalAbResult } from './eval.js';
+export { loadEval, runEval, runEvalAB, runEvalDay24, computeDay24Metrics } from './eval.js';
+export type {
+  EvalQuestion,
+  EvalRow,
+  EvalMetrics,
+  EvalAbRow,
+  EvalAbResult,
+  Day24Metrics,
+} from './eval.js';

@@ -3,9 +3,10 @@
 // Хранятся в src/data/rag-eval.json — пользователь редактирует под свой корпус.
 
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { LlmClient } from '../client.js';
 import { answerNoRag, answerWithRag, DEFAULT_RAG_THRESHOLD } from './rag.js';
-import type { RagAnswer } from './rag.js';
+import type { RagAnswer, RagOptions } from './rag.js';
 import type { Retriever } from './retriever.js';
 import { formatDuration } from './pipeline.js';
 
@@ -14,6 +15,8 @@ export interface EvalQuestion {
   q: string;
   expectation: string;
   sources?: string[];
+  level?: string;          // день 24: broad → narrow градация вопроса
+  expectedGuard?: boolean; // день 24: ожидаем, что сработает guard «не знаю»
 }
 
 export interface EvalRow {
@@ -167,4 +170,77 @@ function computeMetrics(rows: { question: EvalQuestion; answer: RagAnswer }[]): 
     avgRankDelta: deltaSum / questions,
     questions,
   };
+}
+
+// --- День 24: метрики наличия источников/цитат/guard'а (pure, без LLM-judge). ---
+// «Совпадает ли смысл ответа с цитатами» — ручная сверка в финальном Report;
+// здесь только структурные доли. Образец — computeMetrics выше.
+export interface Day24Metrics {
+  questions: number;
+  sourcesCoverage: number;         // доля ответов с sources.length > 0
+  quotesCoverage: number;          // доля ответов с (quotes?.length ?? 0) > 0
+  guardTriggered: number;          // доля ответов с debug?.gaveUp === true
+  answerHasCitationMarker: number; // доля ответов, где /\[\d+\]/.test(answer)
+}
+
+export function computeDay24Metrics(rows: { answer: RagAnswer }[]): Day24Metrics {
+  const questions = rows.length;
+  if (questions === 0) {
+    return {
+      questions: 0,
+      sourcesCoverage: 0,
+      quotesCoverage: 0,
+      guardTriggered: 0,
+      answerHasCitationMarker: 0,
+    };
+  }
+  let withSources = 0;
+  let withQuotes = 0;
+  let guardCount = 0;
+  let markerCount = 0;
+  for (const r of rows) {
+    if (r.answer.sources.length > 0) withSources++;
+    if ((r.answer.quotes?.length ?? 0) > 0) withQuotes++;
+    if (r.answer.debug?.gaveUp === true) guardCount++;
+    if (/\[\d+\]/.test(r.answer.answer)) markerCount++;
+  }
+  return {
+    questions,
+    sourcesCoverage: withSources / questions,
+    quotesCoverage: withQuotes / questions,
+    guardTriggered: guardCount / questions,
+    answerHasCitationMarker: markerCount / questions,
+  };
+}
+
+// --- День 24: живой раннер 10 вопросов broad→narrow (structural metrics, без LLM-judge). ---
+// Образец — runEvalAB: тот же live-прогресс по вопросам, но ОДИН прогон (не A/B) и финальные
+// метрики — computeDay24Metrics (sources/quotes/guard/citation-marker). Прогон запускает
+// ОПЕРАТОР (нужны Ollama + собранный индекс); 10q грузится из src/data/rag-eval-day24.json.
+// Раннер НЕ рендерит построчный отчёт (это задача CLI-слоя) — только live-строку прогресса
+// внутри цикла, как runEval/runEvalAB. Stage-прогресс (RagStage) прокидывается через
+// opts.onProgress в answerWithRag как обычно.
+export async function runEvalDay24(
+  client: LlmClient,
+  retriever: Retriever,
+  opts: RagOptions = {},
+): Promise<{ rows: { question: EvalQuestion; answer: RagAnswer }[]; metrics: Day24Metrics }> {
+  const file = path.join(process.cwd(), 'src', 'data', 'rag-eval-day24.json');
+  const questions = await loadEval(file);
+  const total = questions.length;
+  const start = Date.now();
+  const rows: { question: EvalQuestion; answer: RagAnswer }[] = [];
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
+    const answer = await answerWithRag(client, retriever, question.q, opts);
+    rows.push({ question, answer });
+    const done = i + 1;
+    const pct = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 100;
+    const elapsed = Date.now() - start;
+    const rate = done > 0 ? elapsed / done : 0;
+    const eta = rate * (total - done);
+    console.log(`  [eval day24 ${done}/${total} · ${pct}% · ~${formatDuration(eta)} left]`);
+  }
+  const metrics = computeDay24Metrics(rows.map((r) => ({ answer: r.answer })));
+  return { rows, metrics };
 }

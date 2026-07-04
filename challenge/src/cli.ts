@@ -42,6 +42,7 @@ import {
   loadEval,
   runEval,
   runEvalAB,
+  runEvalDay24,
   answerWithRag,
   answerNoRag,
   DEFAULT_RAG_THRESHOLD,
@@ -582,10 +583,12 @@ interface RagFlags {
   topk?: number;     // финальный topK (явный)
   pool?: number;     // candidate pool для retrieve
   threshold?: number;
+  floor?: number;    // день 24: опц. floor для guard'а «не знаю» (minScore)
   rerank?: boolean;
   rewrite?: boolean;
   noRag?: boolean;
   ab?: boolean;
+  set?: string;      // день 24: набор вопросов для eval ('day24' → rag-eval-day24.json)
 }
 
 function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
@@ -606,12 +609,14 @@ function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
     if (a === '--topk' && argv[i + 1]) { flags.topk = num(argv[++i]); continue; }
     if (a === '--pool' && argv[i + 1]) { flags.pool = num(argv[++i]); continue; }
     if (a === '--threshold' && argv[i + 1]) { flags.threshold = num(argv[++i]); continue; }
+    if (a === '--floor' && argv[i + 1]) { flags.floor = num(argv[++i]); continue; }
     if (a === '--no-rag') { flags.noRag = true; continue; }
     if (a === '--rerank') { flags.rerank = true; continue; }
     if (a === '--no-rerank') { flags.rerank = false; continue; }
     if (a === '--rewrite') { flags.rewrite = true; continue; }
     if (a === '--no-rewrite') { flags.rewrite = false; continue; }
     if (a === '--ab') { flags.ab = true; continue; }
+    if (a === '--set' && argv[i + 1]) { flags.set = argv[++i]; continue; }
     rest.push(a);
   }
   return { flags, rest };
@@ -626,6 +631,7 @@ function buildRagOpts(flags: RagFlags): RagOptions {
     threshold: flags.threshold ?? DEFAULT_RAG_THRESHOLD,
     rerank: flags.rerank ?? false,
     rewrite: flags.rewrite ?? false,
+    minScore: flags.floor,
   };
 }
 
@@ -643,6 +649,9 @@ function printRagStage(stage: { step: string; detail: Record<string, unknown> })
   } else if (stage.step === 'rerank') {
     const d = stage.detail as { before: number; after: number; fallback: boolean; rankDelta: number };
     console.log(`  [rerank] ${d.before} → ${d.after} (fallback=${d.fallback}, Δrank=${d.rankDelta.toFixed(2)})`);
+  } else if (stage.step === 'guard') {
+    const d = stage.detail as { reason: 'empty' | 'floor'; filteredSize: number; maxScore: number };
+    console.log(`  [guard] gaveUp: ${d.reason} (filteredSize=${d.filteredSize}, maxScore=${d.maxScore.toFixed(3)})`);
   } else if (stage.step === 'llm') {
     const d = stage.detail as { topK: number };
     console.log(`  [llm] topK=${d.topK}`);
@@ -718,13 +727,19 @@ async function runRagCommand(argv: string[]): Promise<void> {
         console.log(
           `▶ RAG query (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, rerank=${opts.rerank}, rewrite=${opts.rewrite}): ${question}\n`,
         );
-        const { answer, sources, debug } = await answerWithRag(client, retriever, question, {
+        const { answer, sources, quotes, debug } = await answerWithRag(client, retriever, question, {
           ...opts,
           onProgress: printRagStage,
         });
         console.log('Источники:');
         for (const s of sources) {
           console.log(`  [${s.score.toFixed(3)}] ${s.chunk.metadata.source} | ${s.chunk.metadata.section}`);
+        }
+        if (quotes && quotes.length > 0) {
+          console.log('Цитаты:');
+          for (const q of quotes) {
+            console.log(`  [${q.chunkId}] ${q.snippet}`);
+          }
         }
         if (debug) {
           console.log(
@@ -733,8 +748,9 @@ async function runRagCommand(argv: string[]): Promise<void> {
               `rewritten=${debug.rewritten}`,
           );
         }
+        const guardLabel = debug?.gaveUp ? ' [guard: не знаю]' : '';
         console.log('\nОтвет:');
-        console.log(answer);
+        console.log(answer + guardLabel);
       } finally {
         store.close();
       }
@@ -752,6 +768,62 @@ async function runRagCommand(argv: string[]): Promise<void> {
           process.exit(1);
         }
         const retriever = new Retriever(store, makeEmbedder(), strategy);
+        if (flags.set === 'day24') {
+          const opts = buildRagOpts(flags);
+          console.log(`=== Day-24 eval: 10 вопросов broad→narrow ===`);
+          console.log(
+            `  [стратегия: ${strategy} | rerank: ${opts.rerank ? 'on' : 'off'} | ` +
+              `threshold: ${opts.threshold} | floor: ${opts.minScore ?? '-'}]\n`,
+          );
+          const result = await runEvalDay24(client, retriever, opts);
+          for (let i = 0; i < result.rows.length; i++) {
+            const { question, answer } = result.rows[i];
+            const level = question.level ?? '-';
+            const gaveUp = answer.debug?.gaveUp === true;
+            const reason = gaveUp ? ((answer.debug?.filteredSize ?? 0) === 0 ? 'empty' : 'floor') : null;
+            const guardTxt = gaveUp ? `ДА (reason=${reason})` : 'no';
+            const expectedTxt = question.expectedGuard === true ? ' (ожидаемо)' : '';
+            const marker = /\[\d+\]/.test(answer.answer) ? 'yes' : 'no';
+            console.log(`[#${i + 1} ${level}] ${question.q}`);
+            console.log(
+              `  guard: ${guardTxt}${expectedTxt} | sources: ${answer.sources.length} | ` +
+                `quotes: ${answer.quotes?.length ?? 0} | marker: ${marker}`,
+            );
+            console.log(`  ответ:  ${answer.answer.replace(/\s+/g, ' ').slice(0, 200)}`);
+            if (answer.sources.length > 0) {
+              console.log('  источники:');
+              for (let j = 0; j < answer.sources.length; j++) {
+                const s = answer.sources[j];
+                console.log(
+                  `    [${j + 1}] ${s.chunk.metadata.source} | ${s.chunk.metadata.section} | score=${s.score.toFixed(2)}`,
+                );
+              }
+            }
+            const quotes = answer.quotes ?? [];
+            if (quotes.length > 0) {
+              console.log('  цитаты:');
+              for (let j = 0; j < quotes.length; j++) {
+                const qq = quotes[j];
+                console.log(
+                  `    [${j + 1}] ${qq.chunkId} | ${qq.section} | ${qq.snippet.replace(/\s+/g, ' ').slice(0, 160)}`,
+                );
+              }
+            }
+          }
+          const m = result.metrics;
+          const sc = Math.round(m.sourcesCoverage * m.questions);
+          const qc = Math.round(m.quotesCoverage * m.questions);
+          const gc = Math.round(m.guardTriggered * m.questions);
+          const mc = Math.round(m.answerHasCitationMarker * m.questions);
+          console.log(`\n=== Метрики Day24 (${m.questions} вопросов) ===`);
+          console.log(`  sourcesCoverage:         ${sc}/${m.questions} (${m.sourcesCoverage.toFixed(2)})`);
+          console.log(`  quotesCoverage:          ${qc}/${m.questions} (${m.quotesCoverage.toFixed(2)})`);
+          console.log(`  guardTriggered:          ${gc}/${m.questions} (${m.guardTriggered.toFixed(2)})`);
+          console.log(
+            `  answerHasCitationMarker: ${mc}/${m.questions} (${m.answerHasCitationMarker.toFixed(2)})`,
+          );
+          return;
+        }
         const questions = await loadEval(RAG_EVAL_FILE);
         if (flags.ab) {
           const opts = buildRagOpts(flags);
@@ -852,22 +924,27 @@ async function runRagCommand(argv: string[]): Promise<void> {
               console.log('\n' + answer);
               console.log(`[model: ${modelName} | rag: — | ${dt}ms]\n`);
             } else {
-              const { answer, sources, debug } = await answerWithRag(client, retriever, q, opts);
+              const { answer, sources, quotes, debug } = await answerWithRag(client, retriever, q, opts);
               spinner.stop();
               const dt = Date.now() - t0;
               const src = sources
                 .map((s) => `${s.chunk.metadata.section}[${s.score.toFixed(2)}]`)
                 .join(', ');
               console.log(`\nисточники: ${src}`);
+              if (quotes && quotes.length > 0) {
+                const qt = quotes.map((qq) => qq.snippet.replace(/\s+/g, ' ')).join(' / ');
+                console.log(`цитаты: ${qt}`);
+              }
               console.log(answer);
               // Базовая метка — как в дне 22. При включённых стадиях (rerank/rewrite)
               // показываем состав пайплайна: pool → filt → rerank → topK.
-              let label = `[model: ${modelName} | rag: ${sources.length} chunks | ${dt}ms]`;
+              const guardTag = debug?.gaveUp ? ' | guard: не знаю' : '';
+              let label = `[model: ${modelName} | rag: ${sources.length} chunks | ${dt}ms${guardTag}]`;
               if (stagesOn && debug) {
                 const stages =
                   `pool ${debug.poolSize} → filt ${debug.filteredSize}` +
                   (debug.rerankApplied ? ` → rerank ${sources.length}` : '');
-                label = `[model: ${modelName} | rag: ${stages} | ${dt}ms]`;
+                label = `[model: ${modelName} | rag: ${stages} | ${dt}ms${guardTag}]`;
               }
               console.log(`${label}\n`);
             }
