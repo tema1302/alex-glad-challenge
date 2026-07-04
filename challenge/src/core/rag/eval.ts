@@ -3,9 +3,10 @@
 // Хранятся в src/data/rag-eval.json — пользователь редактирует под свой корпус.
 
 import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { LlmClient } from '../client.js';
 import { answerNoRag, answerWithRag, DEFAULT_RAG_THRESHOLD } from './rag.js';
-import type { RagAnswer } from './rag.js';
+import type { RagAnswer, RagOptions } from './rag.js';
 import type { Retriever } from './retriever.js';
 import { formatDuration } from './pipeline.js';
 
@@ -210,4 +211,36 @@ export function computeDay24Metrics(rows: { answer: RagAnswer }[]): Day24Metrics
     guardTriggered: guardCount / questions,
     answerHasCitationMarker: markerCount / questions,
   };
+}
+
+// --- День 24: живой раннер 10 вопросов broad→narrow (structural metrics, без LLM-judge). ---
+// Образец — runEvalAB: тот же live-прогресс по вопросам, но ОДИН прогон (не A/B) и финальные
+// метрики — computeDay24Metrics (sources/quotes/guard/citation-marker). Прогон запускает
+// ОПЕРАТОР (нужны Ollama + собранный индекс); 10q грузится из src/data/rag-eval-day24.json.
+// Раннер НЕ рендерит построчный отчёт (это задача CLI-слоя) — только live-строку прогресса
+// внутри цикла, как runEval/runEvalAB. Stage-прогресс (RagStage) прокидывается через
+// opts.onProgress в answerWithRag как обычно.
+export async function runEvalDay24(
+  client: LlmClient,
+  retriever: Retriever,
+  opts: RagOptions = {},
+): Promise<{ rows: { question: EvalQuestion; answer: RagAnswer }[]; metrics: Day24Metrics }> {
+  const file = path.join(process.cwd(), 'src', 'data', 'rag-eval-day24.json');
+  const questions = await loadEval(file);
+  const total = questions.length;
+  const start = Date.now();
+  const rows: { question: EvalQuestion; answer: RagAnswer }[] = [];
+  for (let i = 0; i < questions.length; i++) {
+    const question = questions[i];
+    const answer = await answerWithRag(client, retriever, question.q, opts);
+    rows.push({ question, answer });
+    const done = i + 1;
+    const pct = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 100;
+    const elapsed = Date.now() - start;
+    const rate = done > 0 ? elapsed / done : 0;
+    const eta = rate * (total - done);
+    console.log(`  [eval day24 ${done}/${total} · ${pct}% · ~${formatDuration(eta)} left]`);
+  }
+  const metrics = computeDay24Metrics(rows.map((r) => ({ answer: r.answer })));
+  return { rows, metrics };
 }

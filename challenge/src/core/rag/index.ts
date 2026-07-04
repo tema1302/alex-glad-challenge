@@ -50,7 +50,7 @@ export type { HardwareInfo } from './hardware.js';
 export { indexDocuments, runIndexing, RAG_STRATEGIES } from './pipeline.js';
 export type { IndexingResult, RunIndexingOptions } from './pipeline.js';
 
-export { loadEval, runEval, runEvalAB, computeDay24Metrics } from './eval.js';
+export { loadEval, runEval, runEvalAB, runEvalDay24, computeDay24Metrics } from './eval.js';
 export type {
   EvalQuestion,
   EvalRow,
