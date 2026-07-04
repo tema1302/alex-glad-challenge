@@ -24,6 +24,7 @@ import { demos, findDemo, latestDemo } from './demos/registry.js';
 import { runServer } from './demos/day-17-server.js';
 import { runServer as runDay18Server } from './demos/day-18-server.js';
 import { runDay20Server } from './demos/day-20-server.js';
+import { runDay25Server } from './demos/day-25-server.js';
 import { runDay20 } from './demos/day-20.js';
 import { startRepl } from './repl.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
@@ -89,6 +90,8 @@ function printHelp(): void {
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  day-20-server    Поднять world-mcp + telegram-mcp (HTTP) для оркентсрации дня 20');
   console.log('    --port <N>         порт world-mcp (по умолчанию 3021); telegram-mcp = port+1');
+  console.log('  day-25           RAG-чат с памятью задачи (REPL: история + цель/термины/ограничения)');
+  console.log('  day-25-server    STDIO-MCP-сервер чата с RAG + памятью задачи (tools: chat, task-state)');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
@@ -402,6 +405,12 @@ async function main(): Promise<void> {
     const port = parsePort(argv.slice(1), 3021);
     console.log(`▶ Day-20 world-mcp: старт на http://localhost:${port}/mcp`);
     await runDay20Server(port);
+    return;
+  }
+
+  if (arg === 'day-25-server') {
+    console.log('▶ Day-25 rag-chat: STDIO-MCP-сервер (JSON-RPC over stdin/stdout)');
+    await runDay25Server();
     return;
   }
 
