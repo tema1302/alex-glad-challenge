@@ -1,0 +1,82 @@
+[
+  {
+    "id": 1,
+    "level": "very-broad",
+    "q": "Что такое EVOLUTE i-SPACE и какой это тип автомобиля?",
+    "expectation": "Гибридный автомобиль (бензин + электричество).",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 2,
+    "level": "broad",
+    "q": "На каких источниках энергии движется EVOLUTE i-SPACE?",
+    "expectation": "Бензин и электричество — гибрид.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 3,
+    "level": "broad",
+    "q": "Какие основные меры предосторожности при эксплуатации?",
+    "expectation": "Трезвое состояние, изучение руководства, соблюдение требований безопасности.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 4,
+    "level": "medium",
+    "q": "Что означает индикатор READY на комбинации приборов?",
+    "expectation": "Автомобиль готов к движению, даже если бензиновый двигатель не работает.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 5,
+    "level": "medium",
+    "q": "Как работает круиз-контроль и как из него выйти?",
+    "expectation": "Поддерживает заданную скорость / следует за другим автомобилем; для выхода нажать педаль тормоза.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 6,
+    "level": "medium",
+    "q": "Какие экраны приборной панели переключаются кнопкой на руле?",
+    "expectation": "Текущая поездка, общий расход энергии за 50 км, давление в шинах, распределение потоков энергии.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 7,
+    "level": "narrow",
+    "q": "Какая мощность рекомендуется для домашней зарядной станции переменного тока?",
+    "expectation": "7 кВт.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 8,
+    "level": "narrow",
+    "q": "На сколько давление в горячих шинах выше, чем в холодных?",
+    "expectation": "Примерно на 30–40 кПа выше.",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 9,
+    "level": "narrow",
+    "q": "В каких единицах отображается давление в шинах на дисплее?",
+    "expectation": "кПа или psi (на выбор).",
+    "sources": ["evolute-i-space-2025.md"],
+    "expectedGuard": false
+  },
+  {
+    "id": 10,
+    "level": "out-of-corpus",
+    "q": "Какой расход топлива на 100 км и сколько стоит базовая комплектация?",
+    "expectation": "В мануале нет данных о расходе топлива на 100 км и ценах — должен сработать guard «не знаю».",
+    "sources": [],
+    "expectedGuard": true
+  }
+]

@@ -26,6 +26,15 @@ export interface ScoredChunk {
   score: number;       // косинусное сходство, 0..1
 }
 
+// Цитата из найденного чанка (день 24): детерминированный excerpt из chunk.text.
+// Не LLM-emit — гарантия наличия в каждом ответе без зависимости от модели.
+export interface Quote {
+  chunkId: string;   // chunk.metadata.chunkId
+  source: string;    // chunk.metadata.source
+  section: string;   // chunk.metadata.section
+  snippet: string;   // детерминированный фрагмент chunk.text
+}
+
 export interface IndexStats {
   strategy: ChunkingStrategy;
   chunks: number;
