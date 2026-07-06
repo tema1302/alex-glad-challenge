@@ -18,6 +18,8 @@ export type { Constraint, ConstraintType } from './constraints.js';
 
 export { BlogDb } from './db.js';
 export type { NewsRow, PostRow, StyleSampleRow } from './db.js';
+export { DialogDb } from './dialogDb.js';
+export type { ChatRow, MessageRow, SerializedTaskState, PastQaRow } from './dialogDb.js';
 export { McpStdioClient } from './mcp.js';
 export type { McpTool, McpServerInfo, McpInitResult } from './mcp.js';
 export { McpStdioServer } from './mcpServer.js';
