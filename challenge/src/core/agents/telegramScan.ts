@@ -33,7 +33,7 @@ interface DialogLike {
   title?: string;
   entity?: unknown;
 }
-interface MsgLike {
+export interface MsgLike {
   message?: string;
   senderId?: { toString(): string } | bigint | number | null;
   date?: number;
@@ -47,7 +47,22 @@ interface ScanClient {
   getMessages(entity: unknown, opts: { limit: number }): Promise<MsgLike[]>;
 }
 
+// Структурная проекция сырого gramjs TelegramClient для topic-коллектора.
+// НЕ grain gramjs-тип (top-level runtime-import telegram запрещён инвариантом
+// «сервер поднимается без telegram»). Коллектор кастит сырой клиент к этому
+// интерфейсу через unknown; итераторы сообщений приводятся к RawTgMessage в
+// самом коллекторе (core/tg/topicCollector.ts).
+export interface RawTelegramClient {
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  getEntity(peer: string): Promise<unknown>;
+  iterMessages(entity: unknown, opts: Record<string, unknown>): AsyncIterable<unknown>;
+}
+
 let client: ScanClient | null = null;
+// Singleton сырого gramjs-клиента для topic-коллектора. Живёт рядом с узким
+// `client`; один init/туннель/session на процесс — TG_SESSION в одном месте.
+let rawClient: RawTelegramClient | null = null;
 
 /**
  * TCP-туннельный WebSocket transport для gramJS.
@@ -214,6 +229,7 @@ export async function connectScanClient(): Promise<boolean> {
       ),
     ]);
     client = raw as unknown as ScanClient;
+    rawClient = raw as unknown as RawTelegramClient;
     return true;
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
@@ -226,10 +242,24 @@ export async function disconnectScanClient(): Promise<void> {
   if (client) {
     await client.disconnect();
     client = null;
+    rawClient = null; // коллектор больше не получит stale-ссылку после disconnect
   }
 }
 
-function senderName(m: MsgLike): string {
+/**
+ * Singleton сырого gramjs-клиента для topic-коллектора (core/tg/topicCollector.ts).
+ * Переиспользует единый init/туннель/session с scan-путём — НЕ дублирует TG_SESSION.
+ * Возвращает null, если MTProto не настроен/недоступен (деградация как connectScanClient).
+ */
+export async function getConnectedRawScanClient(): Promise<RawTelegramClient | null> {
+  if (!rawClient) {
+    const ok = await connectScanClient();
+    if (!ok) return null;
+  }
+  return rawClient;
+}
+
+export function senderName(m: MsgLike): string {
   const s = m.sender;
   if (s) {
     if (s.firstName || s.lastName) return [s.firstName, s.lastName].filter(Boolean).join(' ');
@@ -239,7 +269,7 @@ function senderName(m: MsgLike): string {
   return m.senderId == null ? 'unknown' : String(m.senderId);
 }
 
-function msgDateIso(m: MsgLike): string {
+export function msgDateIso(m: MsgLike): string {
   return typeof m.date === 'number' ? new Date(m.date * 1000).toISOString() : '';
 }
 

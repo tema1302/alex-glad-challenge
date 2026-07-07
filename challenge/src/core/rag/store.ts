@@ -6,7 +6,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Chunk, ChunkMetadata, ChunkingStrategy, IndexStats, ScoredChunk } from './types.js';
+import type { ChatSourceFilter, Chunk, ChunkMetadata, ChunkingStrategy, IndexStats, ScoredChunk } from './types.js';
 
 interface StoredRow {
   id: number;
@@ -63,6 +63,12 @@ function rowToChunk(r: StoredRow): Chunk {
   return { text: r.text, metadata };
 }
 
+// LIKE-экранирование (SQLi-инвариант CLAUDE.md): _, %, \ — спецсимволы SQL LIKE,
+// нейтрализуем их перед подстановкой chatKey в pattern. ESCAPE '\' в search().
+function escapeLike(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
 export class RagStore {
   private readonly db: DatabaseSync;
 
@@ -86,6 +92,26 @@ export class RagStore {
 
   clearStrategy(strategy: ChunkingStrategy): void {
     this.db.prepare('DELETE FROM rag_chunks WHERE strategy = ?').run(strategy);
+  }
+
+  /** DELETE чанков одного чата (source LIKE 'tg://chat/<key>/%'). whole-chat --reset:
+   *  чистит только этот чат, не трогая остальные. Экранирование chatKey обязательно. */
+  clearBySourcePrefix(strategy: ChunkingStrategy, chatKey: string): void {
+    const key = escapeLike(chatKey);
+    this.db
+      .prepare("DELETE FROM rag_chunks WHERE strategy = ? AND source LIKE ? ESCAPE '\\'")
+      .run(strategy, `tg://chat/${key}/%`);
+  }
+
+  /** Счётчик чанков чата — no-data guard (§2.6): 0 → чат не скачан/не проиндексирован. */
+  countBySourcePrefix(strategy: ChunkingStrategy, chatKey: string): number {
+    const key = escapeLike(chatKey);
+    const row = this.db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM rag_chunks WHERE strategy = ? AND source LIKE ? ESCAPE '\\'",
+      )
+      .get(strategy, `tg://chat/${key}/%`) as { n: number };
+    return row.n;
   }
 
   insertChunks(strategy: ChunkingStrategy, chunks: Chunk[], embeddings: number[][]): void {
@@ -120,10 +146,24 @@ export class RagStore {
     }
   }
 
-  search(strategy: ChunkingStrategy, queryVec: number[], k: number): ScoredChunk[] {
-    const rows = this.db
-      .prepare('SELECT * FROM rag_chunks WHERE strategy = ?')
-      .all(strategy) as unknown as StoredRow[];
+  search(strategy: ChunkingStrategy, queryVec: number[], k: number, filter?: ChatSourceFilter): ScoredChunk[] {
+    // Сужаем множество ДО cosine через индекс idx_rag_source (LIKE 'prefix/%'). При
+    // filter=undefined — вся партиция strategy (текущее поведение, AC-B3).
+    // topicId ловит ОБЕ формы source: tg://chat/<key>/<topicId>/<range> (LIKE) и
+    // .../<topicId> без range (OR source = ?) — в индексе сосуществуют обе.
+    let sql = 'SELECT * FROM rag_chunks WHERE strategy = ?';
+    const params: string[] = [strategy];
+    if (filter) {
+      const key = escapeLike(filter.chatKey);
+      if (filter.topicId != null) {
+        sql += " AND (source LIKE ? ESCAPE '\\' OR source = ?)";
+        params.push(`tg://chat/${key}/${filter.topicId}/%`, `tg://chat/${filter.chatKey}/${filter.topicId}`);
+      } else {
+        sql += " AND source LIKE ? ESCAPE '\\'";
+        params.push(`tg://chat/${key}/%`);
+      }
+    }
+    const rows = this.db.prepare(sql).all(...params) as unknown as StoredRow[];
     const scored: ScoredChunk[] = rows.map((r) => {
       const vec = JSON.parse(r.embedding) as number[];
       return { chunk: rowToChunk(r), score: cosine(queryVec, vec) };

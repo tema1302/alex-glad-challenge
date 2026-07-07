@@ -49,12 +49,31 @@ import {
   DEFAULT_RAG_THRESHOLD,
 } from './core/rag/index.js';
 import type { ChunkingStrategy, RagOptions } from './core/rag/index.js';
+import type { ChatSourceFilter, Embedder } from './core/rag/index.js';
+import { getConnectedRawScanClient, isScanConfigured, disconnectScanClient } from './core/agents/telegramScan.js';
+import type { RawTelegramClient } from './core/agents/telegramScan.js';
+import {
+  TgStore,
+  resolveChatTopic,
+  resolveChatKey,
+  listForumTopicIds,
+  parseChatTopicInput,
+  probeTopic,
+  probeTopicViaSearch,
+  collectTopic,
+  buildTopicChunks,
+  assertDimCompatible,
+} from './core/tg/index.js';
+import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.js';
+import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
+import { embedConfigFromEnv } from './core/rag/index.js';
 
 const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
 const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
 const RAG_DB_PATH = path.join(process.cwd(), '.data', 'rag.sqlite');
 const RAG_DOCS_DIR = path.join(process.cwd(), 'src', 'data', 'rag-sample');
 const RAG_EVAL_FILE = path.join(process.cwd(), 'src', 'data', 'rag-eval.json');
+const TG_DB_PATH = path.join(process.cwd(), '.data', 'tg.sqlite');
 
 function printHelp(): void {
   console.log('Использование:');
@@ -80,8 +99,26 @@ function printHelp(): void {
   console.log('    --strategy <name>   только fixed | structure (по умолчанию обе)');
   console.log('  rag query "<q>"  Вопрос по индексу (день 22); нужен локальный LLM');
   console.log('    --no-rag            ответ без индекса (общие знания)');
-  console.log('    --strategy <name>   fixed (по умолч.) | structure');
+  console.log('    --strategy <name>   fixed (по умолч.) | structure | telegram');
   console.log('    --k <N>             сколько чанков брать (по умолчанию 4)');
+  console.log('    --chat <ref>        фильтр по чату (chatKey -100… | t.me/c/<id> | @username), только telegram');
+  console.log('    --topic <id>        уточнить до топика (только вместе с --chat)');
+  console.log('    --llm local|cloud   LLM для ответа (по умолч. local; cloud = DeepSeek/OpenRouter)');
+  console.log('  rag index-tg <chat> [<topicId>]  TG-топик → length-чанки (склейка сообщ.) → RAG strategy=telegram');
+  console.log('    --top <N>           tier1: top-N чанков по реакциям (по умолч. 1500), чистит telegram');
+  console.log('    --rest              tier2: доклеить хвост (остальные чанки), НЕ чистит индекс');
+  console.log('    --reset             полный reindex: чистит telegram и индексирует все чанки');
+  console.log('    --limit <N>         ограничить collect (только smoke; на chunk-build не влияет)');
+  console.log('  rag index-tg <chat>              ВЕСЬ чат: forum=все топики (GetForumTopics),');
+  console.log('                                       не-forum=основной поток (topic_id=0). Только с --reset');
+  console.log('  tg-collect <chat> [<topicId>]  Собрать forum-топик в .data/tg.sqlite (MTProto userbot)');
+  console.log('    --probe             dry-run: проверить чтение топика (5 сообщ.), без записи');
+  console.log('    --limit <N>         ограничить число сообщений (для --probe / smoke)');
+  console.log('    --resume            продолжить прерванный сбор с курсора');
+  console.log('    --reset             очистить топик и собрать заново (полный re-fetch)');
+  console.log('  tg-top <chat> [<topicId>]  Топ сообщений по реакциям/дате (SQL над tg.sqlite, без сети)');
+  console.log('    --by likes|date     сортировка (по умолч. likes)');
+  console.log('    --limit <N>         сколько строк (по умолч. 20)');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
   console.log('  rag chat         Интерактивный режим: вопрос за вопросом (/norag, /quit)');
   console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
@@ -457,6 +494,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- TG-топик → tg.sqlite (НЕ день челленджа; до findDemo, чтобы не уйти в demo-dispatch) ---
+  if (arg === 'tg-collect') {
+    await runTgCollectCommand(argv.slice(1));
+    return;
+  }
+  if (arg === 'tg-top') {
+    await runTgTopCommand(argv.slice(1));
+    return;
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -467,7 +514,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
   process.exit(1);
 }
 
@@ -598,6 +645,9 @@ interface RagFlags {
   noRag?: boolean;
   ab?: boolean;
   set?: string;      // день 24: набор вопросов для eval ('day24' → rag-eval-day24.json)
+  llm?: 'local' | 'cloud'; // RAG-LLM: default local (AC-C1), cloud = DEEPSEEK/OPENROUTER
+  chat?: string;     // chat-фильтр: chatKey ('-100…') или chatRef (t.me/c/<id>, @username)
+  topic?: number;    // опц. topicId, только вместе с --chat
 }
 
 function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
@@ -611,7 +661,7 @@ function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
     const a = argv[i];
     if (a === '--strategy' && argv[i + 1]) {
       const v = argv[++i];
-      if (v === 'fixed' || v === 'structure') flags.strategy = v;
+      if (v === 'fixed' || v === 'structure' || v === 'telegram') flags.strategy = v;
       continue;
     }
     if (a === '--k' && argv[i + 1]) { flags.k = num(argv[++i]); continue; }
@@ -626,6 +676,13 @@ function parseRagFlags(argv: string[]): { flags: RagFlags; rest: string[] } {
     if (a === '--no-rewrite') { flags.rewrite = false; continue; }
     if (a === '--ab') { flags.ab = true; continue; }
     if (a === '--set' && argv[i + 1]) { flags.set = argv[++i]; continue; }
+    if (a === '--llm' && argv[i + 1]) {
+      const v = argv[++i];
+      if (v === 'local' || v === 'cloud') flags.llm = v;
+      continue;
+    }
+    if (a === '--chat' && argv[i + 1]) { flags.chat = argv[++i]; continue; }
+    if (a === '--topic' && argv[i + 1]) { flags.topic = num(argv[++i]); continue; }
     rest.push(a);
   }
   return { flags, rest };
@@ -644,7 +701,75 @@ function buildRagOpts(flags: RagFlags): RagOptions {
   };
 }
 
-// Компактная печать этапов пайплайна (rewrite/retrieve/filter/rerank/llm) в rag query.
+// RAG-LLM по --llm: default local (как раньше, AC-C1), cloud = внешний LlmClient
+// (DEEPSEEK/OPENROUTER). Эмбеддинги ВСЕГДА локальные — makeEmbedder() от --llm не
+// зависит (критично: dim=4096). llm.ts НЕ правим (инвариант «СТРОГО локальный» для
+// дней 21+ снимает только пользователь явным --llm cloud).
+function makeRagLlmClient(pref: 'local' | 'cloud' | undefined): LlmClient {
+  return pref === 'cloud' ? new LlmClient() : makeLocalLlmClient();
+}
+
+// Резолв --chat/--topic в ChatSourceFilter. Offline для numeric chatKey / t.me/c/<id>;
+// @username/bare-name — через MTProto resolveChatKey (требует подключенный клиент).
+// no-data guard (§2.6): 0 чанков этого chatKey в индексе → дружелюбная ошибка + exit(1).
+// Возвращает undefined если фильтр не нужен (нет --chat, или strategy != telegram).
+async function resolveChatFilter(
+  flags: RagFlags,
+  strategy: ChunkingStrategy,
+  store: RagStore,
+): Promise<ChatSourceFilter | undefined> {
+  if (flags.topic != null && flags.chat == null) {
+    console.error('--topic требует --chat: укажите --chat <chatKey|ref> вместе с --topic.');
+    process.exit(1);
+  }
+  if (!flags.chat) return undefined;
+  if (strategy !== 'telegram') {
+    console.warn(
+      `⚠️  --chat применяется только к strategy=telegram (сейчас ${strategy}) — игнорируется.`,
+    );
+    return undefined;
+  }
+
+  // 1. chatKey: offline для numeric / t.me/c/<id>; MTProto для @username/bare-name.
+  const { peer, topicId: topicFromUrl } = parseChatTopicInput(flags.chat);
+  let chatKey: string;
+  if (/^-100\d+$/.test(peer)) {
+    chatKey = peer;
+  } else {
+    if (!isScanConfigured()) {
+      console.error(
+        `Не удалось определить chatKey для "${flags.chat}" без MTProto. ` +
+          'Используйте numeric chatKey (-100…) или t.me/c/<id>, либо настройте TG_API_ID/TG_API_HASH/TG_SESSION.',
+      );
+      process.exit(1);
+    }
+    const client = await getConnectedRawScanClient();
+    if (!client) {
+      console.error('Не удалось подключиться к MTProto для резолва chatKey.');
+      process.exit(1);
+    }
+    try {
+      const r = await resolveChatKey(client, flags.chat);
+      chatKey = r.chatKey;
+    } finally {
+      await safeDisconnectScan();
+    }
+  }
+
+  // 2. no-data guard: чанков этого chatKey нет в индексе → ненужный fallback на всю
+  //    партицию (молчаливый). Лучше явная подсказка скачать+проиндексировать.
+  if (store.countBySourcePrefix(strategy, chatKey) === 0) {
+    console.error(
+      `Нет данных по чату "${chatKey}". Сначала скачайте (` +
+        `tg-collect ${flags.chat}${flags.topic != null ? ` ${flags.topic}` : ''}` +
+        `), затем индексируйте (rag index-tg ${flags.chat}${flags.topic != null ? ` ${flags.topic}` : ''}).`,
+    );
+    process.exit(1);
+  }
+
+  const topicId = flags.topic ?? topicFromUrl;
+  return topicId != null && Number.isFinite(topicId) ? { chatKey, topicId } : { chatKey };
+}
 function printRagStage(stage: { step: string; detail: Record<string, unknown> }): void {
   if (stage.step === 'rewrite') {
     const d = stage.detail as { original: string; rewritten: string };
@@ -693,6 +818,11 @@ function startSpinner(label: string): { stop: () => void } {
 async function runRagCommand(argv: string[]): Promise<void> {
   const sub = argv[0];
   try {
+    if (sub === 'index-tg') {
+      await runRagIndexTgCommand(argv.slice(1));
+      return;
+    }
+
     if (sub === 'index') {
       const { flags, rest } = parseRagFlags(argv.slice(1));
       const docsDir = rest[0] ?? RAG_DOCS_DIR;
@@ -719,7 +849,7 @@ async function runRagCommand(argv: string[]): Promise<void> {
         process.exit(1);
       }
       const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
-      const client = makeLocalLlmClient();
+      const client = makeRagLlmClient(flags.llm);
       if (flags.noRag) {
         console.log(`▶ RAG query (без RAG): ${question}\n`);
         console.log(await answerNoRag(client, question));
@@ -731,7 +861,8 @@ async function runRagCommand(argv: string[]): Promise<void> {
           console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
           process.exit(1);
         }
-        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        const sourceFilter = await resolveChatFilter(flags, strategy, store);
+        const retriever = new Retriever(store, makeEmbedder(), strategy, sourceFilter);
         const opts = buildRagOpts(flags);
         console.log(
           `▶ RAG query (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, rerank=${opts.rerank}, rewrite=${opts.rewrite}): ${question}\n`,
@@ -769,14 +900,15 @@ async function runRagCommand(argv: string[]): Promise<void> {
     if (sub === 'eval') {
       const { flags } = parseRagFlags(argv.slice(1));
       const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
-      const client = makeLocalLlmClient();
+      const client = makeRagLlmClient(flags.llm);
       const store = new RagStore(RAG_DB_PATH);
       try {
         if (store.count(strategy) === 0) {
           console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
           process.exit(1);
         }
-        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        const sourceFilter = await resolveChatFilter(flags, strategy, store);
+        const retriever = new Retriever(store, makeEmbedder(), strategy, sourceFilter);
         if (flags.set === 'day24') {
           const opts = buildRagOpts(flags);
           console.log(`=== Day-24 eval: 10 вопросов broad→narrow ===`);
@@ -891,14 +1023,15 @@ async function runRagCommand(argv: string[]): Promise<void> {
       const { flags } = parseRagFlags(argv.slice(1));
       const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
       const opts = buildRagOpts(flags);
-      const client = makeLocalLlmClient();
+      const client = makeRagLlmClient(flags.llm);
       const store = new RagStore(RAG_DB_PATH);
       try {
         if (store.count(strategy) === 0) {
           console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
           process.exit(1);
         }
-        const retriever = new Retriever(store, makeEmbedder(), strategy);
+        const sourceFilter = await resolveChatFilter(flags, strategy, store);
+        const retriever = new Retriever(store, makeEmbedder(), strategy, sourceFilter);
         const stagesOn = opts.rerank || opts.rewrite;
         console.log(
           `▶ RAG чат (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, ` +
@@ -977,6 +1110,504 @@ async function runRagCommand(argv: string[]): Promise<void> {
     const m = err instanceof Error ? err.message : String(err);
     console.error(`RAG ошибка: ${m}`);
     process.exit(1);
+  }
+}
+
+// --- TG-топик (НЕ день челленджа): collect / top / index-tg ---
+
+// gramjs update-loop при disconnect может бросать TIMEOUT/CDN-* в cleanup — это
+// не наша ошибка (данные уже сохранены). Глушим cleanup-ошибки, чтобы не валить
+// exit code CLI. На MCP/news-путь (использует disconnectScanClient напрямую) НЕ влияет.
+async function safeDisconnectScan(): Promise<void> {
+  try {
+    await disconnectScanClient();
+  } catch {
+    /* cleanup-ошибка gramjs update-loop после успешной операции — игнорируем */
+  }
+}
+
+interface TgCmdFlags {
+  limit?: number;
+  resume?: boolean;
+  reset?: boolean;
+  probe?: boolean;
+  by?: 'likes' | 'date';
+  top?: number;
+  rest?: boolean;
+}
+
+function parseTgArgs(argv: string[]): { flags: TgCmdFlags; positional: string[] } {
+  const flags: TgCmdFlags = {};
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--limit' && argv[i + 1]) { flags.limit = Number(argv[++i]); continue; }
+    if (a === '--resume') { flags.resume = true; continue; }
+    if (a === '--reset') { flags.reset = true; continue; }
+    if (a === '--probe') { flags.probe = true; continue; }
+    if (a === '--by' && argv[i + 1]) {
+      const v = argv[++i];
+      if (v === 'likes' || v === 'date') flags.by = v;
+      continue;
+    }
+    if (a === '--top' && argv[i + 1]) { flags.top = Number(argv[++i]); continue; }
+    if (a === '--rest') { flags.rest = true; continue; }
+    positional.push(a);
+  }
+  return { flags, positional };
+}
+
+// Live-прогресс эмбеддинга strategy='telegram' (compact-копия makeIndexProgress из
+// pipeline.ts, чтобы не расширять публичный API pipeline). Рапорт каждые ~5%.
+function makeTgIndexProgress(total: number): (done: number) => void {
+  const start = Date.now();
+  let lastBucket = -1;
+  return (done: number) => {
+    const pct = total > 0 ? Math.min(100, Math.floor((done / total) * 100)) : 100;
+    const bucket = Math.floor(pct / 5) * 5;
+    const isDone = done >= total;
+    if (!isDone && bucket <= lastBucket) return;
+    lastBucket = bucket;
+    const elapsed = Date.now() - start;
+    if (isDone) {
+      console.log(`  [telegram ${done}/${total} · 100% · готово за ${formatDuration(elapsed)}]`);
+      return;
+    }
+    const rate = done > 0 ? elapsed / done : 0;
+    const eta = rate * (total - done);
+    console.log(
+      `  [telegram ${done}/${total} · ${pct}% · ~${formatDuration(eta)} left · ${Math.round(rate)}ms/chunk]`,
+    );
+  };
+}
+
+// Read-only probe: проверяет форум-чтение через iterMessages({replyTo}); при пустом
+// результате или RPC-ошибке — fallback Api.messages.Search({topMsgId}). Оба пути
+// печатаются; 0 сообщений на обоих → явное предупреждение (probe = GO/NO-GO гейт).
+async function runProbe(
+  client: RawTelegramClient,
+  ref: ChatTopicRef,
+  limit: number,
+): Promise<void> {
+  console.log(
+    `▶ probe: chat=${ref.chatTitle} (chatKey=${ref.chatKey}), topic=${ref.topicId}, limit=${limit}`,
+  );
+  let msgs: ProbeMessage[] = [];
+  let path = 'replyTo';
+  try {
+    msgs = await probeTopic(client, ref, limit);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/PEER_ID_INVALID|CHAT_|FORUM|TOPIC|CHANNEL/i.test(msg)) {
+      console.warn(`⚠️  replyTo-путь упал (${msg}). Пробую fallback Api.messages.Search({topMsgId}).`);
+      path = 'search';
+      msgs = await probeTopicViaSearch(client, ref, limit);
+    } else {
+      throw err;
+    }
+  }
+  if (msgs.length === 0 && path === 'replyTo') {
+    console.warn('⚠️  replyTo-путь вернул 0 сообщений. Пробую fallback Api.messages.Search({topMsgId}).');
+    path = 'search';
+    try {
+      msgs = await probeTopicViaSearch(client, ref, limit);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`✖ Search-fallback тоже упал: ${msg}`);
+      msgs = [];
+    }
+  }
+  for (const m of msgs) {
+    console.log(
+      `  [${m.msgId}] ${m.fromName} @ ${m.dateIso} | реакции=${m.reactions.total} ${JSON.stringify(m.reactions.byEmoji)}`,
+    );
+    const snippet = m.text.replace(/\s+/g, ' ').slice(0, 120);
+    if (snippet) console.log(`      ${snippet}`);
+  }
+  console.log(`✅ ${path}-путь: прочитано ${msgs.length} сообщений.`);
+  if (msgs.length === 0) {
+    console.warn(
+      '⚠️  оба пути (replyTo + Search) вернули 0 — проверьте chat/topicId и что userbot — участник чата.',
+    );
+  }
+}
+
+async function runTgCollectCommand(argv: string[]): Promise<void> {
+  const { flags, positional } = parseTgArgs(argv);
+  const chatInput = positional[0];
+  if (!chatInput) {
+    console.error('Укажите chat: tg-collect <chatRef> [<topicId>] [--probe|--limit N|--resume|--reset]');
+    process.exit(1);
+  }
+  if (!isScanConfigured()) {
+    console.error(
+      'MTProto не настроен: задайте TG_API_ID, TG_API_HASH, TG_SESSION в .env (или .data/tg-session.json).',
+    );
+    process.exit(1);
+  }
+  const client = await getConnectedRawScanClient();
+  if (!client) {
+    console.error('Не удалось подключиться к MTProto (см. ошибки выше).');
+    process.exit(1);
+  }
+  const store = new TgStore(TG_DB_PATH);
+  try {
+    const ref = await resolveChatTopic(client, chatInput, positional[1]);
+    console.log(`▶ chat: ${ref.chatTitle} | chatKey=${ref.chatKey} | topicId=${ref.topicId}`);
+
+    if (flags.probe) {
+      await runProbe(client, ref, flags.limit ?? 5);
+      return;
+    }
+
+    const t0 = Date.now();
+    const result = await collectTopic(store, client, ref, {
+      limit: flags.limit,
+      resume: flags.resume,
+      reset: flags.reset,
+      onProgress: ({ fetched, newlyInserted, lastId }) => {
+        console.log(`  [collect] fetched=${fetched} new=${newlyInserted} last_id=${lastId ?? '-'}`);
+      },
+    });
+    console.log(
+      `\n✅ mode=${result.mode}: fetched=${result.fetched} new=${result.newlyInserted} updated=${result.updated} ` +
+        `| всего в БД: ${result.total} | range ${result.minIdSeen ?? '-'}..${result.maxIdSeen ?? '-'} ` +
+        `| ${formatDuration(Date.now() - t0)}`,
+    );
+  } finally {
+    store.close();
+    await safeDisconnectScan();
+  }
+}
+
+async function runTgTopCommand(argv: string[]): Promise<void> {
+  const { flags, positional } = parseTgArgs(argv);
+  const chatInput = positional[0];
+  if (!chatInput) {
+    console.error('Укажите chat: tg-top <chatRef> [<topicId>] [--by likes|date] [--limit N]');
+    process.exit(1);
+  }
+  const { peer, topicId: parsed } = parseChatTopicInput(chatInput, positional[1]);
+  let topicId = parsed;
+  if ((topicId == null || !Number.isFinite(topicId)) && process.env.TG_TOPIC) {
+    topicId = Number(process.env.TG_TOPIC);
+  }
+  if (topicId == null || !Number.isFinite(topicId)) {
+    console.error(
+      'topicId не задан: tg-top <chatRef> <topicId> (или URL t.me/<chat>/<topicId>, или env TG_TOPIC).',
+    );
+    process.exit(1);
+  }
+  const by = flags.by ?? 'likes';
+  const limit = flags.limit ?? 20;
+
+  const store = new TgStore(TG_DB_PATH);
+  try {
+    // Offline candidate-keys из ввода (БЕЗ сети): peer и @username-варианты.
+    let chatKey: string | null = null;
+    const cands = [peer];
+    if (peer.startsWith('@')) cands.push(peer.slice(1));
+    for (const k of cands) {
+      if (store.countInTopic(k, topicId) > 0) {
+        chatKey = k;
+        break;
+      }
+    }
+    // Network resolve если offline не нашёл — даёт тот же chatKey, что при collect.
+    if (!chatKey && isScanConfigured()) {
+      const client = await getConnectedRawScanClient();
+      if (client) {
+        try {
+          const ref = await resolveChatTopic(client, chatInput, positional[1]);
+          if (store.countInTopic(ref.chatKey, ref.topicId) > 0) chatKey = ref.chatKey;
+        } finally {
+          await safeDisconnectScan();
+        }
+      }
+    }
+    if (!chatKey) {
+      console.error(
+        `Топик не найден в tg.sqlite (пробовали: ${cands.join(', ')}). Сначала: tg-collect ${chatInput} ${topicId}`,
+      );
+      process.exit(1);
+    }
+    const rows = by === 'date'
+      ? store.topByDate(chatKey, topicId, limit)
+      : store.topByReactions(chatKey, topicId, limit);
+    if (rows.length === 0) {
+      console.log(`В топике ${chatKey}/${topicId} нет сообщений.`);
+      return;
+    }
+    console.log(`▶ tg-top ${chatKey}/${topicId} by=${by} (${rows.length} строк)\n`);
+    for (const r of rows) {
+      const emoji = r.reaction_total > 0
+        ? ` | реакции=${r.reaction_total} ${r.reactions_json}`
+        : '';
+      console.log(`  [${r.msg_id}] ${r.from_name} @ ${r.date_iso}${emoji}`);
+      const text = r.text.replace(/\s+/g, ' ').slice(0, 120);
+      if (text) console.log(`      ${text}`);
+    }
+  } finally {
+    store.close();
+  }
+}
+
+// Whole-chat индексация (forum = все топики; не-forum = основной поток topic_id=0).
+// Защита от дублей: только через --reset (plain INSERT без UNIQUE на rag_chunks).
+// clearBySourcePrefix чистит только этот чат — остальные telegram-чанки не трогаем.
+async function runRagIndexTgWholeChat(
+  flags: TgCmdFlags,
+  chatInput: string,
+  tg: TgStore,
+  store: RagStore,
+  embedder: Embedder,
+): Promise<void> {
+  if (!flags.reset) {
+    console.error(
+      'Whole-chat индексация работает только с --reset (защита от дублей чанков, ' +
+        'plain INSERT без UNIQUE). Добавьте --reset: rag index-tg <chat> --reset',
+    );
+    process.exit(1);
+  }
+  if (flags.rest) {
+    console.warn('⚠️  --rest не имеет смысла в whole-chat режиме — игнорируется.');
+  }
+  if (!isScanConfigured()) {
+    console.error('MTProto не настроен: задайте TG_API_ID, TG_API_HASH, TG_SESSION в .env.');
+    process.exit(1);
+  }
+  const client = await getConnectedRawScanClient();
+  if (!client) {
+    console.error('Не удалось подключиться к MTProto (см. ошибки выше).');
+    process.exit(1);
+  }
+  try {
+    const resolved = await resolveChatKey(client, chatInput);
+    const { chatKey, chatTitle } = resolved;
+    const entity = resolved.entity;
+    const isForum = Boolean((entity as { forum?: boolean }).forum);
+    console.log(`▶ chat: ${chatTitle} | chatKey=${chatKey} | forum=${isForum}`);
+
+    // 1. Список topicId: forum → GetForumTopics (fallback на собранные в tg.sqlite);
+    //    не-forum → единственный «топик» topic_id=0 (основной поток).
+    let topicIds: number[];
+    if (isForum) {
+      try {
+        topicIds = await listForumTopicIds(client, entity);
+        console.log(`  forum: ${topicIds.length} топиков через GetForumTopics.`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        topicIds = tg.listTopicIds(chatKey);
+        console.warn(
+          `⚠️  перечисление forum-топиков через MTProto не удалось (${msg}). ` +
+            `Индексирую ранее собранные топики из tg.sqlite (${topicIds.length}). ` +
+            `Для новых запустите: tg-collect ${chatInput} <topicId>.`,
+        );
+      }
+      if (topicIds.length === 0) {
+        console.error(
+          `Нет топиков для индексации (чат "${chatKey}" пуст или не собран). ` +
+            `Сначала: tg-collect ${chatInput} <topicId>.`,
+        );
+        process.exit(1);
+      }
+    } else {
+      topicIds = [0];
+    }
+
+    // 2. Чистим только этот чат (не всю партицию telegram).
+    const before = store.countBySourcePrefix('telegram', chatKey);
+    store.clearBySourcePrefix('telegram', chatKey);
+    console.log(`  очищено чанков этого чата в telegram: ${before}.`);
+
+    // 3. Собираем чанки по всем топикам (с авто-collect пустых).
+    const allBuilt: TgBuiltChunk[] = [];
+    for (const topicId of topicIds) {
+      let inTopic = tg.countInTopic(chatKey, topicId);
+      if (inTopic === 0) {
+        const ref: ChatTopicRef = {
+          entity,
+          chatKey,
+          topicId,
+          chatTitle,
+        };
+        const t0 = Date.now();
+        const r = await collectTopic(tg, client, ref, {
+          limit: flags.limit,
+          ...(topicId === 0 ? { plain: true } : {}),
+          onProgress: ({ fetched, newlyInserted }) =>
+            console.log(`  [collect topic ${topicId}] fetched=${fetched} new=${newlyInserted}`),
+        });
+        inTopic = r.total;
+        console.log(
+          `  topic ${topicId}: auto-collect (${r.mode}) fetched=${r.fetched} new=${r.newlyInserted} ` +
+            `| всего: ${r.total} | ${formatDuration(Date.now() - t0)}`,
+        );
+      } else {
+        console.log(`  topic ${topicId}: уже собран (${inTopic} сообщ.) — collect пропущен.`);
+      }
+      const rows = tg.listForIndex(chatKey, topicId);
+      const built = buildTopicChunks(rows);
+      if (built.length > 0) allBuilt.push(...built);
+    }
+
+    if (allBuilt.length === 0) {
+      console.error(
+        'buildTopicChunks вернул 0 чанков по всем топикам — нечего индексировать ' +
+          '(возможно, только media-only/пустые сообщения).',
+      );
+      process.exit(1);
+    }
+
+    // 4. Глобальный рейтинг по реакциям across topics, top-N ограничивает итог.
+    allBuilt.sort((a, b) => b.reactionTotal - a.reactionTotal);
+    const DEFAULT_TG_TOP = 1500;
+    const n = flags.top ?? DEFAULT_TG_TOP;
+    const tier = allBuilt.slice(0, n);
+    const chunks = tier.map((t) => t.chunk);
+
+    console.log(
+      `▶ индексация: telegram whole-chat top-${tier.length} из ${allBuilt.length} ` +
+        `(по ${topicIds.length} топикам) | батчей: ${Math.ceil(chunks.length / 32)} (×32)`,
+    );
+    const t1 = Date.now();
+    await indexDocuments(store, 'telegram', chunks, embedder, 32, makeTgIndexProgress(chunks.length));
+    const st = store.stats('telegram');
+    console.log(
+      `✅ indexed: ${st.chunks} чанков всего в telegram, dim=${st.dim ?? '-'} | ${formatDuration(Date.now() - t1)}`,
+    );
+    assertDimCompatible(store, embedder);
+  } finally {
+    await safeDisconnectScan();
+  }
+}
+
+async function runRagIndexTgCommand(argv: string[]): Promise<void> {
+  const { flags, positional } = parseTgArgs(argv);
+  const chatInput = positional[0];
+  if (!chatInput) {
+    console.error('Укажите chat: rag index-tg <chatRef> [<topicId>] [--reset] [--limit N]');
+    process.exit(1);
+  }
+  const embedCfg = embedConfigFromEnv();
+  console.log(`▶ embedder: ${embedCfg.model} @ ${embedCfg.baseUrl}`);
+  const embedder = makeEmbedder();
+
+  const tg = new TgStore(TG_DB_PATH);
+  const store = new RagStore(RAG_DB_PATH);
+  try {
+    // 1. Узнать topicId: позиционный / URL / env. Нет → whole-chat режим.
+    const { peer, topicId: parsed } = parseChatTopicInput(chatInput, positional[1]);
+    let tid: number | undefined = parsed;
+    if ((tid == null || !Number.isFinite(tid)) && process.env.TG_TOPIC) tid = Number(process.env.TG_TOPIC);
+    if (tid == null || !Number.isFinite(tid)) {
+      await runRagIndexTgWholeChat(flags, chatInput, tg, store, embedder);
+      return;
+    }
+
+    // Single-topic: offline-candidates chatKey по tid (БЕЗ сети), иначе MTProto resolve ниже.
+    let chatKey: string | null = null;
+    let topicId: number | null = null;
+    if (!flags.reset) {
+      const cands = [peer];
+      if (peer.startsWith('@')) cands.push(peer.slice(1));
+      for (const k of cands) {
+        if (tg.countInTopic(k, tid) > 0) {
+          chatKey = k;
+          topicId = tid;
+          break;
+        }
+      }
+    }
+
+    // 2. авто-collect, если chatKey неизвестен ИЛИ --reset ИЛИ топик пуст.
+    if (chatKey == null || topicId == null || flags.reset) {
+      if (!isScanConfigured()) {
+        console.error('MTProto не настроен: задайте TG_API_ID, TG_API_HASH, TG_SESSION в .env.');
+        process.exit(1);
+      }
+      const client = await getConnectedRawScanClient();
+      if (!client) {
+        console.error('Не удалось подключиться к MTProto (см. ошибки выше).');
+        process.exit(1);
+      }
+      try {
+        const ref = await resolveChatTopic(client, chatInput, positional[1]);
+        chatKey = ref.chatKey;
+        topicId = ref.topicId;
+        const before = tg.countInTopic(chatKey, topicId);
+        if (flags.reset || before === 0) {
+          const t0 = Date.now();
+          const r = await collectTopic(tg, client, ref, {
+            reset: flags.reset,
+            limit: flags.limit,
+            onProgress: ({ fetched, newlyInserted }) =>
+              console.log(`  [collect] fetched=${fetched} new=${newlyInserted}`),
+          });
+          console.log(
+            `✅ collect (${r.mode}): fetched=${r.fetched} new=${r.newlyInserted} | всего: ${r.total} | ${formatDuration(Date.now() - t0)}`,
+          );
+        } else {
+          console.log(
+            `ℹ️  топик уже собран (${before} сообщ.) — collect пропущен. Используйте --reset для re-fetch.`,
+          );
+        }
+      } finally {
+        await safeDisconnectScan();
+      }
+    }
+
+    // 3. Length-чанки (склейка сообщений + границы по размеру/gap), ранжированы по реакциям.
+    const rows = tg.listForIndex(chatKey!, topicId!);
+    if (rows.length === 0) {
+      console.error(
+        `Нет текстовых сообщений в топике ${chatKey}/${topicId} (только media-only/пустые). Индексация отменена.`,
+      );
+      process.exit(1);
+    }
+    const built = buildTopicChunks(rows);
+    if (built.length === 0) {
+      console.error('buildTopicChunks вернул 0 чанков — нечего индексировать.');
+      process.exit(1);
+    }
+    const DEFAULT_TG_TOP = 1500;
+    const n = flags.top ?? DEFAULT_TG_TOP;
+    // tier = выбор чанков; label — человекочитаемое описание для лога.
+    let tier: typeof built;
+    let label: string;
+    if (flags.reset) {
+      // Полный reindex: чистим и пишем все чанки в порядке убывания реакций.
+      store.clearStrategy('telegram');
+      tier = built;
+      label = `full (--reset, все ${built.length})`;
+    } else if (flags.rest) {
+      // tier2: доклейка хвоста. НЕ чистим — tier1 уже в индексе. chunkId диапазонов
+      // не пересекаются с tier1 → INSERT ортогонален (no UNIQUE, no conflict).
+      tier = built.slice(n);
+      label = `tier2 (rest, skip top-${n}, ${tier.length} из ${built.length})`;
+      if (store.count('telegram') === 0) {
+        console.warn('⚠️  tier2 при пустом telegram-индексе. Сначала прогони tier1 (без --rest).');
+      }
+    } else {
+      // tier1 (default): top-N по реакциям. Чистим — повторный прогон переиндексирует top-N.
+      store.clearStrategy('telegram');
+      tier = built.slice(0, n);
+      label = `tier1 (top-${tier.length} из ${built.length} по реакциям)`;
+    }
+    if (tier.length === 0) {
+      console.log(`ℹ️  Нечего индексировать (${label}).`);
+      return;
+    }
+    const chunks = tier.map((t) => t.chunk);
+    console.log(`▶ индексация: telegram ${label} | батчей: ${Math.ceil(chunks.length / 32)} (×32)`);
+    const t1 = Date.now();
+    await indexDocuments(store, 'telegram', chunks, embedder, 32, makeTgIndexProgress(chunks.length));
+    const st = store.stats('telegram');
+    console.log(`✅ indexed: ${st.chunks} чанков, dim=${st.dim ?? '-'} | ${formatDuration(Date.now() - t1)}`);
+    assertDimCompatible(store, embedder); // sanity: dim index'а совместим с embedder
+  } finally {
+    tg.close();
+    store.close();
   }
 }
 

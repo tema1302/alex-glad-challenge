@@ -6,6 +6,7 @@ export type {
   ChunkingStrategy,
   Embedder,
   ScoredChunk,
+  ChatSourceFilter,
   IndexStats,
   Quote,
 } from './types.js';

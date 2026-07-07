@@ -13,7 +13,11 @@ export interface Chunk {
   metadata: ChunkMetadata;
 }
 
-export type ChunkingStrategy = 'fixed' | 'structure';
+// 'telegram' — НЕ входит в RAG_STRATEGIES (pipeline.ts): TG-чанки строятся
+// инлайн-маппером (core/tg/topicCollector.ts → messageToChunk) и индексируются
+// через indexDocuments напрямую, минуя runIndexing/chunkDoc. Изоляция стратегий
+// в rag.sqlite (partition by strategy TEXT) сохраняет fixed/structure нетронутыми.
+export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram';
 
 export interface Embedder {
   /** Размерность вектора. Неизвестна до первого вызова. */
@@ -24,6 +28,14 @@ export interface Embedder {
 export interface ScoredChunk {
   chunk: Chunk;
   score: number;       // косинусное сходство, 0..1
+}
+
+// Область поиска по source-префиксу для TG-партиции: chatKey ('-100…' | '@username')
+// сужает search до чанков одного чата; topicId опц. уточняет до топика. Применяется
+// в RagStore.search как parameterized LIKE на source-префиксе 'tg://chat/<key>/…'.
+export interface ChatSourceFilter {
+  chatKey: string;
+  topicId?: number;
 }
 
 // Цитата из найденного чанка (день 24): детерминированный excerpt из chunk.text.
