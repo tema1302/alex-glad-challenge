@@ -95,6 +95,110 @@ pnpm --filter challenge start -- list
 
 Просто печатаете текст — отправляется в LLM через активную стратегию контекста.
 
+## RAG: запросы по своим документам и Telegram-чатам
+
+RAG (Retrieval-Augmented Generation) ищет в проиндексированных текстах
+релевантные куски и подмешивает их в ответ LLM с цитатами. Источники лежат в
+`challenge/.data/rag.sqlite` и разбиты на три «полки» (стратегии):
+
+| Стратегия | Что хранит |
+|-----------|------------|
+| `fixed` | документы фиксированными чанками (инструкции, статьи) |
+| `structure` | документы с разбиением по структуре |
+| `telegram` | сообщения Telegram-чатов |
+
+> Команды ниже — из каталога `challenge/`: `npx tsx src/cli.ts rag ...`
+> (через `pnpm --filter challenge start -- rag ...` не работает — `--`
+> прокидывается как аргумент).
+
+### Три независимых переключателя (не путать)
+
+1. **Где ищем** — `--strategy fixed | structure | telegram`. Команда `/chat`
+   принудительно ставит `telegram`.
+2. **Какая модель отвечает** — `--llm local | cloud` (по умолчанию `local` =
+   Ollama; `cloud` = DeepSeek/OpenRouter). В сессии: `/local`, `/cloud`.
+3. **Ищем вообще или просто болтаем** — RAG с цитатами, либо `--no-rag` /
+   `/norag` (модель отвечает сама, без базы и отсылок).
+
+### Проиндексировать Telegram-чат
+
+```powershell
+# весь чат (forum = все топики, не-forum = общий поток):
+npx tsx src/cli.ts rag index-tg -1001508192874
+
+# переиндексировать (очистив только этот чат):
+npx tsx src/cli.ts rag index-tg -1001508192874 --reset
+```
+
+> ⚠ **Важно:** форма с одним топиком `rag index-tg <chat> <topic>` перед
+> индексацией **сносит ВСЕ telegram-чаты** из индекса (известный баг). Пока не
+> починен — для нескольких чатов используйте только форму **без topicId** (весь
+> чат), она чистит только указанный чат.
+
+Документы (полки `fixed`/`structure`) индексируются отдельно:
+```powershell
+npx tsx src/cli.ts rag index
+```
+
+### Интерактивная сессия `rag chat`
+
+```powershell
+npx tsx src/cli.ts rag chat
+# со стартовым контекстом:
+npx tsx src/cli.ts rag chat --strategy telegram --chat -1001508192874 --topic 397633 --llm local
+```
+
+Слэш-команды внутри:
+
+| Команда | Что делает |
+|---------|------------|
+| `/chat <имя \| chatKey \| t.me-url>` | искать только в этом telegram-чате (без арг — показать текущий) |
+| `/topic <id>` | сузить до forum-топика; `/topic` без арг — сброс (весь чат) |
+| `/local` `/cloud` | переключить модель |
+| `/list` | все проиндексированные telegram-чаты (+ title, alias, сколько чанков) |
+| `/alias add <имя> <chatKey> [topicId]` | короткое имя для чата; также `/alias list`, `/alias rm <имя>` |
+| `/norag` | вкл/выкл поиск (модель напрямую без базы) |
+| `/help` `/quit` | справка / выход |
+
+Имя для `/chat` разрешается так: alias (приоритет) → кэш title
+(`.data/chat-titles.json`, наполняется при `rag index-tg`) → numeric chatKey
+`-100…` / `t.me/c/<id>`. Алиасы правятся в `.data/chat-aliases.json` или через
+`/alias add`. При опечатке сессия не падает — просто печатается ошибка.
+
+### Сценарии
+
+**Просто поболтать с локальной моделью, без базы:**
+```
+npx tsx src/cli.ts rag chat
+> /norag
+> объясни, как работает RAG
+```
+
+**Поиск внутри telegram-чата:**
+```
+npx tsx src/cli.ts rag chat
+> /chat evolute          # alias, настроенный через /alias add или файл
+> что обсуждали про X?   # ищет в чате, цитирует источники
+> /topic                 # сбросить топик — искать по всему чату
+```
+
+**Запрос по «инструкции» (полка fixed):** `/chat` для документов не работает —
+полку задаём на старте:
+```
+npx tsx src/cli.ts rag chat --strategy fixed
+> что инструкция говорит про Y?
+```
+
+**Разовый вопрос без сессии:**
+```powershell
+npx tsx src/cli.ts rag query "..." --strategy telegram --chat -1001508192874
+npx tsx src/cli.ts rag query "..." --strategy fixed
+npx tsx src/cli.ts rag query "..." --strategy telegram --llm cloud
+```
+
+Если чат не проиндексирован, ответ будет: «Нет данных по чату … Сначала
+скачайте (`tg-collect`), затем индексируйте (`rag index-tg`)».
+
 ## Блог-агенты: news pipeline
 
 Три агента в одной команде готовят пост для канала «Иди на факты глянь»:

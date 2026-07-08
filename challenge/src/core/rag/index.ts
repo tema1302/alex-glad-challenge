@@ -26,6 +26,19 @@ export { RagStore } from './store.js';
 
 export { Retriever } from './retriever.js';
 
+export {
+  saveChatTitle,
+  loadChatTitles,
+  loadAliases,
+  saveAliases,
+  addAlias,
+  removeAlias,
+  findAliasByName,
+  findAliasByChatKey,
+  resolveChatRefForRepl,
+} from './chatCatalog.js';
+export type { ChatAlias, ReplChatResolve } from './chatCatalog.js';
+
 export { makeLocalLlmClient, localLlmConfig } from './llm.js';
 export type { LocalLlmConfig } from './llm.js';
 

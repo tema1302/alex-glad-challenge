@@ -47,6 +47,13 @@ import {
   answerWithRag,
   answerNoRag,
   DEFAULT_RAG_THRESHOLD,
+  saveChatTitle,
+  loadChatTitles,
+  loadAliases,
+  addAlias,
+  removeAlias,
+  findAliasByChatKey,
+  resolveChatRefForRepl,
 } from './core/rag/index.js';
 import type { ChunkingStrategy, RagOptions } from './core/rag/index.js';
 import type { ChatSourceFilter, Embedder } from './core/rag/index.js';
@@ -120,7 +127,11 @@ function printHelp(): void {
   console.log('    --by likes|date     сортировка (по умолч. likes)');
   console.log('    --limit <N>         сколько строк (по умолч. 20)');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
-  console.log('  rag chat         Интерактивный режим: вопрос за вопросом (/norag, /quit)');
+  console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
+  console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
+  console.log('    --chat <ref>        стартовый TG-чат: chatKey | t.me/c/<id> | alias (force strategy=telegram)');
+  console.log('    --topic <id>        стартовый topic (только вместе с --chat)');
+  console.log('    --llm local|cloud   LLM для ответа (default local)');
   console.log('  mcp-server       Поднять локальный MCP HTTP-сервер (day-17)');
   console.log('    --port <N>         порт (по умолчанию 3001)');
   console.log('  scheduler        Поднять MCP-сервер day-18: TODO + MCP→MCP + фоновые напоминания');
@@ -815,6 +826,54 @@ function startSpinner(label: string): { stop: () => void } {
   };
 }
 
+// Non-fatal chat-фильтр для REPL `/chat` (R-1): fatal resolveChatFilter НЕ трогаем
+// (AC-B5/B6 для rag query/eval остаются на exit-пути). Возвращает result, не process.exit.
+function applyChatFilterForRepl(
+  strategy: ChunkingStrategy,
+  chatKey: string,
+  topicId: number | undefined,
+  store: RagStore,
+): { ok: true; filter: ChatSourceFilter } | { ok: false; error: string } {
+  if (strategy !== 'telegram') {
+    return { ok: false, error: '/chat работает только при strategy=telegram.' };
+  }
+  if (store.countBySourcePrefix('telegram', chatKey) === 0) {
+    const topicSuffix = topicId != null ? ` ${topicId}` : '';
+    return {
+      ok: false,
+      error:
+        `Нет данных по чату "${chatKey}". Сначала скачайте (tg-collect ${chatKey}${topicSuffix}), ` +
+        `затем индексируйте (rag index-tg ${chatKey}${topicSuffix}).`,
+    };
+  }
+  return {
+    ok: true,
+    filter: topicId != null && Number.isFinite(topicId) ? { chatKey, topicId } : { chatKey },
+  };
+}
+
+function printReplChatHelp(): void {
+  console.log('RAG-чат. Три независимых переключателя (не путать):');
+  console.log('  • где ищем — стратегия: telegram (чаты) | fixed | structure (документы).');
+  console.log('    Задаётся флагом --strategy на старте; /chat принудительно ставит telegram.');
+  console.log('  • какая модель — /local (Ollama, по умолчанию) | /cloud (DeepSeek/OpenRouter).');
+  console.log('  • RAG или нет — ищем с цитатами | /norag (модель напрямую, без базы и отсылок).');
+  console.log('');
+  console.log('Команды:');
+  console.log('  /chat <name|ref>   фильтр telegram-чата: alias | title | -100… | t.me/c/<id>');
+  console.log('                     (force strategy=telegram; без арг — показать текущий)');
+  console.log('  /topic <id>        сузить до топика; /topic без арг — сброс (весь чат)');
+  console.log('  /local  /cloud     переключить LLM');
+  console.log('  /list              проиндексированные чаты (+ title, alias, число чанков)');
+  console.log('  /alias add <name> <chatKey> [topicId]   /alias list   /alias rm <name>');
+  console.log('  /norag             с RAG / без RAG');
+  console.log('  /help  /quit       помощь / выход');
+  console.log('');
+  console.log('Документы (fixed/structure): /chat НЕ работает — стартуй с --strategy fixed.');
+  console.log('Новый чат в индекс: rag index-tg <chatKey> БЕЗ topicId');
+  console.log('  (с topicId снесёт ВСЕ telegram-чаты — известный баг).\n');
+}
+
 async function runRagCommand(argv: string[]): Promise<void> {
   const sub = argv[0];
   try {
@@ -1021,41 +1080,303 @@ async function runRagCommand(argv: string[]): Promise<void> {
 
     if (sub === 'chat') {
       const { flags } = parseRagFlags(argv.slice(1));
-      const strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
       const opts = buildRagOpts(flags);
-      const client = makeRagLlmClient(flags.llm);
+      const embedder = makeEmbedder();
       const store = new RagStore(RAG_DB_PATH);
       try {
+        // strategy: force=telegram при --chat (R-3); иначе из флагов/default fixed.
+        let strategy: ChunkingStrategy = flags.strategy ?? 'fixed';
+        if (flags.chat) strategy = 'telegram';
         if (store.count(strategy) === 0) {
-          console.error(`Индекс пуст (${strategy}). Сначала: rag index`);
+          console.error(
+            `Индекс пуст (${strategy}). Сначала: ${strategy === 'telegram' ? 'rag index-tg <chat>' : 'rag index'}`,
+          );
           process.exit(1);
         }
-        const sourceFilter = await resolveChatFilter(flags, strategy, store);
-        const retriever = new Retriever(store, makeEmbedder(), strategy, sourceFilter);
+
+        let llmPref: 'local' | 'cloud' = flags.llm ?? 'local';
+        let client = makeRagLlmClient(llmPref);
+        let modelName = client.defaultModel;
+
+        // Session-состояние (мутируется слэшами). Флаги задают начальное.
+        let sourceFilter: ChatSourceFilter | undefined;
+        let currentChatKey: string | undefined;
+        let currentTopicId: number | undefined;
+        let currentAliasName: string | undefined;
+        let noRag = false;
+
+        if (flags.chat) {
+          // Стартовый чат из флагов: resolve → apply; ошибка → exit 1.
+          const resolved = resolveChatRefForRepl(flags.chat, loadChatTitles(), loadAliases());
+          if (!resolved.ok) {
+            console.error(resolved.error);
+            process.exit(1);
+          }
+          const applied = applyChatFilterForRepl(
+            strategy,
+            resolved.chatKey,
+            flags.topic ?? resolved.topicId,
+            store,
+          );
+          if (!applied.ok) {
+            console.error(applied.error);
+            process.exit(1);
+          }
+          sourceFilter = applied.filter;
+          currentChatKey = resolved.chatKey;
+          currentTopicId = applied.filter.topicId;
+          if (resolved.origin === 'alias') currentAliasName = resolved.label;
+        } else {
+          // Без --chat: fatal-путь (AC-B5: --topic без --chat → exit 1). Не-telegram warn.
+          sourceFilter = await resolveChatFilter(flags, strategy, store);
+        }
+
+        let retriever = new Retriever(store, embedder, strategy, sourceFilter);
         const stagesOn = opts.rerank || opts.rewrite;
+
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        // При pipe/EOF readline закрывается до завершения активного хода — флаг+await
+        // turnChain защищают от prompt() на закрытом интерфейсе (borrow day-25.ts:718-730).
+        let rlClosed = false;
+        rl.on('close', () => {
+          rlClosed = true;
+        });
+        const prompt = (): void => {
+          if (!rlClosed) rl.prompt();
+        };
+        const chatLabel = (): string => {
+          const base = currentAliasName ?? currentChatKey ?? 'all';
+          return currentTopicId != null ? `${base}/${currentTopicId}` : base;
+        };
+        const updatePrompt = (): void => {
+          rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'} | ${chatLabel()} | ${llmPref})> `);
+        };
+
         console.log(
           `▶ RAG чат (${strategy}, pool=${opts.pool}, topK=${opts.k}, threshold=${opts.threshold}, ` +
             `rerank=${opts.rerank}, rewrite=${opts.rewrite}). Источник — мануал в индексе.`,
         );
-        console.log('  /norag — переключить режим (с RAG / без RAG)');
-        console.log('  /quit — выход\n');
+        console.log('  /help — команды (chat/topic/llm/list/alias/norag)');
 
-        let noRag = false;
-        const modelName = client.defaultModel;
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-        const prompt = (): void => rl.prompt();
-        rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
-        rl.on('line', async (line) => {
+        updatePrompt();
+        prompt();
+
+        const handleLine = async (line: string): Promise<void> => {
           const q = line.trim();
-          if (!q) { prompt(); return; }
-          if (q === '/quit' || q === '/exit') { rl.close(); return; }
+          if (!q) {
+            prompt();
+            return;
+          }
+          if (q === '/quit' || q === '/exit') {
+            rl.close();
+            return;
+          }
+          if (q === '/help') {
+            printReplChatHelp();
+            prompt();
+            return;
+          }
           if (q === '/norag') {
             noRag = !noRag;
-            rl.setPrompt(`you (${noRag ? 'no-rag' : 'rag'})> `);
+            updatePrompt();
             console.log(`режим: ${noRag ? 'без RAG (общие знания)' : 'с RAG (по мануалу)'}`);
             prompt();
             return;
           }
+          if (q === '/local') {
+            llmPref = 'local';
+            client = makeRagLlmClient('local');
+            modelName = client.defaultModel;
+            updatePrompt();
+            console.log(`LLM: local (${modelName})`);
+            prompt();
+            return;
+          }
+          if (q === '/cloud') {
+            try {
+              const next = makeRagLlmClient('cloud');
+              llmPref = 'cloud';
+              client = next;
+              modelName = client.defaultModel;
+              updatePrompt();
+              console.log(`LLM: cloud (${modelName})`);
+            } catch (err) {
+              // Без cloud-ключей фабрика бросает — откат, сессия жива (AC-S18). Ключ не утёк.
+              const m = err instanceof Error ? err.message : String(err);
+              console.error(`не удалось переключиться на cloud: ${m}`);
+            }
+            prompt();
+            return;
+          }
+          if (q === '/list') {
+            const chats = store.listTelegramChats();
+            if (chats.length === 0) {
+              console.log('(нет проиндексированных telegram-чатов).');
+            } else {
+              const titles = loadChatTitles();
+              console.log('\nИзвестные чаты (telegram):');
+              for (const c of chats) {
+                const marker = c.chatKey === currentChatKey ? '* ' : '  ';
+                const title = titles[c.chatKey] ?? '(нет title)';
+                const aliasEntry = findAliasByChatKey(c.chatKey);
+                const topicStr = `${c.topics} topic${c.topics === 1 ? '' : 's'}`;
+                console.log(
+                  `${marker}${c.chatKey} | ${title} | alias=${aliasEntry ? aliasEntry.name : '-'} | ${c.chunks} chunks, ${topicStr}`,
+                );
+              }
+            }
+            console.log('');
+            prompt();
+            return;
+          }
+          if (q === '/chat' || q.startsWith('/chat ')) {
+            if (q === '/chat') {
+              console.log(
+                `текущий чат: ${chatLabel()}${currentChatKey ? ` (chatKey=${currentChatKey})` : ' — не выбран'}`,
+              );
+              prompt();
+              return;
+            }
+            const arg = q.slice('/chat '.length).trim();
+            const resolved = resolveChatRefForRepl(arg, loadChatTitles(), loadAliases());
+            if (!resolved.ok) {
+              console.error(resolved.error);
+              prompt();
+              return;
+            }
+            // No-op если тот же chatKey+topicId уже активен (AC-S14, без MTProto).
+            const nextTopic = resolved.topicId ?? undefined;
+            if (resolved.chatKey === currentChatKey && nextTopic === currentTopicId) {
+              console.log(`чат уже активен: ${chatLabel()}`);
+              prompt();
+              return;
+            }
+            const applied = applyChatFilterForRepl('telegram', resolved.chatKey, resolved.topicId, store);
+            if (!applied.ok) {
+              console.error(applied.error);
+              prompt();
+              return;
+            }
+            strategy = 'telegram';
+            sourceFilter = applied.filter;
+            currentChatKey = resolved.chatKey;
+            currentTopicId = resolved.topicId;
+            currentAliasName = resolved.origin === 'alias' ? resolved.label : undefined;
+            retriever = new Retriever(store, embedder, strategy, sourceFilter);
+            updatePrompt();
+            console.log(`чат: ${chatLabel()} | ${store.countBySourcePrefix('telegram', currentChatKey)} chunks`);
+            prompt();
+            return;
+          }
+          if (q === '/topic' || q.startsWith('/topic ')) {
+            if (currentChatKey == null) {
+              console.error('/topic требует активного чата: сначала /chat <ref>.');
+              prompt();
+              return;
+            }
+            if (q === '/topic') {
+              currentTopicId = undefined;
+              sourceFilter = { chatKey: currentChatKey };
+              retriever = new Retriever(store, embedder, strategy, sourceFilter);
+              updatePrompt();
+              console.log(`topic сброшен — весь чат ${currentChatKey}`);
+              prompt();
+              return;
+            }
+            const tid = Number(q.slice('/topic '.length).trim());
+            if (!Number.isFinite(tid)) {
+              console.error('/topic <id>: id должен быть числом.');
+              prompt();
+              return;
+            }
+            currentTopicId = tid;
+            sourceFilter = { chatKey: currentChatKey, topicId: tid };
+            retriever = new Retriever(store, embedder, strategy, sourceFilter);
+            updatePrompt();
+            console.log(`topic: ${tid}`);
+            prompt();
+            return;
+          }
+          if (q === '/alias' || q.startsWith('/alias ')) {
+            const rest = q.startsWith('/alias ') ? q.slice('/alias '.length).trim() : '';
+            if (!rest || rest === 'list') {
+              const aliases = loadAliases();
+              const names = Object.keys(aliases).sort();
+              if (names.length === 0) {
+                console.log('(нет alias-ов). /alias add <name> <chatKey> [topicId]');
+              } else {
+                console.log('\nAlias-ы:');
+                for (const name of names) {
+                  const a = aliases[name];
+                  console.log(`  ${name} → ${a.chatKey}${a.topicId != null ? `/${a.topicId}` : ''}`);
+                }
+              }
+              console.log('');
+              prompt();
+              return;
+            }
+            const parts = rest.split(/\s+/);
+            const subAlias = parts[0];
+            if (subAlias === 'add') {
+              if (parts.length < 3) {
+                console.error('/alias add <name> <chatKey> [topicId].');
+                prompt();
+                return;
+              }
+              const aname = parts[1];
+              const ack = parts[2];
+              if (!/^-100\d+$/.test(ack)) {
+                console.error(
+                  `chatKey должен быть numeric -100… (получено "${ack}"). @username не поддерживается.`,
+                );
+                prompt();
+                return;
+              }
+              let atopic: number | undefined;
+              if (parts[3] != null) {
+                const t = Number(parts[3]);
+                if (!Number.isFinite(t)) {
+                  console.error('/alias add: topicId должен быть числом.');
+                  prompt();
+                  return;
+                }
+                atopic = t;
+              }
+              addAlias(aname, ack, atopic);
+              console.log(`alias добавлен: ${aname} → ${ack}${atopic != null ? `/${atopic}` : ''}`);
+              if (currentChatKey === ack) {
+                currentAliasName = aname.toLowerCase();
+                updatePrompt();
+              }
+              prompt();
+              return;
+            }
+            if (subAlias === 'rm') {
+              if (parts.length < 2) {
+                console.error('/alias rm <name>.');
+                prompt();
+                return;
+              }
+              const rname = parts[1];
+              const existed = removeAlias(rname);
+              if (!existed) {
+                console.error(`alias не найден: ${rname}`);
+              } else {
+                console.log(`alias удалён: ${rname}`);
+                if (currentAliasName && currentAliasName === rname.toLowerCase()) {
+                  currentAliasName = undefined;
+                  updatePrompt();
+                }
+              }
+              prompt();
+              return;
+            }
+            console.error('/alias: ожидалось add | list | rm.');
+            prompt();
+            return;
+          }
+
+          // Обычный вопрос: RAG или no-RAG с текущими client/retriever.
           const t0 = Date.now();
           const spinner = startSpinner('думаю');
           try {
@@ -1096,8 +1417,16 @@ async function runRagCommand(argv: string[]): Promise<void> {
             console.error(`ошибка: ${m}`);
           }
           prompt();
+        };
+
+        // Сериализация ходов: readline не await'ит async-колбэк ('line'-события
+        // стреляют подряд при paste/pipe) — каждое ждёт предыдущий через then-chain.
+        let turnChain: Promise<void> = Promise.resolve();
+        rl.on('line', (line) => {
+          turnChain = turnChain.then(() => handleLine(line));
         });
         await new Promise<void>((res) => rl.once('close', res));
+        await turnChain;
       } finally {
         store.close();
       }
@@ -1387,6 +1716,9 @@ async function runRagIndexTgWholeChat(
     const entity = resolved.entity;
     const isForum = Boolean((entity as { forum?: boolean }).forum);
     console.log(`▶ chat: ${chatTitle} | chatKey=${chatKey} | forum=${isForum}`);
+    // Кэшируем title для REPL `/chat <title>` и /list (наполняется только здесь —
+    // в БД title чата не хранится). См. chatCatalog.ts.
+    saveChatTitle(chatKey, chatTitle);
 
     // 1. Список topicId: forum → GetForumTopics (fallback на собранные в tg.sqlite);
     //    не-forum → единственный «топик» topic_id=0 (основной поток).
@@ -1535,6 +1867,9 @@ async function runRagIndexTgCommand(argv: string[]): Promise<void> {
         const ref = await resolveChatTopic(client, chatInput, positional[1]);
         chatKey = ref.chatKey;
         topicId = ref.topicId;
+        // Кэшируем title при MTProto-резолве (offline-путь single-topic не пишет —
+        // наполнится при ближайшем --reset/авто-collect).
+        saveChatTitle(ref.chatKey, ref.chatTitle);
         const before = tg.countInTopic(chatKey, topicId);
         if (flags.reset || before === 0) {
           const t0 = Date.now();

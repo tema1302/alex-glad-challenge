@@ -114,6 +114,36 @@ export class RagStore {
     return row.n;
   }
 
+  /** /list REPL: JS-агрегация telegram-чанков по chatKey. SQL без параметров от ввода
+   *  (стратегия — литерал 'telegram'); chatKey/topics парсятся из source 'tg://chat/<key>/<topic>[/<range>]'. */
+  listTelegramChats(): { chatKey: string; chunks: number; topics: number }[] {
+    const rows = this.db
+      .prepare("SELECT source FROM rag_chunks WHERE strategy = 'telegram'")
+      .all() as { source: string }[];
+    const map = new Map<string, { chunks: number; topics: Set<string> }>();
+    const PREFIX = 'tg://chat/';
+    for (const r of rows) {
+      if (!r.source.startsWith(PREFIX)) continue;
+      const tail = r.source.slice(PREFIX.length); // <key>/<topic>[/<range>]
+      const slash = tail.indexOf('/');
+      const key = slash === -1 ? tail : tail.slice(0, slash);
+      if (!key) continue;
+      const topic = slash === -1 ? '' : tail.slice(slash + 1).split('/')[0];
+      let entry = map.get(key);
+      if (!entry) {
+        entry = { chunks: 0, topics: new Set() };
+        map.set(key, entry);
+      }
+      entry.chunks++;
+      if (topic) entry.topics.add(topic);
+    }
+    return [...map.entries()].map(([chatKey, e]) => ({
+      chatKey,
+      chunks: e.chunks,
+      topics: e.topics.size,
+    }));
+  }
+
   insertChunks(strategy: ChunkingStrategy, chunks: Chunk[], embeddings: number[][]): void {
     if (chunks.length !== embeddings.length) {
       throw new Error(`insertChunks: ${chunks.length} чанков vs ${embeddings.length} векторов`);
