@@ -9,6 +9,7 @@ import type {
   ChatParams,
   LlmRequest,
   LlmResponse,
+  LlmTimings,
   Usage,
 } from '../types.js';
 import { loadEnvUpward, getLocalLlmConfig } from '../env.js';
@@ -38,10 +39,24 @@ function ollamaOrigin(baseUrl: string): string {
   return trimmed;
 }
 
+// День 29: нс → мс (/1e6) из Ollama duration-полей. Нет поля → 0.
+function nsToMs(v: number | undefined): number {
+  return typeof v === 'number' ? Math.round(v / 1e6) : 0;
+}
+function parseTimings(d: NativeChatResponse): LlmTimings {
+  return {
+    totalMs: nsToMs(d.total_duration),
+    evalMs: nsToMs(d.eval_duration),
+    promptMs: nsToMs(d.prompt_eval_duration),
+    loadMs: nsToMs(d.load_duration),
+  };
+}
+
 interface NativeChatResult {
   content: string;
   usage: Usage;
   doneReason?: string;
+  timings?: LlmTimings;
 }
 
 interface NativeChatResponse {
@@ -50,6 +65,11 @@ interface NativeChatResponse {
   done_reason?: string;
   eval_count?: number;
   prompt_eval_count?: number;
+  // День 29: Ollama /api/chat duration-поля (нс). Парсим → ms (/1e6) в timings.
+  total_duration?: number;
+  eval_duration?: number;
+  prompt_eval_duration?: number;
+  load_duration?: number;
 }
 
 /**
@@ -78,6 +98,8 @@ export class OllamaNativeClient extends LlmClient {
     messages: ChatMessage[];
     temperature?: number;
     numPredict?: number;
+    numCtx?: number;
+    seed?: number;
     stop?: string[];
   }): Promise<NativeChatResult> {
     const url = `${this.ollamaOrigin}/api/chat`;
@@ -85,6 +107,8 @@ export class OllamaNativeClient extends LlmClient {
       num_predict: typeof req.numPredict === 'number' ? req.numPredict : LOCAL_DEFAULT_NUM_PREDICT,
     };
     if (typeof req.temperature === 'number') options.temperature = req.temperature;
+    if (typeof req.numCtx === 'number') options.num_ctx = req.numCtx;
+    if (typeof req.seed === 'number') options.seed = req.seed;
     if (req.stop && req.stop.length > 0) options.stop = req.stop;
 
     const resp = await fetch(url, {
@@ -117,6 +141,7 @@ export class OllamaNativeClient extends LlmClient {
         total_tokens: prompt + completion,
       },
       doneReason: data.done_reason,
+      timings: parseTimings(data),
     };
   }
 
@@ -125,6 +150,8 @@ export class OllamaNativeClient extends LlmClient {
       messages,
       temperature: params.temperature,
       numPredict: params.maxTokens,
+      numCtx: params.numCtx,
+      seed: params.seed,
       stop: params.stop,
     });
     if (!content) throw new Error('Пустой content в ответе Ollama /api/chat');
@@ -134,15 +161,17 @@ export class OllamaNativeClient extends LlmClient {
   override async chatWithUsage(
     messages: ChatMessage[],
     params: ChatParams = {},
-  ): Promise<{ content: string; usage: Usage }> {
-    const { content, usage } = await this.postChat({
+  ): Promise<{ content: string; usage: Usage; timings?: LlmTimings }> {
+    const { content, usage, timings } = await this.postChat({
       messages,
       temperature: params.temperature,
       numPredict: params.maxTokens,
+      numCtx: params.numCtx,
+      seed: params.seed,
       stop: params.stop,
     });
     if (!content) throw new Error('Пустой content в ответе Ollama /api/chat');
-    return { content, usage };
+    return { content, usage, timings };
   }
 
   // Потоковый нативный /api/chat (день 28, web P1): stream:true, think:false (тот же
@@ -159,6 +188,8 @@ export class OllamaNativeClient extends LlmClient {
       num_predict: typeof params.maxTokens === 'number' ? params.maxTokens : LOCAL_DEFAULT_NUM_PREDICT,
     };
     if (typeof params.temperature === 'number') options.temperature = params.temperature;
+    if (typeof params.numCtx === 'number') options.num_ctx = params.numCtx;
+    if (typeof params.seed === 'number') options.seed = params.seed;
     if (params.stop && params.stop.length > 0) options.stop = params.stop;
     const resp = await fetch(url, {
       method: 'POST',
