@@ -5,6 +5,7 @@
 
 import type { BlogDb } from '../db.js';
 import type { LlmClient } from '../index.js';
+import { DATA_DIR } from '../paths.js';
 import type { SourceAgent } from './sourceAgent.js';
 import { RssSourceAgent } from './rssSource.js';
 import { ForumScannerAgent } from './forumScanner.js';
@@ -22,6 +23,7 @@ export async function runSourceAgents(
     enableForum?: boolean;
     sessionDir?: string;
     ask?: AskFn;
+    signal?: AbortSignal;
   } = {},
 ): Promise<OrchestratorResult> {
   const maxAgeHours = opts.maxAgeHours ?? 24;
@@ -38,7 +40,9 @@ export async function runSourceAgents(
   }
 
   if (opts.enableTelegram !== false) {
-    const tgAgent = new TelegramScannerAgent(opts.sessionDir ?? '.data', opts.ask);
+    // sessionDir по умолчанию — DATA_DIR (cwd-независимо, см. paths.ts). Раньше был
+    // literal '.data' (cwd-relative) — работал только при запуске из challenge/.
+    const tgAgent = new TelegramScannerAgent(opts.sessionDir ?? DATA_DIR, opts.ask);
     agents.push(tgAgent);
   }
 
@@ -62,6 +66,10 @@ export async function runSourceAgents(
   }
 
   // Оркестратор: LLM выбирает финальный топ.
+  // follow-up P5 В3: coarse-abort — если клиент ушёл (SSE disconnect) во время сбора,
+  // не запускаем тяжёлый LLM-шаг оркестратора. source-агенты не стримят через chatStream,
+  // поэтому fetch-abort тут не действует (только guard между стадиями).
+  opts.signal?.throwIfAborted();
   console.log(`[stage1] Оркестратор: выбор топ-${topK}...`);
   const orchestrator = new Orchestrator(client);
   const orchResult = await orchestrator.decide(results, userQuery, topK);

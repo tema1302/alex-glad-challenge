@@ -18,6 +18,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 
 import { loadEnvUpward } from './core/env.js';
+import { dataPath } from './core/paths.js';
 loadEnvUpward();
 
 import { demos, findDemo, latestDemo } from './demos/registry.js';
@@ -75,12 +76,12 @@ import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.j
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 
-const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
-const PROFILE_DIR = path.join(process.cwd(), '.data', 'profiles');
-const RAG_DB_PATH = path.join(process.cwd(), '.data', 'rag.sqlite');
+const DB_PATH = dataPath('blog.sqlite');
+const PROFILE_DIR = dataPath('profiles');
+const RAG_DB_PATH = dataPath('rag.sqlite');
 const RAG_DOCS_DIR = path.join(process.cwd(), 'src', 'data', 'rag-sample');
 const RAG_EVAL_FILE = path.join(process.cwd(), 'src', 'data', 'rag-eval.json');
-const TG_DB_PATH = path.join(process.cwd(), '.data', 'tg.sqlite');
+const TG_DB_PATH = dataPath('tg.sqlite');
 
 function printHelp(): void {
   console.log('Использование:');

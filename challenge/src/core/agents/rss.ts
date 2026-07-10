@@ -4,6 +4,7 @@
 import { XMLParser } from 'fast-xml-parser';
 
 import type { NewsRow } from '../db.js';
+import { clean } from '../sanitize.js';
 
 export interface RssItem {
   title: string;
@@ -107,8 +108,8 @@ export function toNewsRow(item: RssItem): Omit<NewsRow, 'id' | 'used' | 'created
   const published = new Date(Date.parse(normalizeTz(item.pubDate))).toISOString();
   return {
     url: item.link,
-    title: item.title,
-    summary: item.contentSnippet,
+    title: clean(item.title),
+    summary: clean(item.contentSnippet),
     published_at: published,
     source: item.source,
   };

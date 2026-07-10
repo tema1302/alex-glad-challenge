@@ -11,6 +11,7 @@
 
 import { McpHttpServer } from '../core/mcpHttpServer.js';
 import type { McpServerTool, McpToolResult } from '../core/mcpHttpServer.js';
+import { getMcpAuth } from '../core/env.js';
 
 const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
 const FETCH_LIMIT = 4000;
@@ -71,6 +72,7 @@ export async function runWorldServer(port: number): Promise<McpHttpServer> {
     version: '1.0.0',
     tools: [getCurrentTime, fetchUrl],
     port,
+    authToken: getMcpAuth(),
   });
   await server.start();
   return server;

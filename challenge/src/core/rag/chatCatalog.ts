@@ -12,19 +12,19 @@
 // в index-tg, в REPL `/chat` читается offline, без MTProto-per-call (решение пользователя).
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
+
+import { dataPath } from '../paths.js';
 
 export interface ChatAlias {
   chatKey: string;
   topicId?: number;
 }
 
-const DATA_DIR = path.join(process.cwd(), '.data');
-const TITLES_FILE = path.join(DATA_DIR, 'chat-titles.json');
-const ALIASES_FILE = path.join(DATA_DIR, 'chat-aliases.json');
+const TITLES_FILE = dataPath('chat-titles.json');
+const ALIASES_FILE = dataPath('chat-aliases.json');
 
 function ensureDataDir(): void {
-  if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
+  if (!existsSync(dataPath())) mkdirSync(dataPath(), { recursive: true });
 }
 
 // --- chat-titles.json ---

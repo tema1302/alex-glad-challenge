@@ -11,7 +11,7 @@ import type {
   LlmResponse,
   Usage,
 } from '../types.js';
-import { loadEnvUpward } from '../env.js';
+import { loadEnvUpward, getLocalLlmConfig } from '../env.js';
 
 loadEnvUpward();
 
@@ -22,16 +22,7 @@ export interface LocalLlmConfig {
 }
 
 export function localLlmConfig(): LocalLlmConfig {
-  const baseUrl = process.env.LOCAL_LLM_BASE_URL?.trim();
-  const model = process.env.LOCAL_LLM_MODEL?.trim();
-  if (!baseUrl || !model) {
-    throw new Error(
-      'Локальный LLM не настроен: задайте LOCAL_LLM_BASE_URL и LOCAL_LLM_MODEL в .env. ' +
-        'День 21+ работает ТОЛЬКО на локальных моделях. Если локальная модель не справляется — ' +
-        'попросите пользователя вмешаться явно.',
-    );
-  }
-  return { baseUrl, model, apiKey: process.env.LOCAL_LLM_API_KEY?.trim() ?? '' };
+  return getLocalLlmConfig();
 }
 
 // Страховка от зависания thinking-моделей (qwen3.5:4b без лимита бежит бесконечно).
@@ -152,6 +143,74 @@ export class OllamaNativeClient extends LlmClient {
     });
     if (!content) throw new Error('Пустой content в ответе Ollama /api/chat');
     return { content, usage };
+  }
+
+  // Потоковый нативный /api/chat (день 28, web P1): stream:true, think:false (тот же
+  // фикс thinking-моделей, что в postChat). NDJSON — по строке JSON на чанк, yield
+  // message.content пока не придёт done:true. На !resp.ok — throw только со status.
+  // signal (follow-up P5 В3): прокидывается в fetch (AbortError при disconnect SSE).
+  override async *chatStream(
+    messages: ChatMessage[],
+    params: ChatParams = {},
+    signal?: AbortSignal,
+  ): AsyncGenerator<string> {
+    const url = `${this.ollamaOrigin}/api/chat`;
+    const options: Record<string, unknown> = {
+      num_predict: typeof params.maxTokens === 'number' ? params.maxTokens : LOCAL_DEFAULT_NUM_PREDICT,
+    };
+    if (typeof params.temperature === 'number') options.temperature = params.temperature;
+    if (params.stop && params.stop.length > 0) options.stop = params.stop;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.ollamaApiKey}`,
+      },
+      body: JSON.stringify({
+        model: this.defaultModel,
+        messages,
+        stream: true,
+        think: false,
+        options,
+      }),
+      signal,
+    });
+    if (!resp.ok) {
+      const s = resp.status;
+      await resp.text().catch(() => {});
+      throw new Error(`Ollama /api/chat stream error ${s}`);
+    }
+    if (!resp.body) throw new Error('Ollama stream: пустое тело ответа');
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          try {
+            const data = JSON.parse(line) as NativeChatResponse;
+            const delta = data.message?.content;
+            if (delta) yield delta;
+            if (data.done === true) return;
+          } catch {
+            // partial NDJSON line across read boundary — пропускаем
+          }
+        }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // already released
+      }
+    }
   }
 
   // Адаптер нативного ответа → OpenAI-compat LlmResponse. RAG не зовёт chatRaw напрямую,

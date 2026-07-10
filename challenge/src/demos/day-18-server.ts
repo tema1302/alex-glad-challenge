@@ -18,6 +18,7 @@
 import path from 'node:path';
 import { McpHttpServer } from '../core/mcpHttpServer.js';
 import type { McpServerTool, McpToolResult } from '../core/mcpHttpServer.js';
+import { getMcpAuth } from '../core/env.js';
 import { McpHttpClient } from '../core/mcpHttpClient.js';
 import { TodoDb } from '../core/todoDb.js';
 import { publishPost, isTelegramConfigured } from '../core/agents/telegram.js';
@@ -468,6 +469,7 @@ export async function runServer(port = 3001): Promise<void> {
       sendToChatTool,
     ],
     port,
+    authToken: getMcpAuth(),
   });
 
   // --- Регулярный ежедневный summary в Telegram ---

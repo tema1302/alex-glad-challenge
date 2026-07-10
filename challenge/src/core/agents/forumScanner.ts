@@ -3,6 +3,7 @@
 // Каждый источник — отдельный запрос, ошибки не валит весь агент.
 
 import type { SourceAgent, SourceAgentResult, TrendingTopic } from './sourceAgent.js';
+import { clean } from '../sanitize.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 football-bot/1.0';
 
@@ -67,13 +68,13 @@ export class ForumScannerAgent implements SourceAgent {
       })
       .slice(0, 8)
       .map((c) => ({
-        title: c.data.title,
-        description: c.data.selftext?.slice(0, 200) ?? '',
+        title: clean(c.data.title),
+        description: clean(c.data.selftext?.slice(0, 200) ?? ''),
         source: 'reddit',
         url: c.data.url,
         hypeScore: Math.min(100, Math.round(c.data.score / 10)),
         hypeReason: `${c.data.score} upvotes, ${c.data.num_comments} comments`,
-        rawContent: c.data.selftext ?? c.data.title,
+        rawContent: clean(c.data.selftext ?? c.data.title),
       }));
   }
 
@@ -97,7 +98,7 @@ export class ForumScannerAgent implements SourceAgent {
     const seen = new Set<string>();
     for (const m of matches) {
       const link = m[1];
-      const title = m[2].trim();
+      const title = clean(m[2].trim());
       if (title.length < 10 || seen.has(title)) continue;
       seen.add(title);
       topics.push({

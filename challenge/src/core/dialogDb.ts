@@ -12,6 +12,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
+import { clean } from './sanitize.js';
+
 export interface ChatRow {
   id: string;
   title: string;
@@ -85,15 +87,6 @@ const MAX_TERM = 200;
 // интерполяция SQL, а конструирование значения параметра.
 function escapeLike(s: string): string {
   return s.replace(/[%_\\]/g, (m) => '\\' + m);
-}
-
-// Трим + вырезать control chars (кроме \t) + обрезать по длине. Применяется на
-// всех write-методах (граница: пользовательский контент tainted).
-function clean(s: string, maxLen: number): string {
-  return s
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-    .trim()
-    .slice(0, maxLen);
 }
 
 export class DialogDb {

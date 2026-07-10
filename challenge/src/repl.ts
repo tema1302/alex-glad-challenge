@@ -6,8 +6,6 @@
 //   pnpm --filter challenge start -- chat --strategy sliding --system "Ты ревьюер"
 
 import readline from 'node:readline';
-import path from 'node:path';
-import pathModule from 'node:path';
 
 import { Agent, Branching, Constraints, type ContextStrategy, FullHistory, LlmClient, Memory, msg, ProfileManager, SlidingWindow, StickyFacts } from './core/index.js';
 import { demos, findDemo } from './demos/registry.js';
@@ -22,6 +20,7 @@ import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { BlogDb } from './core/db.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
 import { runDay20 } from './demos/day-20.js';
+import { dataPath } from './core/paths.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -144,10 +143,10 @@ export async function startRepl(client: LlmClient, opts: ReplOptions = {}): Prom
     system,
     windowSize,
     usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    memory: new Memory({ filePath: pathModule.join(process.cwd(), '.data', 'memory.json'), shortTermLimit: windowSize }),
+    memory: new Memory({ filePath: dataPath('memory.json'), shortTermLimit: windowSize }),
     memoryEnabled: false,
-    profile: new ProfileManager(pathModule.join(process.cwd(), '.data', 'profiles')),
-    constraints: new Constraints(pathModule.join(process.cwd(), '.data', 'constraints.json')),
+    profile: new ProfileManager(dataPath('profiles')),
+    constraints: new Constraints(dataPath('constraints.json')),
     ask: (q: string) => new Promise((resolve) => { rl?.question(q, (a) => resolve(a.trim())); }),
   };
 
@@ -985,7 +984,7 @@ function printMemory(state: SessionState): void {
   console.log(line + '\n');
 }
 
-const DB_PATH = path.join(process.cwd(), '.data', 'blog.sqlite');
+const DB_PATH = dataPath('blog.sqlite');
 
 async function handleNewsCommand(arg: string, state: SessionState): Promise<void> {
   // Парсим флаги из аргумента.
@@ -1404,7 +1403,7 @@ ${comment ? `Комментарий автора: ${comment}` : ''}
   }
 }
 
-const PIPELINE_STATE_PATH = path.join(process.cwd(), '.data', 'pipeline-state.json');
+const PIPELINE_STATE_PATH = dataPath('pipeline-state.json');
 
 async function handleScoutCommand(arg: string, state: SessionState): Promise<void> {
   // Парсим флаги.

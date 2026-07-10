@@ -14,6 +14,7 @@
 
 import { McpHttpServer } from '../core/mcpHttpServer.js';
 import type { McpServerTool, McpToolResult } from '../core/mcpHttpServer.js';
+import { getMcpAuth } from '../core/env.js';
 
 /** Пост из ответа JSONPlaceholder /posts. */
 interface JsonPlaceholderPost {
@@ -243,6 +244,7 @@ export async function runServer(port = 3001): Promise<void> {
     version: '1.0.0',
     tools: [getUserPostsTool, getTodosTool, addNoteTool, listNotesTool],
     port,
+    authToken: getMcpAuth(),
   });
 
   const shutdown = (): void => {

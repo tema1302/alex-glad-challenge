@@ -19,7 +19,13 @@ export interface PipelineResult {
 export async function runNewsPipeline(
   db: BlogDb,
   client: LlmClient,
-  opts: { maxAgeHours?: number; topK?: number; writeForIndex?: number; profile?: ProfileManager } = {},
+  opts: {
+    maxAgeHours?: number;
+    topK?: number;
+    writeForIndex?: number;
+    profile?: ProfileManager;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<PipelineResult> {
   const maxAgeHours = opts.maxAgeHours ?? 24;
   const topK = opts.topK ?? 5;
@@ -38,6 +44,7 @@ export async function runNewsPipeline(
   }
 
   // 1. Агент 1 — выбрать топ новостей.
+  opts.signal?.throwIfAborted();
   const fetcher = new NewsFetcher(client);
   const news = await fetcher.fetch(db, { maxAgeHours, topK });
   console.log(`[pipeline] Агент 1: кандидатов ${news.rawCount}, выбрано ${news.ranked.length}`);
@@ -51,11 +58,13 @@ export async function runNewsPipeline(
   console.log(`[pipeline] Готовим пост про: "${chosen.title}"`);
 
   // 2. Агент 2 — написать пост (с профилем, если есть).
+  opts.signal?.throwIfAborted();
   const writer = new PostWriter(client, opts.profile);
   const post = await writer.write(db, chosen);
   console.log(`[pipeline] Агент 2: пост написан (${post.content.length} символов)`);
 
   // 3. Агент 3 — фактчекинг.
+  opts.signal?.throwIfAborted();
   const checker = new FactChecker(client);
   const factCheck = await checker.check(post.content, chosen);
   console.log(`[pipeline] Агент 3: verdict=${factCheck.verdict}, issues=${factCheck.issues.length}`);

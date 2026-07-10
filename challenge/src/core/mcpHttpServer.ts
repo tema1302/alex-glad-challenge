@@ -24,6 +24,10 @@ type McpHttpConfig = {
   version: string;
   tools: McpServerTool[];
   port?: number;
+  /** Bearer-токен для auth (заголовок Authorization: Bearer <token>). Если не задан — auth отключён (обратно-совместимо). */
+  authToken?: string;
+  /** Explicit CORS origin (e.g. 'http://localhost:3000'). Если не задан — разрешены только localhost/127.0.0.1. */
+  corsOrigin?: string;
 };
 
 type RawMessage = {
@@ -60,12 +64,16 @@ export class McpHttpServer {
   private readonly port: number;
   private readonly name: string;
   private readonly version: string;
+  private readonly authToken?: string;
+  private readonly corsOrigin?: string;
   private server: Server | null = null;
 
   constructor(config: McpHttpConfig) {
     this.name = config.name;
     this.version = config.version;
     this.port = config.port ?? 3001;
+    this.authToken = config.authToken;
+    this.corsOrigin = config.corsOrigin;
     for (const tool of config.tools) {
       this.tools.set(tool.name, tool);
     }
@@ -78,7 +86,8 @@ export class McpHttpServer {
     });
     await new Promise<void>((resolve, reject) => {
       this.server!.once('error', reject);
-      this.server!.listen(this.port, () => resolve());
+      // Только loopback: сервер не светится на внешних интерфейсах.
+      this.server!.listen(this.port, '127.0.0.1', () => resolve());
     });
     console.error(
       `MCP server '${this.name}' listening on http://localhost:${this.port}/mcp`,
@@ -97,15 +106,27 @@ export class McpHttpServer {
   ): Promise<void> {
     // CORS preflight for browser testing.
     if (req.method === 'OPTIONS') {
-      this.setCors(res);
+      this.setCors(req, res);
       res.statusCode = 204;
       res.end();
       return;
     }
 
+    // Auth (opt-in): если задан authToken — каждый запрос обязан нести
+    // `Authorization: Bearer <token>`. Без токена сервер остаётся открытым
+    // (обратно-совместимо с CLI-демо, где токен не передаётся).
+    if (!this.isAuthorized(req)) {
+      this.setCors(req, res);
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('WWW-Authenticate', 'Bearer realm="mcp"');
+      res.statusCode = 401;
+      res.end(JSON.stringify({ error: 'Unauthorized' }));
+      return;
+    }
+
     // GET: status page.
     if (req.method === 'GET') {
-      this.setCors(res);
+      this.setCors(req, res);
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(this.statusPage());
       return;
@@ -113,7 +134,7 @@ export class McpHttpServer {
 
     // Only POST carries JSON-RPC.
     if (req.method !== 'POST') {
-      this.setCors(res);
+      this.setCors(req, res);
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 405;
       res.end(JSON.stringify({ error: 'Method not allowed' }));
@@ -125,7 +146,7 @@ export class McpHttpServer {
     try {
       raw = JSON.parse(body.toString('utf-8')) as RawMessage;
     } catch {
-      this.setCors(res);
+      this.setCors(req, res);
       res.setHeader('Content-Type', 'application/json');
       res.statusCode = 400;
       res.end(JSON.stringify({ error: 'Invalid JSON' }));
@@ -138,7 +159,7 @@ export class McpHttpServer {
 
     // Notifications (no id): acknowledge with 202, empty body.
     if (isNotification) {
-      this.setCors(res);
+      this.setCors(req, res);
       res.statusCode = 202;
       res.end();
       return;
@@ -147,13 +168,13 @@ export class McpHttpServer {
     // Request (has id): build a JSON-RPC response.
     try {
       const result = await this.dispatch(raw.method, raw.params);
-      this.setCors(res);
+      this.setCors(req, res);
       res.setHeader('Content-Type', 'application/json');
       res.end(
         JSON.stringify({ jsonrpc: '2.0', id: id as RequestId, result }),
       );
     } catch (err) {
-      this.setCors(res);
+      this.setCors(req, res);
       res.setHeader('Content-Type', 'application/json');
       let code = -32603;
       let message = 'Internal error';
@@ -235,10 +256,27 @@ export class McpHttpServer {
       : {};
   }
 
-  private setCors(res: ServerResponse): void {
-    res.setHeader('Access-Control-Allow-Origin', '*');
+  private isAuthorized(req: IncomingMessage): boolean {
+    if (!this.authToken) return true;
+    const auth = req.headers.authorization;
+    if (typeof auth !== 'string') return false;
+    return auth === `Bearer ${this.authToken}`;
+  }
+
+  private isOriginAllowed(origin: string): boolean {
+    if (!origin) return false;
+    if (this.corsOrigin) return origin === this.corsOrigin;
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+
+  private setCors(req: IncomingMessage, res: ServerResponse): void {
+    const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '';
+    if (this.isOriginAllowed(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+    }
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   }
 
   private statusPage(): string {

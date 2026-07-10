@@ -11,11 +11,11 @@
 // Запуск:
 //   pnpm --filter challenge start -- day-25
 
-import path from 'node:path';
 import crypto from 'node:crypto';
 import readline from 'node:readline';
 
 import { loadEnvUpward } from '../core/env.js';
+import { dataPath } from '../core/paths.js';
 import type { LlmClient } from '../core/client.js';
 import { msg } from '../core/types.js';
 import type { ChatMessage } from '../core/types.js';
@@ -33,9 +33,9 @@ import { DialogDb } from '../core/dialogDb.js';
 import type { SerializedTaskState } from '../core/dialogDb.js';
 import type { Demo } from './types.js';
 
-const RAG_DB_PATH = path.join(process.cwd(), '.data', 'rag.sqlite');
-const MEMORY_FILE_PATH = path.join(process.cwd(), '.data', 'day25-memory.json');
-const DIALOG_DB_PATH = path.join(process.cwd(), '.data', 'dialog.sqlite');
+const RAG_DB_PATH = dataPath('rag.sqlite');
+const MEMORY_FILE_PATH = dataPath('day25-memory.json');
+const DIALOG_DB_PATH = dataPath('dialog.sqlite');
 const SHORT_TERM_LIMIT = 8;
 const STRATEGY = 'fixed' as const;
 

@@ -162,6 +162,10 @@ export interface RagOptions {
   rewrite?: boolean;   // query rewrite on/off (по умолч. off)
   minScore?: number;   // день 24: опц. floor лучшего скора для guard'а (default-off)
   onProgress?: (stage: RagStage) => void;
+  // День 28 (web P1): потоковый LLM-ответ. При наличии — шаг 5 идёт через
+  // client.chatStream, токены идут в колбэк. Без колбэка — идентичное поведение
+  // дню 22+ (client.chat), CLI back-compat сохранён.
+  onToken?: (delta: string) => void;
   // День 25: история диалога (последние N реплик) и сериализованная «память задачи»
   // (goal/термины/ограничения). День 25b: +dialogContext — найденные в прошлых диалогах
   // Q&A. Прокидываются в buildRagPrompt. Guard-шорткюрк на пустом/слабом контексте
@@ -169,6 +173,8 @@ export interface RagOptions {
   history?: ChatMessage[];
   taskState?: string;
   dialogContext?: string;
+  // follow-up P5 В3: прокинуть abort-signal в chatStream (AbortError при disconnect SSE).
+  signal?: AbortSignal;
 }
 
 export async function answerWithRag(
@@ -259,13 +265,22 @@ export async function answerWithRag(
 
   // 5. Финальный LLM-ответ. onProgress сообщает итоговый topK до вызова.
   onProgress?.({ step: 'llm', detail: { topK: ranked.length } });
-  const answer = await client.chat(
-    buildRagPrompt(question, ranked, {
-      history: opts.history,
-      taskState: opts.taskState,
-      dialogContext: opts.dialogContext,
-    }),
-  );
+  const prompt = buildRagPrompt(question, ranked, {
+    history: opts.history,
+    taskState: opts.taskState,
+    dialogContext: opts.dialogContext,
+  });
+  const onToken = opts.onToken;
+  const answer = onToken
+    ? await (async () => {
+        let full = '';
+        for await (const delta of client.chatStream(prompt, {}, opts.signal)) {
+          onToken(delta);
+          full += delta;
+        }
+        return full;
+      })()
+    : await client.chat(prompt);
 
   return {
     answer,
@@ -285,6 +300,18 @@ export async function answerWithRag(
   };
 }
 
-export async function answerNoRag(client: LlmClient, question: string): Promise<string> {
-  return client.chat([msg.system(SYSTEM_NO_RAG), msg.user(question)]);
+export async function answerNoRag(
+  client: LlmClient,
+  question: string,
+  opts: { onToken?: (delta: string) => void; signal?: AbortSignal } = {},
+): Promise<string> {
+  const messages: ChatMessage[] = [msg.system(SYSTEM_NO_RAG), msg.user(question)];
+  // Без onToken — идентично dni 22 (client.chat). CLI/eval callers не передают колбэк.
+  if (!opts.onToken) return client.chat(messages);
+  let full = '';
+  for await (const delta of client.chatStream(messages, {}, opts.signal)) {
+    opts.onToken(delta);
+    full += delta;
+  }
+  return full;
 }

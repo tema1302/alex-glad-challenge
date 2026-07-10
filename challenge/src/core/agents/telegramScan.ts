@@ -11,9 +11,9 @@
 // через socat на прокси-сервере: 91.199.147.131:8081 → 149.154.167.51:80 (DC2).
 // GramJS подключается как будто к DC напрямую, но байты идут через туннель.
 
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import net from 'node:net';
+
+import { getTgScanConfig, getTgTunnel } from '../env.js';
 
 export interface ScannedMessage {
   from: string;
@@ -166,27 +166,9 @@ function TcpTunnelWebSockets(tunnelHost: string, tunnelPort: number) {
   };
 }
 
-/** Где лежит файл сессии (тот же .data/, что и остальное runtime-состояние). */
-const SESSION_FILE = path.join(process.cwd(), '.data', 'tg-session.json');
-
-/**
- * Откуда брать StringSession: env TG_SESSION имеет приоритет, иначе читаем из
- * .data/tg-session.json ({ session: "..." }). null — если сессии нет нигде.
- */
-function resolveSession(): string | null {
-  const env = process.env.TG_SESSION;
-  if (env && env.trim()) return env.trim();
-  try {
-    const obj = JSON.parse(readFileSync(SESSION_FILE, 'utf8')) as { session?: unknown };
-    if (typeof obj.session === 'string' && obj.session.trim()) return obj.session.trim();
-  } catch {
-    /* файла нет или битый — не страшно */
-  }
-  return null;
-}
-
+/** Настроен ли MTProto-scan: apiId/apiHash/session заданы. */
 export function isScanConfigured(): boolean {
-  return Boolean(process.env.TG_API_ID && process.env.TG_API_HASH && resolveSession());
+  return getTgScanConfig() !== null;
 }
 
 /** Подключить MTProto-клиента (один раз). false — если не настроено.
@@ -196,10 +178,11 @@ export async function connectScanClient(): Promise<boolean> {
   if (!isScanConfigured()) return false;
   if (client) return true;
 
-  const sessionStr = resolveSession();
-  if (!sessionStr) return false;
-  const apiId = Number(process.env.TG_API_ID);
-  const apiHash = process.env.TG_API_HASH as string;
+  const cfg = getTgScanConfig();
+  if (!cfg) return false;
+  const sessionStr = cfg.session;
+  const apiId = cfg.apiId;
+  const apiHash = cfg.apiHash;
 
   try {
     const { TelegramClient } = await import('telegram');
@@ -208,8 +191,7 @@ export async function connectScanClient(): Promise<boolean> {
 
     // TCP-туннель через socat на прокси-сервере → DC2 (149.154.167.51:80)
     // env TG_TUNNEL_HOST / TG_TUNNEL_PORT (по умолчанию 91.199.147.131:8081)
-    const tunnelHost = process.env.TG_TUNNEL_HOST || '91.199.147.131';
-    const tunnelPort = Number(process.env.TG_TUNNEL_PORT) || 8081;
+    const { host: tunnelHost, port: tunnelPort } = getTgTunnel();
 
     const clientParams: Record<string, unknown> = {
       connectionRetries: 3,

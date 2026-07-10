@@ -8,6 +8,7 @@
 
 import { McpHttpServer } from '../core/mcpHttpServer.js';
 import type { McpServerTool, McpToolResult } from '../core/mcpHttpServer.js';
+import { getMcpAuth } from '../core/env.js';
 import { publishPost, isTelegramConfigured } from '../core/agents/telegram.js';
 
 const sendToChat: McpServerTool = {
@@ -44,6 +45,7 @@ export async function runTelegramServer(port: number): Promise<McpHttpServer> {
     version: '1.0.0',
     tools: [sendToChat],
     port,
+    authToken: getMcpAuth(),
   });
   await server.start();
   return server;

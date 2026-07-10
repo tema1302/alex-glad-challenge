@@ -2,7 +2,7 @@
 // POST на OpenAI-совместимый эндпоинт /embeddings (Ollama /v1, LM Studio, vLLM и т.п.).
 // Только локальный baseURL из .env — внешний сеть-запрос запрещён (день 21+).
 
-import { loadEnvUpward } from '../env.js';
+import { loadEnvUpward, getEmbedConfig } from '../env.js';
 import type { Embedder } from './types.js';
 
 loadEnvUpward();
@@ -14,15 +14,7 @@ export interface EmbedConfig {
 }
 
 export function embedConfigFromEnv(): EmbedConfig {
-  const baseUrl = process.env.LOCAL_EMBED_BASE_URL?.trim();
-  const model = process.env.LOCAL_EMBED_MODEL?.trim();
-  if (!baseUrl || !model) {
-    throw new Error(
-      'Локальные эмбеддинги не настроены: задайте LOCAL_EMBED_BASE_URL и LOCAL_EMBED_MODEL в .env. ' +
-        'День 21+ работает ТОЛЬКО на локальных моделях.',
-    );
-  }
-  return { baseUrl, model, apiKey: process.env.LOCAL_EMBED_API_KEY?.trim() ?? '' };
+  return getEmbedConfig();
 }
 
 interface EmbeddingsResponse {

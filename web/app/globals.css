@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Тема: zinc-нейтральный фон + accent indigo/violet. next-themes вешает класс
+   .dark на <html>; инверты заданы через dark:-классы в компонентах. */
+:root {
+  color-scheme: light dark;
+}
+
+html {
+  background-color: #fafafa; /* neutral-50 */
+}
+html.dark {
+  background-color: #0a0a0a; /* neutral-950 */
+}

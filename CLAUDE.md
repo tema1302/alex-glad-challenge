@@ -154,8 +154,9 @@ kebab-case идентификатор задачи.
 - **ESM + `.js`-импорты:** target ES2022, `verbatimModuleSyntax`. Внутренние
   относительные импорты — с расширением `.js`. ЗАПРЕЩЕНО импортировать без расширения
   или с `.ts`.
-- **Один пакет:** workspace = единственный пакет `challenge/`. ЗАПРЕЩЕНО создавать
-  вложенные `package.json` внутри `challenge/`.
+- **Один пакет (challenge/):** workspace содержит `challenge/` как основной пакет.
+  ЗАПРЕЩЕНО создавать вложенные `package.json` внутри `challenge/`. Scoped override
+  для локального Next.js `web/` (sibling-пакет, день 28) — см. «Scoped override» ниже.
 - **Сборки нет:** запуск через `tsx` напрямую: `pnpm --filter challenge start -- <cmd>`.
   ЗАПРЕЩЕНО добавлять шаг сборки (tsc emit, bundler) без явного требования.
 - **Секреты — только `.env`:** загрузка через `src/core/env.ts`. ЗАПРЕЩЕНО хардкодить
@@ -181,8 +182,41 @@ kebab-case идентификатор задачи.
   MCP-интерфейсе.
 - **Mobile MCP** (`claude-in-mobile`, зарегистрирован в `.mcp.json`) — единственный
   канал автоматизации мобайла.
-- **Web-фронта НЕТ.** ЗАПРЕЩЕНО создавать Next.js/React/Vue фронтенд вне
-  замороженного архива.
+- **Web-фронта НЕТ** (в общем случае). ЗАПРЕЩЕНО создавать Next.js/React/Vue фронтенд
+  вне замороженного архива. Исключение — локальный Next.js `web/` (scoped override,
+  день 28, решение пользователя; см. ниже).
+
+### Scoped override: локальный Next.js `web/` (день 28, решение пользователя)
+
+ЕДИНСТВЕННОЕ исключение из инвариантов «Web-фронта НЕТ» и «workspace = 1 пакет» —
+локальный пакет `web/` (Next.js 15 App Router + React 19), sibling к `challenge/`.
+Границы исключения (за их пределами исходные инварианты действуют в полном объёме):
+
+- **Только локально:** `next dev` на `127.0.0.1`, без production-build/deploy/CI/Vercel.
+  Шага сборки как такового нет — это локальная dev-компиляция (bundler), не production-bundle.
+- **Сервер-only для всего тяжёлого:** ключи/`TG_SESSION`/MTProto (`telegram`)/
+  `node:sqlite` — только в server-модулях (`web/lib/server/*` + Route Handlers +
+  Server Components). ЗАПРЕЩЕНО тащить их в client bundle.
+- **`server-only` chokepoint:** прямой импорт `@challenge/core/*` разрешён ТОЛЬКО через
+  `web/lib/server/challenge.ts`. Client components физически не могут импортнуть core/
+  (компилятор Next + `server-only` упадёт). Client импортирует только из `web/lib/shared/*`
+  (типы/схемы) — НИКОГДА из core/.
+- **Никаких `NEXT_PUBLIC_*` секретов:** ключи/сессии читаются через `core/env.ts`
+  (`loadEnvUpward`); наружу отдаются только флаги наличия (`Boolean`) и typed-accessors
+  без значений. Dashboard показывает «DeepSeek: ✓», не сам ключ.
+- **Bind 127.0.0.1:** Next dev и MCP-серверы — только loopback.
+- **CSP** (`next.config.ts`): `default-src 'self'; script-src 'self'; connect-src 'self'`
+  (SSE — same-origin; внешние fetch к Ollama/TG идут с server, не из браузера).
+- **Валидация на границе** — zod на каждой форме/Route (тип/длина/enum). Taint-контент
+  (RSS/TG/LLM) — sanitize через `core/sanitize.ts` (`clean()`) перед БД/промптом.
+- **SQL** — parameterized (`?`-плейсхолдеры), как и в `challenge/`. WAL для `node:sqlite`.
+- **Верификация client bundle:** `grep -rl "telegram\|TG_SESSION\|DEEPSEEK_API_KEY" web/.next/static`
+  → 0 совпадений (после каждой фазы web/).
+- **Git:** `web/.next/`, `web/.env.local`, `web/node_modules/` — в `.gitignore`. `.env`
+  и `.data/` (всех пакетов) — НИКОГДА в git.
+
+Исходные инварианты «Web-фронта НЕТ» и «Один пакет» действуют для всех остальных
+случаев (любой фронтенд вне `web/` и вложенные `package.json` внутри `challenge/`).
 
 ## Маппинг subagent_type → задача
 
@@ -540,7 +574,8 @@ Reproduce. Reproduce стартует только по подтверждённ
 - **MCP:** свои MCP-серверы (`core/mcp*`, демо day-17/18/20) + Mobile MCP
   (`claude-in-mobile` в `.mcp.json`).
 - **Платформы-поверхности:** Backend/CLI/Agent (Node+TS); MCP-серверы in-repo (HTTP);
-  Mobile через Mobile MCP. Web-фронта нет (`1-day..10-day` — архив).
+  Mobile через Mobile MCP; локальный Next.js `web/` (день 28, scoped override — см.
+  «Инварианты стека»). Замороженный архив `1-day..10-day` отдельно, не активная поверхность.
 - **Тулчейн:** typecheck = `pnpm --filter challenge typecheck` (единственный статический
   гейт); прогон = `pnpm --filter challenge start -- <cmd>`. Lint/unit/build/CI НЕ
   настроены.

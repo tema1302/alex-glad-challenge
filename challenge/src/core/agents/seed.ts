@@ -6,11 +6,15 @@
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { BlogDb } from '../db.js';
 
 // seed.ts лежит в src/core/agents/, до src/data/ — два уровня вверх.
-const SAMPLES_PATH = path.join(import.meta.dirname, '..', '..', 'data', 'style-samples.json');
+// fileURLToPath(import.meta.url) + path.dirname ≡ import.meta.dirname, но резолвится
+// webpack (Next dev-компиляция web/), в отличие от import.meta.dirname на top-level.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const SAMPLES_PATH = path.join(HERE, '..', '..', 'data', 'style-samples.json');
 
 export async function seedStyleSamples(_db: BlogDb): Promise<number> {
   const raw = readFileSync(SAMPLES_PATH, 'utf8');

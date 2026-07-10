@@ -16,6 +16,8 @@ import type { RagStore } from '../rag/store.js';
 import type { MsgLike, RawTelegramClient } from '../agents/telegramScan.js';
 import { senderName, msgDateIso } from '../agents/telegramScan.js';
 import type { CollectStateRow, TgMessageRow, TgStore } from './tgStore.js';
+import { clean } from '../sanitize.js';
+import { getTgTopic } from '../env.js';
 
 // Структурная проекция Api.Message — только читаемые поля. Не grain gramjs-тип
 // (top-level runtime-import telegram запрещён). Приводится через unknown на каждой итерации.
@@ -67,15 +69,7 @@ export function summarizeReactions(m: RawTgMessage): ReactionSummary {
   return { byEmoji, total };
 }
 
-// --- Sanitize (tainted TG-контент → БД + RAG-промпт) ---
-// По образцу dialogDb.ts:clean: control chars (кроме \t) вырезаются, trim, slice.
-
-function sanitize(s: string, maxLen: number): string {
-  return s
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-    .trim()
-    .slice(0, maxLen);
-}
+// Sanitize (tainted TG-контент → БД + RAG-промпт) — единый clean() из core/sanitize.
 
 // --- Резолв chat/topic ---
 
@@ -128,9 +122,8 @@ export async function resolveChatTopic(
   const { peer, topicId: parsed } = parseChatTopicInput(input, topicArg);
   let topicId = parsed;
   if (topicId == null || !Number.isFinite(topicId)) {
-    const env = process.env.TG_TOPIC;
-    const envN = env != null ? Number(env) : NaN;
-    if (Number.isFinite(envN)) topicId = envN;
+    const envTopic = getTgTopic();
+    if (envTopic != null) topicId = envTopic;
   }
   if (topicId == null || !Number.isFinite(topicId)) {
     throw new Error(
@@ -404,8 +397,8 @@ export async function collectTopic(
           topic_id: ref.topicId,
           msg_id: id,
           from_id: m.senderId == null ? null : String(m.senderId),
-          from_name: sanitize(senderName(m as MsgLike), 200),
-          text: sanitize(m.message ?? '', 4096),
+          from_name: clean(senderName(m as MsgLike), 200),
+          text: clean(m.message ?? '', 4096),
           date_iso: msgDateIso(m as MsgLike),
           reactions_json: JSON.stringify(byEmoji),
           reaction_total: total,
