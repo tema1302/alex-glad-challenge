@@ -159,3 +159,35 @@ export function getMcpAuth(): string | undefined {
   const token = process.env.MCP_AUTH_TOKEN?.trim();
   return token || undefined;
 }
+
+/**
+ * Конфиг приватного LLM-gateway (day-30): порт bind, auth-токен (отдельный домен
+ * от MCP_AUTH_TOKEN), RPS/TPM-лимиты, concurrency-кап и max-context-tokens cap.
+ * Дефолты рассчитаны на один инстанс vLLM/Ollama на loopback. Секрет (authToken)
+ * НЕ попадает в error/логи — потребитель не должен его печатать.
+ */
+export interface PrivateLlmServiceConfig {
+  port: number;
+  authToken?: string;
+  rateRps: number;
+  rateTpm: number;
+  maxConcurrency: number;
+  maxContextTokens: number;
+}
+
+export function getPrivateLlmServiceConfig(): PrivateLlmServiceConfig {
+  const num = (name: string, def: number): number => {
+    const raw = process.env[name]?.trim();
+    if (!raw) return def;
+    const n = Number(raw);
+    return Number.isFinite(n) && n >= 0 ? n : def;
+  };
+  return {
+    port: num('PRIVATE_LLM_PORT', 3030),
+    authToken: process.env.PRIVATE_LLM_AUTH_TOKEN?.trim() || undefined,
+    rateRps: num('PRIVATE_LLM_RATE_RPS', 5),
+    rateTpm: num('PRIVATE_LLM_RATE_TPM', 10_000),
+    maxConcurrency: num('PRIVATE_LLM_MAX_CONCURRENCY', 4),
+    maxContextTokens: num('PRIVATE_LLM_MAX_CONTEXT_TOKENS', 3_500),
+  };
+}
