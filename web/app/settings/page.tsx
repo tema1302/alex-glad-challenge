@@ -88,7 +88,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between gap-4">
               <dt className="text-dim">Cloud LLM</dt>
               <dd className="flex items-center gap-2">
-                <StatusDot status={data.cloud.configured ? 'ok' : 'warn'} />
+                <StatusDot status={data.cloud.configured ? 'ok' : 'warn'} label="" />
                 <span className="text-ink">
                   {data.cloud.configured ? `${data.cloud.provider} · ${data.cloud.model}` : 'не настроен'}
                 </span>
@@ -97,7 +97,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between gap-4">
               <dt className="text-dim">Local LLM</dt>
               <dd className="flex items-center gap-2">
-                <StatusDot status={data.localLlm.configured ? 'ok' : 'warn'} />
+                <StatusDot status={data.localLlm.configured ? 'ok' : 'warn'} label="" />
                 <span className="text-ink">
                   {data.localLlm.configured ? data.localLlm.model : 'не настроен'}
                 </span>
@@ -106,7 +106,7 @@ export default function SettingsPage() {
             <div className="flex items-center justify-between gap-4">
               <dt className="text-dim">MCP-сервер URL</dt>
               <dd className="flex items-center gap-2">
-                <StatusDot status={data.mcpUrl.configured ? 'ok' : 'warn'} />
+                <StatusDot status={data.mcpUrl.configured ? 'ok' : 'warn'} label="" />
                 {data.mcpUrl.host && (
                   <span className="font-mono text-xs text-dim" title="read-only (env)">
                     {data.mcpUrl.host} 🔒

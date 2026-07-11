@@ -296,7 +296,7 @@ export default function ChatSessionPage() {
         <label className="mt-3 block text-sm">
           <span className="block text-xs uppercase tracking-wide text-dim">System-промпт</span>
           <textarea
-            className={`mt-1 w-full resize-y p-2 ${INPUT}`}
+            className={`mt-1 w-full resize-y ${INPUT}`}
             rows={2}
             value={systemDraft}
             onChange={(e) => setSystemDraft(e.target.value)}
@@ -371,7 +371,7 @@ export default function ChatSessionPage() {
       {/* Ввод */}
       <section className="flex gap-2">
         <textarea
-          className={`flex-1 resize-none p-2 ${INPUT}`}
+          className={`flex-1 resize-none ${INPUT}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           value={input}

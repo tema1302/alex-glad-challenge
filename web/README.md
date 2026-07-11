@@ -21,8 +21,8 @@ pnpm --filter web dev   # поднять next dev
   Local LLM, MTProto configured, Bot API) + активная модель.
 - **`/showcase` Витрина** — возможности системы по модулям (RAG / Chat / Блог / TG /
   MCP / Memory) + схема архитектуры + стек. Функциональный обзор, не хронология дней.
-- Тема dark/light (next-themes, переживает reload).
-- 404 / error / loading-состояния.
+- Тема dark-only (next-themes, `forcedTheme="dark"` — light-режима нет, переживает reload).
+- 404 / error-состояния.
 
 Разделы RAG / Chat / Блог / TG / MCP / Настройки — placeholder'ы («скоро»), появятся в P1+.
 

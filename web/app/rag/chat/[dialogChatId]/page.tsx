@@ -446,7 +446,7 @@ export default function RagChatSessionPage() {
       {/* Ввод */}
       <section className="flex gap-2">
         <textarea
-          className={`flex-1 resize-none p-2 ${INPUT}`}
+          className={`flex-1 resize-none ${INPUT}`}
           rows={2}
           placeholder="Вопрос по базе… (/task, /task-clear — память задачи; /norag — без RAG; Enter — отправить)"
           value={input}

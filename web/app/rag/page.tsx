@@ -157,7 +157,7 @@ export default function RagPage() {
 
       <Card label="Вопрос">
         <textarea
-          className={`mt-1 w-full resize-y ${INPUT} p-2`}
+          className={`mt-1 w-full resize-y ${INPUT}`}
           rows={3}
           placeholder="Например: что такое RAG?"
           value={query}

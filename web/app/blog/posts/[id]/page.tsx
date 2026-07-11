@@ -149,7 +149,7 @@ export default function BlogPostDetailPage() {
           <Card>
             <label className="block font-mono text-xs uppercase tracking-wider text-dim">Контент</label>
             <textarea
-              className={`mt-1 w-full resize-y p-2 ${INPUT}`}
+              className={`mt-1 w-full resize-y ${INPUT}`}
               rows={10}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
