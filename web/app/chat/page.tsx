@@ -1,12 +1,16 @@
 // /chat — выбор/создание chat-сессии. web P2.
 // 'use client': список сессий (GET /api/chat) + форма создания (POST /api/chat → redirect).
+// Редизайн C (день 30): Card-форма создания + data-list таблица сессий. Логика без изменений.
 // Если сессий нет — предлагает создать первую. Без импортов core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import type { StrategyName } from '../../lib/shared/forms';
+import { SectionLabel } from '../components/ui/SectionLabel';
+import { Card } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
 
 interface SessionItem {
   id: string;
@@ -19,6 +23,10 @@ interface SessionItem {
 }
 
 const STRATEGY_OPTIONS: StrategyName[] = ['full', 'sliding', 'sticky', 'branching'];
+
+const labelTagCls = 'block font-mono text-xs uppercase tracking-wider text-dim';
+const inputCls =
+  'mt-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
 
 export default function ChatPickerPage() {
   const router = useRouter();
@@ -63,22 +71,22 @@ export default function ChatPickerPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">Chat-агент</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <SectionLabel>chat agent</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Chat-агент</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
           Диалог с LLM: стратегии контекста, system-промпт, memory-режим. Сессия переживает reload.
         </p>
       </section>
 
       {/* Создание */}
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Новая сессия</h2>
-        <div className="mt-2 flex flex-wrap items-end gap-4">
+      <Card label="new session">
+        <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Стратегия</span>
+            <span className={labelTagCls}>Стратегия</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={inputCls}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as StrategyName)}
               disabled={creating}
@@ -86,22 +94,18 @@ export default function ChatPickerPage() {
               {STRATEGY_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input type="checkbox" checked={memoryEnabled} onChange={(e) => setMemoryEnabled(e.target.checked)} disabled={creating} />
             memory mode
           </label>
-          <button
-            className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            onClick={() => void create()}
-            disabled={creating}
-          >
+          <Button variant="primary" className="ml-auto" onClick={() => void create()} disabled={creating}>
             {creating ? 'создаю…' : 'Создать и открыть'}
-          </button>
+          </Button>
         </div>
         <label className="mt-3 block text-sm">
-          <span className="block text-xs uppercase tracking-wide text-neutral-500">System-промпт (опц.)</span>
+          <span className={labelTagCls}>System-промпт (опц.)</span>
           <textarea
-            className="mt-1 w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+            className={`${inputCls} w-full resize-y p-2`}
             rows={2}
             placeholder="Например: Ты — ревьюер кода."
             value={system}
@@ -109,48 +113,56 @@ export default function ChatPickerPage() {
             disabled={creating}
           />
         </label>
-      </section>
+      </Card>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
       )}
 
       {/* Список */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Сессии {sessions ? `(${sessions.length})` : ''}
-        </h2>
+        <SectionLabel>{sessions ? `сессии · ${sessions.length}` : 'сессии'}</SectionLabel>
         {sessions === null ? (
-          <p className="mt-2 text-sm text-neutral-400">Загрузка…</p>
+          <p className="text-sm text-dim">Загрузка…</p>
         ) : sessions.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-400">
-            Нет сессий. Создайте первую выше.
-          </p>
+          <p className="text-sm text-dim">Нет сессий. Создайте первую выше.</p>
         ) : (
-          <ul className="mt-2 space-y-2">
-            {sessions.map((s) => (
-              <li key={s.id}>
-                <Link
-                  href={`/chat/${s.id}`}
-                  className="block rounded-lg border border-neutral-200 bg-white p-3 text-sm hover:border-accent dark:border-neutral-800 dark:bg-neutral-900"
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-neutral-400">{s.id}</span>
-                    <span className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs dark:border-neutral-700">{s.strategy}</span>
-                    {s.memoryEnabled && (
-                      <span className="rounded-full border border-amber-300 px-2 py-0.5 text-xs text-amber-700 dark:border-amber-700 dark:text-amber-400">memory</span>
-                    )}
-                    <span className="text-xs text-neutral-400">{s.messageCount} сообщений</span>
-                  </div>
-                  <div className="mt-1 truncate text-xs text-neutral-500">
-                    {s.system || '(system по умолчанию)'}
-                  </div>
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">id</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">strategy</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">memory</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">msg</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">system</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sessions.map((s) => (
+                  <tr key={s.id} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
+                    <td className="px-3 py-2 font-mono text-xs text-dim">
+                      <Link href={`/chat/${s.id}`} className="focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent">{s.id}</Link>
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className="rounded border border-line px-2 py-0.5 font-mono text-xs text-ink">{s.strategy}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {s.memoryEnabled ? (
+                        <span className="rounded bg-warn/15 px-2 py-0.5 font-mono text-[11px] text-warn">memory</span>
+                      ) : (
+                        <span className="text-dim">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-xs text-dim">{s.messageCount}</td>
+                    <td className="max-w-md truncate px-3 py-2 text-xs text-dim">
+                      {s.system || '(system по умолчанию)'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

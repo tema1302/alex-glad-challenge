@@ -7,6 +7,8 @@
 import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { SseRagIndexTgEvent } from '../../../lib/shared/sse';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 interface ProgressLine {
   label: string;
@@ -20,6 +22,9 @@ interface IndexResult {
   total: number;
   dim: number | null;
 }
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function RagIndexTgPage() {
   const [chatRef, setChatRef] = useState('');
@@ -146,20 +151,20 @@ export default function RagIndexTgPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">RAG index-tg — telegram</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Индексация собранного TG-контента в <code className="font-mono">rag.sqlite</code>. Зеркало CLI{' '}
-          <code className="font-mono">rag index-tg</code>. Перед этим —{' '}
+        <h1 className="text-xl font-semibold text-ink">RAG index-tg — telegram</h1>
+        <p className="mt-1 text-sm text-dim">
+          Индексация собранного TG-контента в <code className="font-mono text-ink">rag.sqlite</code>. Зеркало CLI{' '}
+          <code className="font-mono text-ink">rag index-tg</code>. Перед этим —{' '}
           <Link href="/tg/collect" className="text-accent hover:underline">TG collect</Link>.
         </p>
       </section>
 
       {/* КРАСНЫЙ WARNING — landmine single-topic clobber */}
-      <section className="rounded-lg border-2 border-red-400 bg-red-50 p-4 dark:border-red-700 dark:bg-red-950">
-        <h2 className="text-sm font-semibold text-red-800 dark:text-red-400">
+      <section className="rounded-md border-2 border-err/60 bg-err/10 p-4">
+        <h2 className="text-sm font-semibold text-err">
           ⚠️ Осторожно: single-topic index-tg может снести telegram-партицию
         </h2>
-        <p className="mt-1 text-sm text-red-700 dark:text-red-300">
+        <p className="mt-1 text-sm text-err">
           Если задан <strong>topicId</strong> (single-topic) и отмечен <strong>--reset</strong>,
           будет вызвана <code className="font-mono">clearStrategy('telegram')</code> — она удалит
           <strong> ВСЕ чанки стратегии telegram</strong> (все чаты и топики, не только этот).
@@ -167,7 +172,7 @@ export default function RagIndexTgPage() {
           чистится только выбранный чат — безопаснее.
         </p>
         {destructive ? (
-          <label className="mt-3 flex items-start gap-2 rounded border border-red-400 bg-white p-2 text-sm dark:border-red-700 dark:bg-neutral-900">
+          <label className="mt-3 flex items-start gap-2 rounded border border-err/60 bg-surface p-2 text-sm">
             <input
               type="checkbox"
               checked={confirmChecked}
@@ -175,25 +180,25 @@ export default function RagIndexTgPage() {
               disabled={running}
               className="mt-0.5"
             />
-            <span className="text-red-800 dark:text-red-300">
+            <span className="text-err">
               Я понимаю: single-topic + --reset удалит всю telegram-партицию перед индексацией.
               Требуется явное подтверждение.
             </span>
           </label>
         ) : (
-          <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+          <p className="mt-2 text-xs text-err">
             Текущий режим: <strong>{isSingle ? 'single-topic без reset' : 'whole-chat'}</strong> —
             деструктивной очистки партиции не будет.
           </p>
         )}
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <Card label="Параметры">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">chatRef</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">chatRef</span>
             <input
-              className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 px-2 py-1 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-full font-mono text-xs ${INPUT}`}
               value={chatRef}
               onChange={(e) => setChatRef(e.target.value)}
               disabled={running}
@@ -201,9 +206,9 @@ export default function RagIndexTgPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">topicId</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">topicId</span>
             <input
-              className="mt-1 w-24 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-24 ${INPUT}`}
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={running}
@@ -211,9 +216,9 @@ export default function RagIndexTgPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">лимит collect</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">лимит collect</span>
             <input
-              className="mt-1 w-24 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-24 ${INPUT}`}
               type="number" min={1} max={5000}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
@@ -222,9 +227,9 @@ export default function RagIndexTgPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">top-N</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">top-N</span>
             <input
-              className="mt-1 w-24 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-24 ${INPUT}`}
               type="number" min={1} max={5000}
               value={top}
               onChange={(e) => setTop(e.target.value)}
@@ -232,7 +237,7 @@ export default function RagIndexTgPage() {
               placeholder={isSingle ? 'все' : '1500'}
             />
           </label>
-          <label className={`flex items-center gap-1 text-sm ${destructive ? 'font-medium text-red-700 dark:text-red-400' : ''}`}>
+          <label className={`flex items-center gap-1 text-sm text-ink ${destructive ? 'font-medium text-err' : ''}`}>
             <input
               type="checkbox"
               checked={reset}
@@ -244,23 +249,15 @@ export default function RagIndexTgPage() {
             />
             <span>--reset {destructive && '⚠️'}</span>
           </label>
-          <button
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            onClick={() => void run()}
-            disabled={running || !canRun}
-          >
+          <Button variant="primary" onClick={() => void run()} disabled={running || !canRun}>
             {running ? '…' : 'Индексировать'}
-          </button>
-          <button
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-            onClick={cancel}
-            disabled={!running}
-          >
+          </Button>
+          <Button variant="ghost" onClick={cancel} disabled={!running}>
             Отмена
-          </button>
+          </Button>
         </div>
-        <p className="mt-2 text-xs text-neutral-400">
-          Режим: <strong>{isSingle ? 'single-topic' : 'whole-chat'}</strong>
+        <p className="mt-2 text-xs text-dim">
+          Режим: <strong className="text-ink">{isSingle ? 'single-topic' : 'whole-chat'}</strong>
           {isSingle
             ? reset
               ? ' · ⚠️ clearStrategy(telegram) — весь раздел будет перезаписан'
@@ -268,42 +265,47 @@ export default function RagIndexTgPage() {
             : ' · clearBySourcePrefix (только этот чат)'}
           .
         </p>
-      </section>
+      </Card>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
       )}
 
       {(progress.length > 0 || running) && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Лог операции</h2>
-          <ul className="mt-2 space-y-1 font-mono text-xs text-neutral-600 dark:text-neutral-300">
+        <Card label="Лог операции">
+          <ul className="space-y-1 font-mono text-xs text-ink">
             {progress.map((p, i) => (
               <li key={i}>
-                <span className="text-neutral-400">[{p.label}]</span> {p.detail}
+                <span className="text-dim">[{p.label}]</span> {p.detail}
               </li>
             ))}
-            {running && <li className="text-neutral-400">…выполняется</li>}
+            {running && (
+              <li className="flex items-center gap-2 text-dim">
+                <span
+                  className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
+                  aria-hidden
+                />
+                выполняется…
+              </li>
+            )}
           </ul>
-        </section>
+        </Card>
       )}
 
       {result && (
-        <section className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 text-sm dark:border-emerald-800 dark:bg-emerald-950">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+        <section className="rounded-md border border-ok/40 bg-ok/10 p-4 text-sm">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ok">
             Готово (mode={result.mode})
           </h2>
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
-            <dt className="text-neutral-500">чат</dt>
-            <dd className="font-mono">{result.chatKey}</dd>
-            <dt className="text-neutral-500">индексировано</dt>
-            <dd className="tabular-nums">{result.indexed}</dd>
-            <dt className="text-neutral-500">всего в telegram</dt>
-            <dd className="tabular-nums">{result.total}</dd>
-            <dt className="text-neutral-500">dim</dt>
-            <dd className="tabular-nums">{result.dim ?? '-'}</dd>
+            <dt className="text-dim">чат</dt>
+            <dd className="font-mono text-ink">{result.chatKey}</dd>
+            <dt className="text-dim">индексировано</dt>
+            <dd className="tabular-nums text-ink">{result.indexed}</dd>
+            <dt className="text-dim">всего в telegram</dt>
+            <dd className="tabular-nums text-ink">{result.total}</dd>
+            <dt className="text-dim">dim</dt>
+            <dd className="tabular-nums text-ink">{result.dim ?? '-'}</dd>
           </dl>
         </section>
       )}

@@ -11,6 +11,11 @@ export interface HardwareInfo {
   llmRuntime: string;
   gpu: string | null;
   source: 'os.cpus' | '/api/ps' | 'fallback';
+  // День 29: VRAM-footprint загруженных моделей. /api/ps models[].size_vram (видимая
+  // VRAM) и size (общий размер модели в памяти). Сумма по всем loaded. Undefined,
+  // если /api/ps недоступен или не отдал size_vram (никаких выдуманных чисел).
+  modelVramBytes?: number;
+  modelSizeBytes?: number;
 }
 
 // /api/ps — Ollama-специфичный эндпоинт (вне /v1). Берём origin из LOCAL_LLM_BASE_URL,
@@ -22,6 +27,8 @@ export async function detectHardware(): Promise<HardwareInfo> {
   const cpuCores = cpus.length;
 
   let models: number | null = null;
+  let modelVramBytes: number | undefined;
+  let modelSizeBytes: number | undefined;
   try {
     const cfg = localLlmConfig();
     const origin = new URL(cfg.baseUrl).origin;
@@ -30,8 +37,23 @@ export async function detectHardware(): Promise<HardwareInfo> {
     try {
       const resp = await fetch(`${origin}/api/ps`, { signal: controller.signal });
       if (resp.ok) {
-        const data = (await resp.json()) as { models?: unknown[] };
-        models = Array.isArray(data.models) ? data.models.length : 0;
+        const data = (await resp.json()) as { models?: Array<{ size_vram?: number; size?: number }> };
+        const loaded = Array.isArray(data.models) ? data.models : [];
+        models = loaded.length;
+        let vramSum = 0;
+        let sizeSum = 0;
+        let anySize = false;
+        for (const m of loaded) {
+          if (typeof m.size_vram === 'number') {
+            vramSum += m.size_vram;
+            anySize = true;
+          }
+          if (typeof m.size === 'number') sizeSum += m.size;
+        }
+        if (anySize) {
+          modelVramBytes = vramSum;
+          modelSizeBytes = sizeSum;
+        }
       }
     } finally {
       clearTimeout(timer);
@@ -47,6 +69,8 @@ export async function detectHardware(): Promise<HardwareInfo> {
       llmRuntime: `Ollama (${models} models loaded)`,
       gpu: null,
       source: '/api/ps',
+      modelVramBytes,
+      modelSizeBytes,
     };
   }
   return {

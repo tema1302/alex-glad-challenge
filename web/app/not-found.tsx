@@ -3,9 +3,10 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
-      <h2 className="text-xl font-semibold">404 — страница не найдена</h2>
-      <p className="mt-2 text-sm text-neutral-500">
+    <div className="rounded-lg border border-line bg-surface p-6">
+      <div className="font-mono text-xs uppercase tracking-wider text-dim">// 404</div>
+      <h1 className="mt-2 text-xl font-semibold text-ink">Страница не найдена</h1>
+      <p className="mt-2 text-sm text-dim">
         Этот раздел ещё не реализован в web (P1+) или адрес ошибочен.
       </p>
       <Link href="/" className="mt-3 inline-block text-sm text-accent hover:underline">

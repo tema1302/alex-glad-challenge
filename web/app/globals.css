@@ -2,15 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Тема: zinc-нейтральный фон + accent indigo/violet. next-themes вешает класс
-   .dark на <html>; инверты заданы через dark:-классы в компонентах. */
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
+
+  --bg: 15 20 23;
+  --surface: 22 29 33;
+  --surface-2: 27 36 41;
+  --border: 35 44 49;
+  --border-strong: 48 60 66;
+  --text: 220 227 232;
+  --dim: 138 151 158;
+  --accent: 63 184 175;
+  --accent-ink: 10 16 18;
+  --ok: 63 184 175;
+  --warn: 224 162 60;
+  --err: 224 86 86;
+
+  background-color: rgb(var(--bg));
 }
 
-html {
-  background-color: #fafafa; /* neutral-50 */
+@layer base {
+  html,
+  html.dark {
+    background-color: rgb(var(--bg));
+  }
+  body {
+    background-color: rgb(var(--bg));
+    color: rgb(var(--text));
+  }
+  ::selection {
+    background-color: rgb(var(--accent) / 0.3);
+    color: rgb(var(--text));
+  }
 }
-html.dark {
-  background-color: #0a0a0a; /* neutral-950 */
+
+@layer utilities {
+  .active-link {
+    background-color: rgb(var(--surface-2));
+    color: rgb(var(--accent));
+    border-left: 2px solid rgb(var(--accent));
+  }
+  .spin {
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

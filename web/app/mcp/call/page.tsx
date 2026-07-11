@@ -4,11 +4,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
+import { SectionLabel } from '../../components/ui/SectionLabel';
 
 interface McpTool {
   name: string;
   description?: string;
 }
+
+const INPUT =
+  'w-full rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function McpCallPage() {
   const [tools, setTools] = useState<McpTool[]>([]);
@@ -75,17 +81,16 @@ export default function McpCallPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">Вызов MCP-инструмента</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-xl font-semibold text-ink">Вызов MCP-инструмента</h1>
+        <p className="mt-1 text-sm text-dim">
           Generic-вызов инструмента на MCP-сервере. Аргументы — JSON-объект, идут как данные.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <label className="block text-xs uppercase tracking-wide text-neutral-500">Инструмент</label>
+      <Card label="Инструмент">
         {tools.length > 0 ? (
           <select
-            className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 p-2 font-mono text-sm dark:border-neutral-700 dark:bg-neutral-950"
+            className={`${INPUT} font-mono`}
             value={tool}
             onChange={(e) => setTool(e.target.value)}
             disabled={submitting}
@@ -95,41 +100,33 @@ export default function McpCallPage() {
             ))}
           </select>
         ) : (
-          <p className="mt-1 text-sm text-neutral-400">
+          <p className="text-sm text-dim">
             {loadingTools ? 'Загрузка инструментов…' : 'Нет инструментов (сервер не настроен/недоступен).'}
           </p>
         )}
 
-        <label className="mt-3 block text-xs uppercase tracking-wide text-neutral-500">
-          Аргументы (JSON-объект)
-        </label>
+        <div className="mt-3 text-xs uppercase tracking-wide text-dim">Аргументы (JSON-объект)</div>
         <textarea
-          className="mt-1 h-32 w-full rounded border border-neutral-300 bg-neutral-50 p-2 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-950"
+          className={`mt-1 h-32 font-mono text-xs ${INPUT}`}
           value={argsText}
           onChange={(e) => setArgsText(e.target.value)}
           disabled={submitting}
           spellCheck={false}
         />
 
-        <button
-          className="mt-3 rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          onClick={call}
-          disabled={submitting || !tool}
-        >
-          {submitting ? 'Вызов…' : 'Вызвать'}
-        </button>
-      </section>
+        <div className="mt-3">
+          <Button variant="primary" onClick={call} disabled={submitting || !tool}>
+            {submitting ? 'Вызов…' : 'Вызвать'}
+          </Button>
+        </div>
+      </Card>
 
-      {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>}
 
       {result !== null && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Результат</h2>
-          <pre className="mt-2 max-h-96 overflow-auto rounded-lg border border-neutral-200 bg-white p-3 text-sm whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-900">
+          <SectionLabel>Результат</SectionLabel>
+          <pre className="mt-2 max-h-96 overflow-auto whitespace-pre-wrap rounded-md border border-line bg-surface p-3 text-sm text-ink">
             {result || '(пустой ответ)'}
           </pre>
         </section>

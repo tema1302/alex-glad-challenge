@@ -18,6 +18,20 @@ export interface ChatParams {
   temperature?: number;
   maxTokens?: number;
   stop?: string[];
+  // День 29 (локальная оптимизация): размер контекстного окна и seed — Ollama
+  // honour'ит (options.num_ctx/options.seed), cloud-провайдеры игнорируют.
+  // Провайдер-нейтральная семантика: не leaking Ollama-специфику в общий тип.
+  numCtx?: number;
+  seed?: number;
+}
+
+// День 29: тайминги ответа локальной модели (нс → мс, /1e6). Из /api/chat duration-полей.
+// base LlmClient (OpenAI-compat) их не имеет → timings остаётся undefined.
+export interface LlmTimings {
+  totalMs: number;
+  evalMs: number;
+  promptMs: number;
+  loadMs: number;
 }
 
 export interface LlmRequest {

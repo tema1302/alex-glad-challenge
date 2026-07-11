@@ -5,6 +5,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { SseRagIndexEvent, SseRagIndexStrategyStat } from '../../../lib/shared/sse';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 type Strategy = 'fixed' | 'structure';
 
@@ -92,27 +94,27 @@ export default function RagIndexPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">RAG index — документы</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Переиндексация <code className="font-mono">challenge/src/data/rag-sample</code> в{' '}
-          <code className="font-mono">rag.sqlite</code>. Зеркало CLI <code className="font-mono">rag index</code>.
+        <h1 className="text-xl font-semibold text-ink">RAG index — документы</h1>
+        <p className="mt-1 text-sm text-dim">
+          Переиндексация <code className="font-mono text-ink">challenge/src/data/rag-sample</code> в{' '}
+          <code className="font-mono text-ink">rag.sqlite</code>. Зеркало CLI{' '}
+          <code className="font-mono text-ink">rag index</code>.
         </p>
       </section>
 
-      <section className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950">
-        <p className="font-medium text-amber-800 dark:text-amber-400">⚠️ Переиндексация</p>
-        <p className="mt-1 text-amber-700 dark:text-amber-300">
+      <section className="rounded-md border border-warn/40 bg-warn/10 p-3 text-sm">
+        <p className="font-medium text-warn">⚠️ Переиндексация</p>
+        <p className="mt-1 text-warn">
           Каждая выбранная стратегия будет очищена (<code className="font-mono">clearStrategy</code>) и
           пересобрана заново. Это затрёт существующие чанки по этим стратегиям. Операция длительная
           (эмбеддинги), стримится в console сервера.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <Card label="Стратегии">
         <div className="space-y-2">
-          <span className="block text-xs uppercase tracking-wide text-neutral-500">Стратегии</span>
           {(['fixed', 'structure'] as Strategy[]).map((s) => (
-            <label key={s} className="flex items-center gap-2 text-sm">
+            <label key={s} className="flex items-center gap-2 text-sm text-ink">
               <input
                 type="checkbox"
                 checked={strategies.includes(s)}
@@ -123,7 +125,7 @@ export default function RagIndexPage() {
             </label>
           ))}
         </div>
-        <label className="mt-4 flex items-center gap-2 text-sm">
+        <label className="mt-4 flex items-center gap-2 text-sm text-ink">
           <input
             type="checkbox"
             checked={confirmChecked}
@@ -133,48 +135,48 @@ export default function RagIndexPage() {
           <span>Понимаю: индексы выбранных стратегий будут перезаписаны.</span>
         </label>
         <div className="mt-4 flex gap-2">
-          <button
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            onClick={() => void run()}
-            disabled={running || strategies.length === 0 || !confirmChecked}
-          >
+          <Button variant="primary" onClick={() => void run()} disabled={running || strategies.length === 0 || !confirmChecked}>
             {running ? '…' : 'Индексировать'}
-          </button>
-          <button
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-            onClick={cancel}
-            disabled={!running}
-          >
+          </Button>
+          <Button variant="ghost" onClick={cancel} disabled={!running}>
             Отмена
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+      )}
+
+      {running && (
+        <Card>
+          <div className="flex items-center gap-2 font-mono text-xs text-dim">
+            <span
+              className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
+              aria-hidden
+            />
+            индексация…
+          </div>
+        </Card>
       )}
 
       {start && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-3 text-xs dark:border-neutral-800 dark:bg-neutral-900">
-          <p className="text-neutral-400">
-            Документы: <span className="font-mono">{start.docsDir}</span>
+        <section className="rounded-md border border-line bg-surface p-3 text-xs">
+          <p className="text-dim">
+            Документы: <span className="font-mono text-ink">{start.docsDir}</span>
           </p>
-          <p className="text-neutral-400">
-            Стратегии: {start.strategies.join(', ')} {running && '· индексация…'}
+          <p className="text-dim">
+            Стратегии: <span className="text-ink">{start.strategies.join(', ')}</span> {running && '· индексация…'}
           </p>
         </section>
       )}
 
       {result && (
-        <section className="rounded-lg border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-            Готово
-          </h2>
+        <section className="rounded-md border border-ok/40 bg-ok/10 p-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-ok">Готово</h2>
           <table className="mt-2 w-full text-xs">
             <thead>
-              <tr className="text-left text-neutral-500">
+              <tr className="text-left text-dim">
                 <th className="py-1 pr-3">стратегия</th>
                 <th className="py-1 pr-3">чанков</th>
                 <th className="py-1 pr-3">среднее симв</th>
@@ -183,7 +185,7 @@ export default function RagIndexPage() {
             </thead>
             <tbody>
               {result.map((r) => (
-                <tr key={r.strategy} className="tabular-nums">
+                <tr key={r.strategy} className="tabular-nums text-ink">
                   <td className="py-1 pr-3 font-mono">{r.strategy}</td>
                   <td className="py-1 pr-3">{r.chunks}</td>
                   <td className="py-1 pr-3">{r.avgLen}</td>

@@ -31,7 +31,12 @@ export class Agent {
   }
 
   // Для day-08/09: прямой доступ к chatWithUsage с произвольным контекстом.
-  async chatWithUsage(): Promise<{ content: string; usage: import('./types.js').Usage }> {
+  // День 29: timings? прокидывается из LlmClient.chatWithUsage (base→undefined).
+  async chatWithUsage(): Promise<{
+    content: string;
+    usage: import('./types.js').Usage;
+    timings?: import('./types.js').LlmTimings;
+  }> {
     return this.llm.chatWithUsage([this.systemMessage, ...this.history]);
   }
 

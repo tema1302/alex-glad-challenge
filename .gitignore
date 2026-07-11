@@ -24,6 +24,9 @@ web/node_modules/
 # не продукт, персистентный канал между субагентами. Аудит-след живёт локально.
 swarm-report/
 
+# Visual companion (superpowers brainstorm) — мокапы/стейт, не продукт
+.superpowers/
+
 # OS
 .DS_Store
 Thumbs.db
@@ -32,3 +35,6 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Playwright MCP runtime artifacts
+.playwright-mcp/

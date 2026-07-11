@@ -6,6 +6,8 @@
 
 import { useCallback, useRef, useState } from 'react';
 import type { SseBlogScoutEvent } from '../../../lib/shared/sse';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 type Llm = 'local' | 'cloud';
 
@@ -23,6 +25,9 @@ interface AgentSummary {
   count: number;
   error: string | null;
 }
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function BlogScoutPage() {
   const [query, setQuery] = useState('');
@@ -127,19 +132,19 @@ export default function BlogScoutPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">Scout (3 source-агента)</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-xl font-semibold text-ink">Scout (3 source-агента)</h1>
+        <p className="mt-1 text-sm text-dim">
           RSS + Forum (+ TG по выбору) собирают темы параллельно, оркестратор (LLM) выбирает
           финальный топ. Это этап&nbsp;1 пайплайна — без написания поста.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <Card label="Параметры сбора">
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex-1 min-w-[200px] text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Запрос</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Запрос</span>
             <input
-              className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-full ${INPUT}`}
               type="text"
               placeholder="самые горячие футбольные новости"
               value={query}
@@ -149,9 +154,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Часов</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Часов</span>
             <input
-              className="mt-1 w-20 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-20 ${INPUT}`}
               type="number"
               min={1}
               max={168}
@@ -162,9 +167,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Топ (topK)</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Топ (topK)</span>
             <input
-              className="mt-1 w-16 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-16 ${INPUT}`}
               type="number"
               min={1}
               max={10}
@@ -175,9 +180,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">LLM</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -187,7 +192,7 @@ export default function BlogScoutPage() {
             </select>
           </label>
 
-          <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-4 text-sm text-ink">
             <label className="flex items-center gap-1">
               <input
                 type="checkbox"
@@ -209,68 +214,62 @@ export default function BlogScoutPage() {
           </div>
 
           <div className="ml-auto flex gap-2">
-            <button
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              onClick={run}
-              disabled={running}
-            >
+            <Button variant="primary" onClick={run} disabled={running}>
               Запустить
-            </button>
-            <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-              onClick={cancel}
-              disabled={!running}
-            >
+            </Button>
+            <Button variant="ghost" onClick={cancel} disabled={!running}>
               Отмена
-            </button>
+            </Button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-neutral-400">
-         Источник TG требует настроенной MTProto-сессии — по умолчанию выключен. Запрос идёт
+        <p className="mt-2 text-xs text-dim">
+          Источник TG требует настроенной MTProto-сессии — по умолчанию выключен. Запрос идёт
           в RSS/Forum + LLM-оркестратор, может занять десятки секунд.
         </p>
-      </section>
+      </Card>
 
       {running && (
-        <p className="text-sm text-accent">Scout работает… (RSS/Forum/+TG параллельно → оркестратор)</p>
+        <Card>
+          <div className="flex items-center gap-2 font-mono text-xs text-dim">
+            <span
+              className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
+              aria-hidden
+            />
+            Scout работает… (RSS/Forum/+TG параллельно → оркестратор)
+          </div>
+        </Card>
       )}
 
       {error && (
-        <section className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+        <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
           {error}
         </section>
       )}
 
       {agents.length > 0 && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Source-агенты ({agents.length})
-          </h2>
-          <ul className="mt-2 space-y-1 text-sm">
+        <Card label={`Source-агенты (${agents.length})`}>
+          <ul className="space-y-1 text-sm">
             {agents.map((a) => (
               <li key={a.agent} className="flex items-center gap-2">
                 <span className="font-mono text-xs text-accent">{a.agent}</span>
-                <span className="text-neutral-500">тем: {a.count}</span>
-                {a.error && <span className="text-xs text-red-600 dark:text-red-400">ошибка: {a.error}</span>}
+                <span className="text-dim">тем: {a.count}</span>
+                {a.error && <span className="text-xs text-err">ошибка: {a.error}</span>}
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {ranked.length > 0 && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Топ оркестратора ({ranked.length})
-          </h2>
-          <ol className="mt-2 space-y-2 text-sm">
+        <Card label={`Топ оркестратора (${ranked.length})`}>
+          <ol className="space-y-2 text-sm">
             {ranked.map((t, i) => (
               <li key={i}>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-neutral-400">[{i}]</span>
+                  <span className="text-dim">[{i}]</span>
                   <span className="text-xs font-mono text-accent">{t.orchestratorScore}</span>
-                  <span className="text-xs text-neutral-400">({t.source})</span>
-                  <span className="font-medium">{t.title}</span>
+                  <span className="text-xs text-dim">({t.source})</span>
+                  <span className="font-medium text-ink">{t.title}</span>
                   {t.url && (
                     <a
                       href={t.url}
@@ -282,20 +281,20 @@ export default function BlogScoutPage() {
                     </a>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-neutral-500">{t.orchestratorReason}</p>
+                <p className="mt-0.5 text-xs text-dim">{t.orchestratorReason}</p>
                 {t.hypeReason && (
-                  <p className="text-xs text-neutral-400">
+                  <p className="text-xs text-dim">
                     накал [{t.hypeScore}]: {t.hypeReason}
                   </p>
                 )}
               </li>
             ))}
           </ol>
-        </section>
+        </Card>
       )}
 
       {!running && ranked.length === 0 && !error && (
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-dim">
           Настройте источники и нажмите «Запустить». Оркестратор вернёт топ тем — без записи поста.
         </p>
       )}

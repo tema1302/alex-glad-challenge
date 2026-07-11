@@ -17,14 +17,14 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
   const [newName, setNewName] = useState('');
   const [note, setNote] = useState('');
 
-  if (!view) return <p className="text-xs text-neutral-400">profile: загрузка…</p>;
+  if (!view) return <p className="text-xs text-dim">profile: загрузка…</p>;
 
   return (
     <div className="space-y-3">
       <section>
-        <h4 className="text-xs uppercase tracking-wide text-neutral-500">Активный профиль</h4>
+        <h4 className="text-xs uppercase tracking-wide text-dim">Активный профиль</h4>
         <select
-          className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className="mt-1 w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           value={view.active ?? ''}
           disabled={busy}
           onChange={(e) => void post({ action: 'use', name: e.target.value })}
@@ -36,16 +36,16 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
 
       {view.snapshot && (
         <details className="text-sm">
-          <summary className="cursor-pointer text-xs text-neutral-500">snapshot профиля ({view.snapshot.notes.length} notes)</summary>
-          <pre className="mt-1 max-h-40 overflow-auto rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-800">{JSON.stringify(view.snapshot, null, 2)}</pre>
+          <summary className="cursor-pointer text-xs text-dim">snapshot профиля ({view.snapshot.notes.length} notes)</summary>
+          <pre className="mt-1 max-h-40 overflow-auto rounded bg-surface-2 p-2 text-xs text-ink">{JSON.stringify(view.snapshot, null, 2)}</pre>
         </details>
       )}
 
       {/* Edit via LLM */}
       <section>
-        <h4 className="text-xs uppercase tracking-wide text-neutral-500">Edit через LLM</h4>
+        <h4 className="text-xs uppercase tracking-wide text-dim">Edit через LLM</h4>
         <textarea
-          className="mt-1 w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className="mt-1 w-full resize-y rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           rows={2}
           placeholder="напр: смени клуб на Арсенал, добавь заметку про стиль"
           value={instruction}
@@ -53,7 +53,7 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
           disabled={busy}
         />
         <button
-          className="mt-1 rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="mt-1 rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
           disabled={busy || !instruction.trim()}
           onClick={async () => {
             const r = await post({ action: 'edit', instruction: instruction.trim() });
@@ -62,21 +62,21 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
         >
           {busy ? 'LLM редактирует…' : 'применить через LLM'}
         </button>
-        {summary && <pre className="mt-1 whitespace-pre-wrap rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-800">{summary}</pre>}
+        {summary && <pre className="mt-1 whitespace-pre-wrap rounded bg-surface-2 p-2 text-xs text-ink">{summary}</pre>}
       </section>
 
       {/* New / note / reset */}
       <section className="flex flex-wrap gap-2">
-        <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="новый профиль" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={busy} />
-        <button className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700" disabled={busy || !newName.trim()} onClick={() => { void post({ action: 'new', name: newName.trim() }); setNewName(''); }}>+ new</button>
-        <button className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700" disabled={busy || !view.active} onClick={() => { if (confirm('Сбросить активный профиль к значениям по умолчанию?')) void post({ action: 'reset' }); }}>reset</button>
+        <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="новый профиль" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={busy} />
+        <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !newName.trim()} onClick={() => { void post({ action: 'new', name: newName.trim() }); setNewName(''); }}>+ new</button>
+        <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !view.active} onClick={() => { if (confirm('Сбросить активный профиль к значениям по умолчанию?')) void post({ action: 'reset' }); }}>reset</button>
       </section>
       <section className="flex gap-2">
-        <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="заметка к активному профилю" value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
-        <button className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700" disabled={busy || !note.trim() || !view.active} onClick={() => { void post({ action: 'note', text: note.trim() }); setNote(''); }}>+ note</button>
+        <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="заметка к активному профилю" value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
+        <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !note.trim() || !view.active} onClick={() => { void post({ action: 'note', text: note.trim() }); setNote(''); }}>+ note</button>
       </section>
 
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-err">{error}</p>}
     </div>
   );
 }

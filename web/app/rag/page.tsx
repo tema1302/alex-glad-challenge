@@ -12,6 +12,9 @@ import type {
   RagStageStep,
 } from '../../lib/shared/sse';
 import { useModelPrefDefault } from '../../lib/shared/use-model-pref';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { SectionLabel } from '../components/ui/SectionLabel';
 
 // P1 ограничивает стратегии fixed/structure (документация). 'telegram' добавим в P3
 // вместе с chat/topic-фильтром — без фильтра партиция шумная. server-side zod всё ещё
@@ -32,6 +35,9 @@ const STAGE_LABEL: Record<RagStageStep, string> = {
   guard: 'guard',
   llm: 'генерация',
 };
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function RagPage() {
   const [query, setQuery] = useState('');
@@ -143,16 +149,15 @@ export default function RagPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">RAG-запрос</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-xl font-semibold text-ink">RAG-запрос</h1>
+        <p className="mt-1 text-sm text-dim">
           Вопрос по базе знаний с потоковым ответом и live-стадиями пайплайна.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <label className="block text-xs uppercase tracking-wide text-neutral-500">Вопрос</label>
+      <Card label="Вопрос">
         <textarea
-          className="mt-1 w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className={`mt-1 w-full resize-y ${INPUT} p-2`}
           rows={3}
           placeholder="Например: что такое RAG?"
           value={query}
@@ -162,9 +167,9 @@ export default function RagPage() {
 
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Стратегия</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Стратегия</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as Strategy)}
               disabled={running}
@@ -175,9 +180,9 @@ export default function RagPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">LLM</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -188,9 +193,9 @@ export default function RagPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Чанков (k)</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Чанков (k)</span>
             <input
-              className="mt-1 w-16 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-16 ${INPUT}`}
               type="number"
               min={1}
               max={20}
@@ -200,7 +205,7 @@ export default function RagPage() {
             />
           </label>
 
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
               checked={noRag}
@@ -211,32 +216,36 @@ export default function RagPage() {
           </label>
 
           <div className="ml-auto flex gap-2">
-            <button
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              onClick={run}
-              disabled={running || !query.trim()}
-            >
+            <Button variant="primary" onClick={run} disabled={running || !query.trim()}>
               Спросить
-            </button>
-            <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-              onClick={cancel}
-              disabled={!running}
-            >
+            </Button>
+            <Button variant="ghost" onClick={cancel} disabled={!running}>
               Отмена
-            </button>
+            </Button>
           </div>
         </div>
-      </section>
+      </Card>
+
+      {running && (
+        <Card>
+          <div className="flex items-center gap-2 font-mono text-xs text-dim">
+            <span
+              className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
+              aria-hidden
+            />
+            выполняется…
+          </div>
+        </Card>
+      )}
 
       {stages.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Стадии</h2>
+          <SectionLabel>Стадии</SectionLabel>
           <div className="mt-2 flex flex-wrap gap-2">
             {stages.map((s, i) => (
               <span
                 key={`${s.step}-${i}`}
-                className="rounded-full border border-neutral-300 px-2 py-0.5 text-xs dark:border-neutral-700"
+                className="rounded-full border border-line px-2 py-0.5 text-xs text-dim"
               >
                 {STAGE_LABEL[s.step]}
                 {s.step === 'llm' && s.detail && typeof s.detail === 'object' && 'topK' in (s.detail as object)
@@ -249,82 +258,76 @@ export default function RagPage() {
       )}
 
       {error && (
-        <section className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+        <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
           {error}
         </section>
       )}
 
       {answer && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ответ</h2>
-          <p className="mt-2 whitespace-pre-wrap text-sm">{answer}</p>
-        </section>
+        <Card label="Ответ">
+          <p className="whitespace-pre-wrap text-sm text-ink">{answer}</p>
+        </Card>
       )}
 
       {(sources.length > 0 || quotes.length > 0 || debug) && (
         <section className="grid gap-4 lg:grid-cols-2">
           {sources.length > 0 && (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                Источники ({sources.length})
-              </h2>
-              <ul className="mt-2 space-y-1.5 text-sm">
+            <Card label={`Источники (${sources.length})`}>
+              <ul className="space-y-1.5 text-sm">
                 {sources.map((s, i) => (
                   <li key={s.chunkId} className="truncate">
-                    <span className="text-neutral-400">[{i + 1}]</span>{' '}
-                    <span className="font-mono text-xs">{s.source}</span>{' '}
-                    <span className="text-xs text-neutral-400">{s.section}</span>{' '}
+                    <span className="text-dim">[{i + 1}]</span>{' '}
+                    <span className="font-mono text-xs text-ink">{s.source}</span>{' '}
+                    <span className="text-xs text-dim">{s.section}</span>{' '}
                     <span className="text-xs text-accent">{s.score.toFixed(3)}</span>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           )}
 
           {quotes.length > 0 && (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Цитаты</h2>
-              <ul className="mt-2 space-y-2 text-sm">
+            <Card label="Цитаты">
+              <ul className="space-y-2 text-sm">
                 {quotes.map((q, i) => (
                   <li key={`${q.chunkId}-${i}`}>
-                    <div className="text-xs text-neutral-400">
+                    <div className="text-xs text-dim">
                       {q.source} · {q.section}
                     </div>
-                    <div className="whitespace-pre-wrap text-neutral-700 dark:text-neutral-300">{q.snippet}</div>
+                    <div className="whitespace-pre-wrap text-ink">{q.snippet}</div>
                   </li>
                 ))}
               </ul>
-            </div>
+            </Card>
           )}
 
           {debug && (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Отладка</h2>
-              <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                <dt className="text-neutral-500">pool / filtered</dt>
-                <dd className="tabular-nums">
+            <Card label="Отладка">
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <dt className="text-dim">pool / filtered</dt>
+                <dd className="tabular-nums text-ink">
                   {debug.poolSize} / {debug.filteredSize}
                 </dd>
-                <dt className="text-neutral-500">threshold</dt>
-                <dd className="tabular-nums">{debug.threshold}</dd>
-                <dt className="text-neutral-500">topK</dt>
-                <dd className="tabular-nums">{debug.topK ?? '-'}</dd>
-                <dt className="text-neutral-500">rerank</dt>
-                <dd>
+                <dt className="text-dim">threshold</dt>
+                <dd className="tabular-nums text-ink">{debug.threshold}</dd>
+                <dt className="text-dim">topK</dt>
+                <dd className="tabular-nums text-ink">{debug.topK ?? '-'}</dd>
+                <dt className="text-dim">rerank</dt>
+                <dd className="text-ink">
                   {debug.rerankApplied ? `on (Δ=${debug.rankDelta}${debug.fallback ? ', fallback' : ''})` : 'off'}
                 </dd>
-                <dt className="text-neutral-500">rewrite</dt>
-                <dd>{debug.rewritten ? `on (${debug.effectiveQuery ?? '?'})` : 'off'}</dd>
-                <dt className="text-neutral-500">guard</dt>
-                <dd>{debug.gaveUp ? 'сработал (не знаю)' : 'нет'}</dd>
+                <dt className="text-dim">rewrite</dt>
+                <dd className="text-ink">{debug.rewritten ? `on (${debug.effectiveQuery ?? '?'})` : 'off'}</dd>
+                <dt className="text-dim">guard</dt>
+                <dd className="text-ink">{debug.gaveUp ? 'сработал (не знаю)' : 'нет'}</dd>
               </dl>
-            </div>
+            </Card>
           )}
         </section>
       )}
 
       {!running && !answer && !error && stages.length === 0 && (
-        <p className="text-sm text-neutral-400">Задайте вопрос и нажмите «Спросить».</p>
+        <p className="text-sm text-dim">Задайте вопрос и нажмите «Спросить».</p>
       )}
     </div>
   );

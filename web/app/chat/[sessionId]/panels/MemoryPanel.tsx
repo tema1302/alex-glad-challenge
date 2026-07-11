@@ -20,13 +20,13 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
   const [wfKey, setWfKey] = useState('');
   const [wfVal, setWfVal] = useState('');
 
-  if (!view) return <p className="text-xs text-neutral-400">memory: загрузка…</p>;
+  if (!view) return <p className="text-xs text-dim">memory: загрузка…</p>;
 
   const workingEntries = Object.entries(view.working).sort(([a], [b]) => a.localeCompare(b));
 
   return (
     <div className="space-y-4">
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex items-center gap-2 text-sm text-ink">
         <input
           type="checkbox"
           checked={view.memoryEnabled}
@@ -38,14 +38,14 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
 
       {/* Long-term */}
       <section>
-        <h4 className="text-xs uppercase tracking-wide text-neutral-500">Long-term (профиль/знания, глобально)</h4>
+        <h4 className="text-xs uppercase tracking-wide text-dim">Long-term (профиль/знания, глобально)</h4>
         <ul className="mt-1 space-y-1">
-          {view.longTerm.length === 0 && <li className="text-xs text-neutral-400">пусто</li>}
+          {view.longTerm.length === 0 && <li className="text-xs text-dim">пусто</li>}
           {view.longTerm.map((e) => (
             <li key={e.key} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate"><span className="font-mono text-neutral-500">{e.key}</span>: {e.value}</span>
+              <span className="truncate"><span className="font-mono text-dim">{e.key}</span>: {e.value}</span>
               <button
-                className="text-xs text-red-600 hover:underline disabled:opacity-50"
+                className="text-xs text-err hover:underline disabled:opacity-50"
                 disabled={busy}
                 onClick={() => void post({ action: 'forget', key: e.key })}
               >forget</button>
@@ -53,10 +53,10 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="ключ" value={ltKey} onChange={(e) => setLtKey(e.target.value)} disabled={busy} />
-          <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="значение" value={ltVal} onChange={(e) => setLtVal(e.target.value)} disabled={busy} />
+          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={ltKey} onChange={(e) => setLtKey(e.target.value)} disabled={busy} />
+          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={ltVal} onChange={(e) => setLtVal(e.target.value)} disabled={busy} />
           <button
-            className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+            className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
             disabled={busy || !ltKey.trim()}
             onClick={() => { void post({ action: 'remember', key: ltKey.trim(), value: ltVal }); setLtKey(''); setLtVal(''); }}
           >remember</button>
@@ -65,37 +65,37 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
 
       {/* Task */}
       <section>
-        <h4 className="text-xs uppercase tracking-wide text-neutral-500">Task (текущая задача)</h4>
-        <p className="mt-1 text-sm">{view.task ?? <span className="text-neutral-400">нет</span>}</p>
+        <h4 className="text-xs uppercase tracking-wide text-dim">Task (текущая задача)</h4>
+        <p className="mt-1 text-sm">{view.task ?? <span className="text-dim">нет</span>}</p>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="описание задачи" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} disabled={busy} />
-          <button className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700" disabled={busy || !taskDraft.trim()} onClick={() => { void post({ action: 'task', description: taskDraft.trim() }); setTaskDraft(''); }}>set</button>
+          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание задачи" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} disabled={busy} />
+          <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !taskDraft.trim()} onClick={() => { void post({ action: 'task', description: taskDraft.trim() }); setTaskDraft(''); }}>set</button>
         </div>
       </section>
 
       {/* Working facts */}
       <section>
         <div className="flex items-center justify-between">
-          <h4 className="text-xs uppercase tracking-wide text-neutral-500">Working facts (контекст задачи)</h4>
-          <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busy || workingEntries.length === 0} onClick={() => void post({ action: 'task-clear' })}>clear all</button>
+          <h4 className="text-xs uppercase tracking-wide text-dim">Working facts (контекст задачи)</h4>
+          <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy || workingEntries.length === 0} onClick={() => void post({ action: 'task-clear' })}>clear all</button>
         </div>
         <ul className="mt-1 space-y-1">
-          {workingEntries.length === 0 && <li className="text-xs text-neutral-400">пусто</li>}
+          {workingEntries.length === 0 && <li className="text-xs text-dim">пусто</li>}
           {workingEntries.map(([k, v]) => (
             <li key={k} className="flex items-center justify-between gap-2 text-sm">
-              <span className="truncate"><span className="font-mono text-neutral-500">{k}</span>: {v}</span>
-              <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'fact-rm', key: k })}>rm</button>
+              <span className="truncate"><span className="font-mono text-dim">{k}</span>: {v}</span>
+              <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'fact-rm', key: k })}>rm</button>
             </li>
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="ключ" value={wfKey} onChange={(e) => setWfKey(e.target.value)} disabled={busy} />
-          <input className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="значение" value={wfVal} onChange={(e) => setWfVal(e.target.value)} disabled={busy} />
-          <button className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700" disabled={busy || !wfKey.trim()} onClick={() => { void post({ action: 'task-add', key: wfKey.trim(), value: wfVal }); setWfKey(''); setWfVal(''); }}>add</button>
+          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={wfKey} onChange={(e) => setWfKey(e.target.value)} disabled={busy} />
+          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={wfVal} onChange={(e) => setWfVal(e.target.value)} disabled={busy} />
+          <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !wfKey.trim()} onClick={() => { void post({ action: 'task-add', key: wfKey.trim(), value: wfVal }); setWfKey(''); setWfVal(''); }}>add</button>
         </div>
       </section>
 
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-err">{error}</p>}
     </div>
   );
 }

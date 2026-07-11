@@ -1,7 +1,7 @@
 // HTTP-клиент к OpenAI-совместимому Chat Completions API.
 // Работает с любым провайдером: DeepSeek, OpenRouter, OpenAI, локальные сервера.
 
-import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, Usage } from './types.js';
+import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, LlmTimings, Usage } from './types.js';
 import { loadEnvUpward, getLlmProviderConfig } from './env.js';
 
 loadEnvUpward();
@@ -60,11 +60,13 @@ export class LlmClient {
     return content;
   }
 
-  // chat + распакованный usage (для демо про токены).
+  // chat + распакованный usage (для демо про токены). День 29: контракт += опц.
+  // timings? — base (OpenAI-compat) их не имеет → undefined; OllamaNativeClient
+  // переопределяет и отдаёт ns→ms timings. Деструктуризаторы не ломаются.
   async chatWithUsage(
     messages: ChatMessage[],
     params: ChatParams = {},
-  ): Promise<{ content: string; usage: Usage }> {
+  ): Promise<{ content: string; usage: Usage; timings?: LlmTimings }> {
     const req: LlmRequest = {
       model: params.model ?? this.config.defaultModel,
       messages,

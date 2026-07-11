@@ -9,7 +9,7 @@
 
 import type { LlmClient } from '../client.js';
 import { msg } from '../types.js';
-import type { ChatMessage } from '../types.js';
+import type { ChatMessage, ChatParams, LlmTimings, Usage } from '../types.js';
 import type { Quote, ScoredChunk } from './types.js';
 import type { Retriever } from './retriever.js';
 import { rerankWithLlm } from './rerank.js';
@@ -38,9 +38,10 @@ export const DEFAULT_RAG_THRESHOLD = 0.5;
 // когда retrieve ничего не дал после cosine pre-filter (filtered.length === 0)
 // или когда лучший скор ниже opts.minScore (default-off, включается через --floor).
 // Детерминированный шорт-кёркт гасит галлюцинации qwen2.5:7b на пустом/слабом контексте.
+// День 29: почистили хвост про конкретную модель автомобиля (correctness — guard
+// общий, не привязан к EVOLUTE i-SPACE; TG/RSS-чаты и мануалы — любой корпус).
 export const GUARD_ANSWER =
-  'Не знаю. В базе знаний нет релевантного фрагмента по этому вопросу. ' +
-  'Уточните вопрос — например, укажите раздел или особенность автомобиля EVOLUTE i-SPACE.';
+  'Не знаю. В базе знаний нет релевантного фрагмента по этому вопросу. Уточните вопрос.';
 
 // Опции сборки промпта (день 25): история диалога и «память задачи» (goal/термины/
 // ограничения). День 25b: +dialogContext — найденные в прошлых диалогах Q&A как данные.
@@ -52,6 +53,9 @@ export interface BuildRagPromptOpts {
   history?: ChatMessage[];
   taskState?: string;
   dialogContext?: string;
+  // День 29: опц. system-prompt override (additive). Без поля — дефолт SYSTEM_RAG.
+  // day-29 передаёт TG_RAG_SYSTEM для оптимизированного прогона; baseline идёт без override.
+  systemPrompt?: string;
 }
 
 // buildRagPrompt принимает УЖЕ отфильтрованные чанки. Повторной фильтрации нет:
@@ -66,7 +70,8 @@ export function buildRagPrompt(
   chunks: ScoredChunk[],
   opts?: BuildRagPromptOpts,
 ): ChatMessage[] {
-  const messages: ChatMessage[] = [msg.system(SYSTEM_RAG)];
+  const system = opts?.systemPrompt ?? SYSTEM_RAG;
+  const messages: ChatMessage[] = [msg.system(system)];
   if (opts?.taskState && opts.taskState.trim().length > 0) {
     messages.push(
       msg.system(
@@ -137,6 +142,11 @@ export interface RagDebug {
   rewritten: boolean;      // был ли переформулирован запрос
   effectiveQuery?: string; // переформулированный запрос (если rewrite сработал)
   gaveUp?: boolean;        // день 24: сработал ли guard «не знаю» без LLM-вызова
+  // День 29: usage/timings последнего LLM-вызова (только non-stream ветка). bench
+  // считает tok/s = sum(usage.completion_tokens)/(sum(timings.evalMs)/1000) по
+  // gaveUp===false. Stream-ветка их не заполняет (bench идёт non-stream).
+  llmUsage?: Usage;
+  llmTimings?: LlmTimings;
 }
 
 export interface RagAnswer {
@@ -175,6 +185,15 @@ export interface RagOptions {
   dialogContext?: string;
   // follow-up P5 В3: прокинуть abort-signal в chatStream (AbortError при disconnect SSE).
   signal?: AbortSignal;
+  // День 29 (локальная оптимизация): LLM-параметры и prompt-override для бенчмарка.
+  // llmParams → client.chatWithUsage(prompt, llmParams) в non-stream ветке (Ollama
+  // honour'ит temperature/maxTokens/numCtx/seed; cloud их игнорирует). systemPrompt →
+  // buildRagPrompt override (baseline без поля → дефолт SYSTEM_RAG). guardAnswer →
+  // текст ответа при сработавшем decideGuard (default GUARD_ANSWER). Все три опц.,
+  // без них поведение идентично дню 25 (no leak в общий путь).
+  llmParams?: ChatParams;
+  systemPrompt?: string;
+  guardAnswer?: string;
 }
 
 export async function answerWithRag(
@@ -189,6 +208,7 @@ export async function answerWithRag(
   const useRerank = opts.rerank ?? false;
   const useRewrite = opts.rewrite ?? false;
   const onProgress = opts.onProgress;
+  const guardAnswer = opts.guardAnswer ?? GUARD_ANSWER;
 
   // 1. Опциональный query rewrite. В retrieve идёт переформулированный запрос,
   //    но в финальный промпт — ИСХОДНЫЙ вопрос (rewrite только расширяет поиск).
@@ -229,7 +249,7 @@ export async function answerWithRag(
       },
     });
     return {
-      answer: GUARD_ANSWER,
+      answer: guardAnswer,
       sources: [],
       quotes: [],
       debug: {
@@ -264,23 +284,34 @@ export async function answerWithRag(
   }
 
   // 5. Финальный LLM-ответ. onProgress сообщает итоговый topK до вызова.
+  // День 29: non-stream идёт через chatWithUsage — захват usage/timings для bench
+  // (tok/s, latency). Stream-ветка через chatStream (токены в onToken); timings
+  // не заполняются — bench идёт non-stream (opts.onToken не передаётся).
   onProgress?.({ step: 'llm', detail: { topK: ranked.length } });
   const prompt = buildRagPrompt(question, ranked, {
     history: opts.history,
     taskState: opts.taskState,
     dialogContext: opts.dialogContext,
+    systemPrompt: opts.systemPrompt,
   });
   const onToken = opts.onToken;
-  const answer = onToken
-    ? await (async () => {
-        let full = '';
-        for await (const delta of client.chatStream(prompt, {}, opts.signal)) {
-          onToken(delta);
-          full += delta;
-        }
-        return full;
-      })()
-    : await client.chat(prompt);
+  const llmParams = opts.llmParams ?? {};
+  let answer: string;
+  let llmUsage: Usage | undefined;
+  let llmTimings: LlmTimings | undefined;
+  if (onToken) {
+    let full = '';
+    for await (const delta of client.chatStream(prompt, llmParams, opts.signal)) {
+      onToken(delta);
+      full += delta;
+    }
+    answer = full;
+  } else {
+    const res = await client.chatWithUsage(prompt, llmParams);
+    answer = res.content;
+    llmUsage = res.usage;
+    llmTimings = res.timings;
+  }
 
   return {
     answer,
@@ -296,6 +327,8 @@ export async function answerWithRag(
       rewritten,
       effectiveQuery: rewritten ? effectiveQuery : undefined,
       gaveUp: false,
+      llmUsage,
+      llmTimings,
     },
   };
 }

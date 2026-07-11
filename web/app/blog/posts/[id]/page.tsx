@@ -1,11 +1,15 @@
 // /blog/posts/[id] — детально: контент (editable → PATCH save), delete (confirm),
 // publish в Telegram (confirm — реальная отправка в канал). День 28, web P4a.
+// Редизайн C (день 30): Card-формы + verdict-pre. Логика fetch/confirm без изменений.
 // 'use client': useParams для id. НИКАКИХ импортов core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { SectionLabel } from '../../../components/ui/SectionLabel';
+import { Card } from '../../../components/ui/Card';
+import { Button } from '../../../components/ui/Button';
 
 interface PostData {
   id: number;
@@ -14,6 +18,9 @@ interface PostData {
   verdict: string | null;
   created_at: string;
 }
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
 
 export default function BlogPostDetailPage() {
   const params = useParams();
@@ -113,86 +120,70 @@ export default function BlogPostDetailPage() {
   const dirty = post !== null && draft !== post.content;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
+        <SectionLabel>posts · detail</SectionLabel>
         <Link href="/blog/posts" className="text-xs text-accent hover:underline">
           ← к списку постов
         </Link>
-        <h1 className="mt-1 text-xl font-semibold">
+        <h1 className="mt-1 font-mono text-2xl font-semibold uppercase tracking-tight text-ink">
           {post ? `Пост #${post.id}` : loading ? 'Загрузка…' : 'Пост не найден'}
         </h1>
         {post && (
-          <p className="mt-1 text-xs text-neutral-400">
-            news_id: {post.news_id ?? '—'} · создан: {post.created_at}
-            {post.verdict && ` · verdict в JSON (см. ниже)`}
+          <p className="mt-2 font-mono text-xs text-dim">
+            news_id: {post.news_id ?? '—'} · {post.created_at}
+            {post.verdict ? ' · verdict в JSON (см. ниже)' : ''}
           </p>
         )}
       </section>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
       )}
       {info && (
-        <p className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300">
-          {info}
-        </p>
+        <p className="rounded-md border border-ok/40 bg-ok/10 p-2 text-sm text-ok">{info}</p>
       )}
 
       {post && (
         <>
-          <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-            <label className="block text-xs uppercase tracking-wide text-neutral-500">Контент</label>
+          <Card>
+            <label className="block font-mono text-xs uppercase tracking-wider text-dim">Контент</label>
             <textarea
-              className="mt-1 w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-full resize-y p-2 ${INPUT}`}
               rows={10}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               disabled={saving}
             />
             <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-                onClick={save}
-                disabled={saving || !dirty}
-              >
+              <Button variant="primary" onClick={save} disabled={saving || !dirty}>
                 Сохранить
-              </button>
+              </Button>
               {dirty && (
-                <button
-                  className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-                  onClick={() => setDraft(post.content)}
-                  disabled={saving}
-                >
+                <Button variant="ghost" onClick={() => setDraft(post.content)} disabled={saving}>
                   Откатить
-                </button>
+                </Button>
               )}
-              <button
-                className="ml-auto rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
+              <Button
+                variant="ghost"
+                className="ml-auto"
                 onClick={publish}
                 title="Реальная отправка в Telegram-канал"
               >
                 Опубликовать в Telegram
-              </button>
-              <button
-                className="rounded border border-red-300 px-3 py-1.5 text-sm text-red-600 dark:border-red-900 dark:text-red-400"
-                onClick={del}
-              >
+              </Button>
+              <Button variant="danger" onClick={del}>
                 Удалить
-              </button>
+              </Button>
             </div>
-          </section>
+          </Card>
 
           {post.verdict && (
-            <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-                Фактчекинг (verdict JSON)
-              </h2>
-              <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-950">
+            <Card label="verdict">
+              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-bg p-2 font-mono text-xs text-dim">
                 {post.verdict}
               </pre>
-            </section>
+            </Card>
           )}
         </>
       )}

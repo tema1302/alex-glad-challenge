@@ -1,9 +1,14 @@
 // /mcp/todos — CRUD задач через TodoDb (день 28, web P1).
 // 'use client': форма добавления + список с действиями ✓/✗/🗑. Перезагрузка списка после
 // каждого действия. НИКАКИХ импортов core/ — тип TodoRow инлайн (сервер отдаёт тот же JSON).
+// Редизайн C (день 30): Card-форма + data-list с StatusDot. Логика без изменений.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { StatusDot } from '../../components/ui/StatusDot';
 
 type Recurring = 'daily' | 'weekly' | 'hourly';
 type FormRecurring = 'none' | Recurring;
@@ -28,6 +33,10 @@ function recurringBadge(t: TodoItem): string | null {
   if (t.scheduled_at) return `на ${t.scheduled_at}`;
   return null;
 }
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
+const LABEL_TAG = 'block font-mono text-xs uppercase tracking-wider text-dim';
 
 export default function TodosPage() {
   const [text, setText] = useState('');
@@ -109,32 +118,35 @@ export default function TodosPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">Задачи (TodoDb)</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <SectionLabel>todos · todos.sqlite</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Задачи</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
           Повторяющиеся напоминания и разовые задачи. Хранятся в{' '}
-          <code className="rounded bg-neutral-200 px-1 text-xs dark:bg-neutral-800">.data/todos.sqlite</code>.
+          <code className="font-mono text-[12px] text-ink">.data/todos.sqlite</code>.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <label className="block text-xs uppercase tracking-wide text-neutral-500">Новая задача</label>
-        <input
-          className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
-          type="text"
-          placeholder="Текст задачи…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={submitting}
-        />
+      <Card label="new task">
+        <label className="block text-sm">
+          <span className={LABEL_TAG}>Текст задачи</span>
+          <input
+            className={`mt-1 w-full ${INPUT}`}
+            type="text"
+            placeholder="Текст задачи…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            disabled={submitting}
+          />
+        </label>
 
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <fieldset className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Повтор</span>
+            <span className={LABEL_TAG}>Повтор</span>
             <div className="mt-1 flex gap-3">
               {(['none', 'daily', 'weekly', 'hourly'] as FormRecurring[]).map((r) => (
-                <label key={r} className="flex items-center gap-1">
+                <label key={r} className="flex items-center gap-1 text-dim">
                   <input
                     type="radio"
                     name="recurring"
@@ -150,9 +162,9 @@ export default function TodosPage() {
 
           {recurring === 'hourly' && (
             <label className="text-sm">
-              <span className="block text-xs uppercase tracking-wide text-neutral-500">каждые N ч</span>
+              <span className={LABEL_TAG}>каждые N ч</span>
               <input
-                className="mt-1 w-16 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+                className={`mt-1 w-16 ${INPUT}`}
                 type="number"
                 min={1}
                 max={168}
@@ -163,79 +175,67 @@ export default function TodosPage() {
             </label>
           )}
 
-          <button
-            className="ml-auto rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          <Button
+            variant="primary"
+            className="ml-auto"
             onClick={add}
             disabled={submitting || !text.trim()}
           >
             Добавить
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
       )}
 
       <section>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Задачи ({todos.length})
-          </h2>
-          <button className="text-xs text-accent hover:underline" onClick={load} disabled={loading}>
-            обновить
-          </button>
+        <div className="mb-3 flex items-center justify-between">
+          <SectionLabel>{`задачи · ${todos.length}`}</SectionLabel>
+          <Button variant="ghost" onClick={load} disabled={loading}>
+            {loading ? 'загрузка…' : 'обновить'}
+          </Button>
         </div>
 
         {todos.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-400">
+          <p className="text-sm text-dim">
             {loading ? 'Загрузка…' : 'Нет задач. Добавьте первую выше.'}
           </p>
         ) : (
-          <ul className="mt-3 space-y-2">
+          <ul className="space-y-2">
             {todos.map((t) => {
               const badge = recurringBadge(t);
               const dim = t.status !== 'pending';
+              const status = t.status === 'done' ? 'ok' : t.status === 'dismissed' ? 'off' : 'warn';
               return (
                 <li
                   key={t.id}
-                  className="flex items-start gap-3 rounded-lg border border-neutral-200 bg-white p-3 text-sm dark:border-neutral-800 dark:bg-neutral-900"
+                  className="flex items-start gap-3 rounded-md border border-line bg-surface p-3 text-sm"
                 >
-                  <span
-                    className={`mt-0.5 rounded px-1.5 py-0.5 text-xs ${
-                      t.status === 'done'
-                        ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300'
-                        : t.status === 'dismissed'
-                          ? 'bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'
-                          : 'bg-accent/10 text-accent'
-                    }`}
-                  >
-                    {t.status === 'done' ? 'done' : t.status === 'dismissed' ? 'dismissed' : 'pending'}
-                  </span>
+                  <StatusDot status={status} label={t.status} />
                   <div className="min-w-0 flex-1">
-                    <div className={`break-words ${dim ? 'text-neutral-400 line-through' : ''}`}>{t.text}</div>
-                    {badge && <div className="mt-0.5 text-xs text-neutral-400">{badge}</div>}
+                    <div className={`break-words ${dim ? 'text-dim line-through' : 'text-ink'}`}>{t.text}</div>
+                    {badge && <div className="mt-0.5 font-mono text-xs text-dim">{badge}</div>}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     <button
                       title="Выполнить"
-                      className="rounded px-2 py-0.5 text-xs hover:bg-green-100 dark:hover:bg-green-950"
+                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
                       onClick={() => void act(t.id, 'complete')}
                     >
                       ✓
                     </button>
                     <button
                       title="Отменить"
-                      className="rounded px-2 py-0.5 text-xs hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
                       onClick={() => void act(t.id, 'dismiss')}
                     >
                       ✗
                     </button>
                     <button
                       title="Удалить"
-                      className="rounded px-2 py-0.5 text-xs text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-950"
+                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-err transition-colors hover:bg-err/10 disabled:opacity-50"
                       onClick={() => void act(t.id, 'delete')}
                     >
                       🗑

@@ -3,6 +3,12 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { SectionLabel } from '../components/ui/SectionLabel';
+
+const INPUT =
+  'w-full rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function AgentPage() {
   const [prompt, setPrompt] = useState('');
@@ -35,17 +41,17 @@ export default function AgentPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">Агент (LLM)</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Single-shot вопрос к LLM через <code className="rounded bg-neutral-200 px-1 text-xs dark:bg-neutral-800">core/Agent</code>.
-          Без истории хода (для диалога — <a href="/chat" className="text-accent hover:underline">/chat</a>).
+        <h1 className="text-xl font-semibold text-ink">Агент (LLM)</h1>
+        <p className="mt-1 text-sm text-dim">
+          Single-shot вопрос к LLM через{' '}
+          <code className="rounded bg-surface-2 px-1 font-mono text-xs text-ink">core/Agent</code>. Без истории хода
+          (для диалога — <a href="/chat" className="text-accent hover:underline">/chat</a>).
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <label className="block text-xs uppercase tracking-wide text-neutral-500">Вопрос</label>
+      <Card label="Вопрос">
         <textarea
-          className="mt-1 h-32 w-full rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className={`h-32 resize-y ${INPUT}`}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Спросите что-нибудь…"
@@ -53,36 +59,36 @@ export default function AgentPage() {
         />
 
         <fieldset className="mt-3 text-sm">
-          <span className="block text-xs uppercase tracking-wide text-neutral-500">LLM</span>
+          <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
           <div className="mt-1 flex gap-3">
             {(['cloud', 'local'] as const).map((v) => (
-              <label key={v} className="flex items-center gap-1">
-                <input type="radio" name="llm" checked={llm === v} onChange={() => setLlm(v)} disabled={submitting} />
+              <label key={v} className="flex items-center gap-1.5 text-ink">
+                <input
+                  type="radio"
+                  name="llm"
+                  checked={llm === v}
+                  onChange={() => setLlm(v)}
+                  disabled={submitting}
+                />
                 {v === 'cloud' ? 'облако (DeepSeek/OpenRouter)' : 'локально (Ollama)'}
               </label>
             ))}
           </div>
         </fieldset>
 
-        <button
-          className="mt-3 rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          onClick={submit}
-          disabled={submitting || !prompt.trim()}
-        >
-          {submitting ? 'Думаю…' : 'Спросить'}
-        </button>
-      </section>
+        <div className="mt-3">
+          <Button variant="primary" onClick={submit} disabled={submitting || !prompt.trim()}>
+            {submitting ? 'Думаю…' : 'Спросить'}
+          </Button>
+        </div>
+      </Card>
 
-      {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
-      )}
+      {error && <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>}
 
       {answer !== null && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Ответ</h2>
-          <pre className="mt-2 whitespace-pre-wrap rounded-lg border border-neutral-200 bg-white p-3 font-sans text-sm text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300">
+          <SectionLabel>Ответ</SectionLabel>
+          <pre className="mt-2 whitespace-pre-wrap rounded-md border border-line bg-surface p-3 font-sans text-sm text-ink">
             {answer || '(пустой ответ)'}
           </pre>
         </section>

@@ -1,10 +1,13 @@
 // /blog/posts — список постов (день 28, web P4a).
 // 'use client': GET /api/blog/posts → список (id, snippet, newsId, verdict, created_at).
+// Редизайн C (день 30): data-list table hairline + SectionLabel. Логика fetch без изменений.
 // Тип PostItem инлайн (сервер отдаёт тот же JSON). НИКАКИХ импортов core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Button } from '../../components/ui/Button';
 
 interface PostItem {
   id: number;
@@ -24,12 +27,12 @@ function verdictLabel(v: string | null): { text: string; cls: string } | null {
   try {
     const parsed = JSON.parse(v) as { verdict?: string };
     const verdict = parsed.verdict;
-    if (verdict === 'ok') return { text: 'ok', cls: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' };
-    if (verdict === 'revise') return { text: 'revise', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' };
-    if (verdict === 'reject') return { text: 'reject', cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' };
-    return { text: verdict ?? '?', cls: 'bg-neutral-200 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400' };
+    if (verdict === 'ok') return { text: 'ok', cls: 'bg-ok/15 text-ok' };
+    if (verdict === 'revise') return { text: 'revise', cls: 'bg-warn/15 text-warn' };
+    if (verdict === 'reject') return { text: 'reject', cls: 'bg-err/15 text-err' };
+    return { text: verdict ?? '?', cls: 'bg-surface-2 text-dim' };
   } catch {
-    return { text: '?', cls: 'bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400' };
+    return { text: '?', cls: 'bg-surface-2 text-dim' };
   }
 }
 
@@ -58,59 +61,65 @@ export default function BlogPostsPage() {
   }, [load]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">Посты блога</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <SectionLabel>posts · blog.sqlite</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Посты блога</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
           Сохранённые посты из{' '}
-          <code className="rounded bg-neutral-200 px-1 text-xs dark:bg-neutral-800">blog.sqlite</code>.
-          Откройте пост для правки, удаления или публикации в Telegram.
+          <code className="font-mono text-[12px] text-ink">blog.sqlite</code>. Откройте пост для правки,
+          удаления или публикации в Telegram.
         </p>
       </section>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
       )}
 
       <section>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Посты ({posts.length})
-          </h2>
-          <button className="text-xs text-accent hover:underline" onClick={load} disabled={loading}>
-            обновить
-          </button>
+        <div className="mb-3 flex items-center justify-between">
+          <SectionLabel>{`посты · ${posts.length}`}</SectionLabel>
+          <Button variant="ghost" onClick={load} disabled={loading}>
+            {loading ? 'загрузка…' : 'обновить'}
+          </Button>
         </div>
 
         {posts.length === 0 ? (
-          <p className="mt-3 text-sm text-neutral-400">
-            {loading ? 'Загрузка…' : 'Нет постов. Запустите /blog/news.'}
-          </p>
+          <p className="text-sm text-dim">{loading ? 'Загрузка…' : 'Нет постов. Запустите /blog/news.'}</p>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {posts.map((p) => {
-              const v = verdictLabel(p.verdict);
-              return (
-                <li key={p.id}>
-                  <Link
-                    href={`/blog/posts/${p.id}`}
-                    className="block rounded-lg border border-neutral-200 bg-white p-3 text-sm hover:border-accent dark:border-neutral-800 dark:bg-neutral-900"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs text-neutral-400">#{p.id}</span>
-                      {v && (
-                        <span className={`rounded px-1.5 py-0.5 text-xs ${v.cls}`}>{v.text}</span>
-                      )}
-                      <span className="ml-auto text-xs text-neutral-400">{p.created_at}</span>
-                    </div>
-                    <div className="mt-1 text-neutral-700 dark:text-neutral-300">{snippet(p.content)}</div>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">#</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">verdict</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">content</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {posts.map((p) => {
+                  const v = verdictLabel(p.verdict);
+                  return (
+                    <tr key={p.id} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
+                      <td className="px-3 py-2 font-mono text-xs text-dim">
+                        <Link href={`/blog/posts/${p.id}`} className="focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent">#{p.id}</Link>
+                      </td>
+                      <td className="px-3 py-2">
+                        {v ? (
+                          <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${v.cls}`}>{v.text}</span>
+                        ) : (
+                          <span className="text-dim">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-ink">{snippet(p.content)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-dim">{p.created_at}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

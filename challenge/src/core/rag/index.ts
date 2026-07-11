@@ -73,3 +73,9 @@ export type {
   EvalAbResult,
   Day24Metrics,
 } from './eval.js';
+
+// День 29: бенчмарк before/after (tok/s, latency, guard recall, structural).
+export { runBench, summarize } from './bench.js';
+export type { BenchSample, BenchSummary } from './bench.js';
+// День 29: LlmTimings живёт в core/types.js — реэкспорт для демо, импортирующих rag.
+export type { LlmTimings } from '../types.js';

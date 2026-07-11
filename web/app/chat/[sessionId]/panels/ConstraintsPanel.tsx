@@ -29,40 +29,40 @@ export function ConstraintsPanel({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-3">
-      {view && view.items.length === 0 && <p className="text-xs text-neutral-400">инвариантов нет</p>}
+      {view && view.items.length === 0 && <p className="text-xs text-dim">инвариантов нет</p>}
       {TYPE_ORDER.filter((t) => grouped.has(t)).map((t) => (
         <section key={t}>
-          <h4 className="text-xs uppercase tracking-wide text-neutral-500">{TYPE_LABELS[t] ?? t}</h4>
+          <h4 className="text-xs uppercase tracking-wide text-dim">{TYPE_LABELS[t] ?? t}</h4>
           <ul className="mt-1 space-y-1">
             {grouped.get(t)!.map((c) => (
               <li key={c.id} className="flex items-start justify-between gap-2 text-sm">
                 <span>
-                  <span className="font-medium">{c.title}</span>
-                  {c.description && <span className="text-neutral-500">: {c.description}</span>}
-                  <span className="ml-1 font-mono text-xs text-neutral-400">{c.id}</span>
+                  <span className="font-medium text-ink">{c.title}</span>
+                  {c.description && <span className="text-dim">: {c.description}</span>}
+                  <span className="ml-1 font-mono text-xs text-dim">{c.id}</span>
                 </span>
-                <button className="text-xs text-red-600 hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'rm', id: c.id })}>rm</button>
+                <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'rm', id: c.id })}>rm</button>
               </li>
             ))}
           </ul>
         </section>
       ))}
 
-      <section className="space-y-1 border-t border-neutral-200 pt-2 dark:border-neutral-800">
-        <h4 className="text-xs uppercase tracking-wide text-neutral-500">Добавить инвариант</h4>
-        <select className="w-full rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
+      <section className="space-y-1 border-t border-line pt-2">
+        <h4 className="text-xs uppercase tracking-wide text-dim">Добавить инвариант</h4>
+        <select className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
           {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
         </select>
-        <input className="w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="название" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
-        <input className="w-full rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950" placeholder="описание" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={busy} />
+        <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="название" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+        <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={busy} />
         <button
-          className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
           disabled={busy || !title.trim()}
           onClick={() => { void post({ action: 'add', type, title: title.trim(), description: desc.trim() }); setTitle(''); setDesc(''); }}
         >+ add</button>
       </section>
 
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-err">{error}</p>}
     </div>
   );
 }

@@ -11,11 +11,11 @@ export function BranchesPanel({ sessionId }: { sessionId: string }) {
   const { view, error, busy, post } = usePanelView<BranchView>(`/api/chat/${sessionId}/branch`);
   const [label, setLabel] = useState('');
 
-  if (!view) return <p className="text-xs text-neutral-400">branches: загрузка…</p>;
+  if (!view) return <p className="text-xs text-dim">branches: загрузка…</p>;
 
   return (
     <div className="space-y-2">
-      <p className="text-xs text-neutral-400">
+      <p className="text-xs text-dim">
         Активная ветка определяет, какая история подаётся в контекст LLM и куда пишутся новые реплики.
       </p>
       <ul className="space-y-1">
@@ -25,8 +25,8 @@ export function BranchesPanel({ sessionId }: { sessionId: string }) {
             className={
               'flex cursor-pointer items-center justify-between gap-2 rounded border px-2 py-1 text-sm ' +
               (b.active
-                ? 'border-accent bg-accent/10 dark:bg-accent/20'
-                : 'border-neutral-200 hover:border-neutral-400 dark:border-neutral-700')
+                ? 'border-accent bg-accent/10'
+                : 'border-line hover:border-line-strong')
             }
             title={b.parentId === null ? 'корень' : `родитель: branch-${b.parentId}`}
           >
@@ -34,31 +34,31 @@ export function BranchesPanel({ sessionId }: { sessionId: string }) {
               onClick={() => { if (!b.active && !busy) void post({ action: 'switch', id: b.id }); }}
               className="flex-1"
             >
-              <span className="font-mono text-neutral-500">#{b.id}</span>{' '}
+              <span className="font-mono text-dim">#{b.id}</span>{' '}
               {b.label}
               {b.active && <span className="ml-2 text-xs text-accent">● активна</span>}
             </span>
-            <span className="text-xs text-neutral-400 tabular-nums">{b.messageCount} сообщ.</span>
+            <span className="text-xs text-dim tabular-nums">{b.messageCount} сообщ.</span>
           </li>
         ))}
       </ul>
       <div className="flex gap-1">
         <input
-          className="flex-1 rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           placeholder="метка (опц.)"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           disabled={busy}
         />
         <button
-          className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+          className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
           disabled={busy}
           onClick={() => { void post({ action: 'checkpoint', label: label.trim() || undefined }); setLabel(''); }}
         >
           + checkpoint (ветка от активной)
         </button>
       </div>
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-err">{error}</p>}
     </div>
   );
 }

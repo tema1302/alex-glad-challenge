@@ -1,9 +1,13 @@
 // /rag/chats — каталог TG-чатов и aliases. web P3a.
 // 'use client': GET /api/rag/chats (titles + aliases + dialog-chats), POST add/rm alias.
+// Редизайн C (день 30): 3 data-list таблицы + Card-форма. Логика без изменений.
 // Все offline (chatCatalog JSON-кэш из index-tg + alias-файл), без сетевых вызовов к TG.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
 
 interface AliasRow {
   name: string;
@@ -21,6 +25,10 @@ interface Catalog {
   aliases: AliasRow[];
   chats: DialogChatItem[];
 }
+
+const inputCls =
+  'mt-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
+const labelTagCls = 'block font-mono text-xs uppercase tracking-wider text-dim';
 
 export default function RagChatsPage() {
   const [data, setData] = useState<Catalog | null>(null);
@@ -69,36 +77,34 @@ export default function RagChatsPage() {
   const titleEntries = data ? Object.entries(data.titles) : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">Каталог чатов</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <SectionLabel>rag · chats catalog</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Каталог чатов</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
           Кэш chatKey→title (из index-tg) и aliases для RAG-чата. Только чтение, offline.
         </p>
       </section>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
       )}
 
       {/* Add alias */}
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Добавить alias</h2>
-        <div className="mt-2 flex flex-wrap items-end gap-3">
+      <Card label="add alias">
+        <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Имя</span>
+            <span className={labelTagCls}>Имя</span>
             <input
-              className="mt-1 w-40 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`${inputCls} w-40`}
               value={name} onChange={(e) => setName(e.target.value)} disabled={busy}
               placeholder="news_ru"
             />
           </label>
           <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">chatKey</span>
+            <span className={labelTagCls}>chatKey</span>
             <input
-              className="mt-1 w-full rounded border border-neutral-300 bg-neutral-50 px-2 py-1 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-950"
+              className={`${inputCls} w-full font-mono text-xs`}
               list="chatkey-dl"
               value={chatKey} onChange={(e) => setChatKey(e.target.value)} disabled={busy}
               placeholder="-1001234567890"
@@ -108,95 +114,128 @@ export default function RagChatsPage() {
             </datalist>
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">topicId (опц.)</span>
+            <span className={labelTagCls}>topicId (опц.)</span>
             <input
-              className="mt-1 w-24 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`${inputCls} w-24`}
               value={topicId} onChange={(e) => setTopicId(e.target.value)} disabled={busy}
             />
           </label>
-          <button
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+          <Button
+            variant="primary"
             onClick={() => void submit('add', { name: name.trim(), chatKey: chatKey.trim(), topicId: topicId ? Number(topicId) : undefined })}
             disabled={busy || !name.trim() || !chatKey.trim()}
           >
             добавить
-          </button>
+          </Button>
         </div>
-      </section>
+      </Card>
 
       {/* Aliases */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Aliases {data ? `(${data.aliases.length})` : ''}
-        </h2>
+        <SectionLabel>{data ? `aliases · ${data.aliases.length}` : 'aliases'}</SectionLabel>
         {!data ? (
-          <p className="mt-2 text-sm text-neutral-400">Загрузка…</p>
+          <p className="text-sm text-dim">Загрузка…</p>
         ) : data.aliases.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-400">Нет aliases.</p>
+          <p className="text-sm text-dim">Нет aliases.</p>
         ) : (
-          <ul className="mt-2 space-y-1.5">
-            {data.aliases.map((a) => (
-              <li key={a.name} className="flex items-center gap-3 rounded border border-neutral-200 bg-white p-2 text-sm dark:border-neutral-800 dark:bg-neutral-900">
-                <span className="font-medium">{a.name}</span>
-                <span className="font-mono text-xs text-neutral-400">{a.chatKey}</span>
-                {a.topicId != null && <span className="text-xs text-neutral-400">topic {a.topicId}</span>}
-                {data.titles[a.chatKey] && <span className="text-xs text-neutral-500">{data.titles[a.chatKey]}</span>}
-                <button
-                  className="ml-auto rounded border border-red-300 px-2 py-0.5 text-xs text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400"
-                  onClick={() => void submit('rm', { name: a.name })}
-                  disabled={busy}
-                >
-                  удалить
-                </button>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">name</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">chatKey</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">topic</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {data.aliases.map((a) => (
+                  <tr key={a.name} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
+                    <td className="px-3 py-2 font-medium text-ink">{a.name}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-dim">{a.chatKey}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-dim">{a.topicId != null ? a.topicId : '—'}</td>
+                    <td className="px-3 py-2 text-dim">{data.titles[a.chatKey] ?? '—'}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Button
+                        variant="danger"
+                        onClick={() => void submit('rm', { name: a.name })}
+                        disabled={busy}
+                      >
+                        удалить
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
       {/* Titles catalog */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          Кэш chatKey→title {data ? `(${titleEntries.length})` : ''}
-        </h2>
+        <SectionLabel>{data ? `chatkey → title · ${titleEntries.length}` : 'chatkey → title'}</SectionLabel>
         {!data ? (
-          <p className="mt-2 text-sm text-neutral-400">Загрузка…</p>
+          <p className="text-sm text-dim">Загрузка…</p>
         ) : titleEntries.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-400">
-            Кэш пуст. Наполняется при индексации TG (P3b: <code>rag index-tg</code>).
+          <p className="text-sm text-dim">
+            Кэш пуст. Наполняется при индексации TG (<code className="font-mono text-[12px] text-ink">rag index-tg</code>).
           </p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
-            {titleEntries.map(([k, t]) => (
-              <li key={k} className="flex gap-3">
-                <span className="font-mono text-xs text-neutral-400">{k}</span>
-                <span>{t}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">chatKey</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
+                </tr>
+              </thead>
+              <tbody>
+                {titleEntries.map(([k, t]) => (
+                  <tr key={k} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
+                    <td className="px-3 py-2 font-mono text-xs text-dim">{k}</td>
+                    <td className="px-3 py-2 text-ink">{t}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 
       {/* DialogDb chats */}
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-          RAG-чаты (DialogDb) {data ? `(${data.chats.length})` : ''}
-        </h2>
+        <SectionLabel>{data ? `rag-чаты · ${data.chats.length}` : 'rag-чаты'}</SectionLabel>
         {!data ? (
-          <p className="mt-2 text-sm text-neutral-400">Загрузка…</p>
+          <p className="text-sm text-dim">Загрузка…</p>
         ) : data.chats.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-400">Нет чатов. Создайте на <a href="/rag/chat" className="text-accent hover:underline">/rag/chat</a>.</p>
+          <p className="text-sm text-dim">Нет чатов. Создайте на <a href="/rag/chat" className="text-accent hover:underline">/rag/chat</a>.</p>
         ) : (
-          <ul className="mt-2 space-y-1 text-sm">
-            {data.chats.map((c) => (
-              <li key={c.id} className="flex flex-wrap gap-3">
-                <a href={`/rag/chat/${c.id}`} className="font-mono text-xs text-accent hover:underline">{c.id.slice(0, 8)}</a>
-                <span>{c.title}</span>
-                <span className="text-xs text-neutral-400">{c.msg_count} сообщений</span>
-                <span className="text-xs text-neutral-400">{c.updated_at}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="overflow-x-auto rounded-md border border-line">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line text-left">
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">id</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">messages</th>
+                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">updated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.chats.map((c) => (
+                  <tr key={c.id} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
+                    <td className="px-3 py-2">
+                      <a href={`/rag/chat/${c.id}`} className="font-mono text-xs text-accent hover:underline">{c.id.slice(0, 8)}</a>
+                    </td>
+                    <td className="px-3 py-2 text-ink">{c.title}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-dim">{c.msg_count}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-dim">{c.updated_at}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

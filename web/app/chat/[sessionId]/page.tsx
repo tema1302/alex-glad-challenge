@@ -13,6 +13,8 @@ import { MemoryPanel } from './panels/MemoryPanel';
 import { BranchesPanel } from './panels/BranchesPanel';
 import { ProfilePanel } from './panels/ProfilePanel';
 import { ConstraintsPanel } from './panels/ConstraintsPanel';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 type PanelTab = 'memory' | 'branches' | 'profile' | 'constraints';
 
@@ -38,6 +40,9 @@ const STRATEGY_OPTIONS: Array<{ value: StrategyName; label: string }> = [
   { value: 'sticky', label: 'sticky (факты + окно)' },
   { value: 'branching', label: 'branching (ветки)' },
 ];
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function ChatSessionPage() {
   const params = useParams<{ sessionId: string }>();
@@ -210,33 +215,37 @@ export default function ChatSessionPage() {
   if (loadError) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-red-600 dark:text-red-400">Сессия не загружена: {loadError}</p>
+        <p className="text-sm text-err">Сессия не загружена: {loadError}</p>
         <Link href="/chat" className="text-sm text-accent hover:underline">← к списку сессий</Link>
       </div>
     );
   }
 
   if (!config) {
-    return <p className="text-sm text-neutral-400">Загрузка сессии…</p>;
+    return <p className="text-sm text-dim">Загрузка сессии…</p>;
   }
+
+  const tabBtn = (active: boolean): string =>
+    'rounded px-2 py-1 text-xs transition-colors ' +
+    (active ? 'bg-accent text-accent-ink' : 'border border-line-strong text-dim hover:text-ink');
 
   return (
     <div className="space-y-4">
       <section className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Chat-агент</h1>
-          <p className="mt-1 font-mono text-xs text-neutral-400">{config.id}</p>
+          <h1 className="text-xl font-semibold text-ink">Chat-агент</h1>
+          <p className="mt-1 font-mono text-xs text-dim">{config.id}</p>
         </div>
         <Link href="/chat" className="text-sm text-accent hover:underline">сессии</Link>
       </section>
 
       {/* Панель управления */}
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <Card label="Параметры">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Стратегия</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Стратегия</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={config.strategy}
               onChange={(e) => patchConfig({ strategy: e.target.value as StrategyName }).catch((e) => setError(e instanceof Error ? e.message : 'fail'))}
               disabled={running}
@@ -246,9 +255,9 @@ export default function ChatSessionPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">LLM</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as 'local' | 'cloud')}
               disabled={running}
@@ -258,7 +267,7 @@ export default function ChatSessionPage() {
             </select>
           </label>
 
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm text-ink">
             <input
               type="checkbox"
               checked={config.memoryEnabled}
@@ -270,12 +279,12 @@ export default function ChatSessionPage() {
 
           <div className="ml-auto flex items-center gap-3">
             {usage && (
-              <span className="text-xs text-neutral-400 tabular-nums">
+              <span className="font-mono text-xs text-dim tabular-nums">
                 Σ {usage.total_tokens} (↑{usage.prompt_tokens}/↓{usage.completion_tokens})
               </span>
             )}
             <button
-              className="rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-700"
+              className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
               onClick={onReset}
               disabled={running}
             >
@@ -285,9 +294,9 @@ export default function ChatSessionPage() {
         </div>
 
         <label className="mt-3 block text-sm">
-          <span className="block text-xs uppercase tracking-wide text-neutral-500">System-промпт</span>
+          <span className="block text-xs uppercase tracking-wide text-dim">System-промпт</span>
           <textarea
-            className="mt-1 w-full resize-y rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+            className={`mt-1 w-full resize-y p-2 ${INPUT}`}
             rows={2}
             value={systemDraft}
             onChange={(e) => setSystemDraft(e.target.value)}
@@ -296,7 +305,7 @@ export default function ChatSessionPage() {
         </label>
         <div className="mt-1 flex justify-end">
           <button
-            className="rounded border border-neutral-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-neutral-700"
+            className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
             onClick={() => {
               setSavingSystem(true);
               patchConfig({ system: systemDraft })
@@ -308,18 +317,15 @@ export default function ChatSessionPage() {
             {savingSystem ? 'сохраняю…' : 'сохранить system'}
           </button>
         </div>
-      </section>
+      </Card>
 
       {/* Панели P2b: memory / branches / profile / constraints. Опциональные, не блокируют чат. */}
-      <section className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-        <div className="flex flex-wrap gap-1 border-b border-neutral-200 p-2 dark:border-neutral-800">
+      <section className="rounded-md border border-line bg-surface">
+        <div className="flex flex-wrap gap-1 border-b border-line p-2">
           {(['memory', 'profile', 'constraints'] as PanelTab[]).map((t) => (
             <button
               key={t}
-              className={
-                'rounded px-2 py-1 text-xs ' +
-                (panel === t ? 'bg-accent text-white' : 'border border-neutral-300 hover:border-neutral-400 dark:border-neutral-700')
-              }
+              className={tabBtn(panel === t)}
               onClick={() => setPanel((p) => (p === t ? null : t))}
             >
               {t}
@@ -327,10 +333,7 @@ export default function ChatSessionPage() {
           ))}
           {config.strategy === 'branching' && (
             <button
-              className={
-                'rounded px-2 py-1 text-xs ' +
-                (panel === 'branches' ? 'bg-accent text-white' : 'border border-neutral-300 hover:border-neutral-400 dark:border-neutral-700')
-              }
+              className={tabBtn(panel === 'branches')}
               onClick={() => setPanel((p) => (p === 'branches' ? null : 'branches'))}
             >
               branches
@@ -343,21 +346,18 @@ export default function ChatSessionPage() {
         {panel === 'constraints' && <div className="p-3"><ConstraintsPanel sessionId={sessionId} /></div>}
       </section>
 
-      {/* История */}
-      <section ref={scrollRef} className="h-[40vh] space-y-3 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      {/* История — chat-bubbles (assistant bg-surface, user bg-surface-2, без side-tab) */}
+      <section
+        ref={scrollRef}
+        className="h-[40vh] space-y-3 overflow-y-auto rounded-md border border-line bg-bg p-4"
+      >
         {messages.length === 0 && (
-          <p className="text-sm text-neutral-400">История пуста. Отправьте сообщение ниже.</p>
+          <p className="text-sm text-dim">История пуста. Отправьте сообщение ниже.</p>
         )}
         {messages.map((m, i) => (
-          <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
-            <div
-              className={
-                'inline-block max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ' +
-                (m.role === 'user'
-                  ? 'bg-accent text-white'
-                  : 'bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200')
-              }
-            >
+          <div key={i} className={`rounded-md p-3 text-sm ${m.role === 'user' ? 'bg-surface-2' : 'bg-surface'}`}>
+            <div className="mb-1 font-mono text-xs uppercase tracking-wider text-dim">{m.role}</div>
+            <div className="whitespace-pre-wrap text-ink">
               {m.content || (m.role === 'assistant' && running ? '…' : '')}
             </div>
           </div>
@@ -365,15 +365,13 @@ export default function ChatSessionPage() {
       </section>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
       )}
 
       {/* Ввод */}
       <section className="flex gap-2">
         <textarea
-          className="flex-1 resize-none rounded border border-neutral-300 bg-neutral-50 p-2 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+          className={`flex-1 resize-none p-2 ${INPUT}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           value={input}
@@ -384,20 +382,12 @@ export default function ChatSessionPage() {
           disabled={running}
         />
         <div className="flex flex-col gap-1">
-          <button
-            className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-            onClick={() => void send()}
-            disabled={running || !input.trim()}
-          >
+          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()}>
             {running ? '…' : 'Отправить'}
-          </button>
-          <button
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-            onClick={cancel}
-            disabled={!running}
-          >
+          </Button>
+          <Button variant="ghost" onClick={cancel} disabled={!running}>
             Отмена
-          </button>
+          </Button>
         </div>
       </section>
     </div>

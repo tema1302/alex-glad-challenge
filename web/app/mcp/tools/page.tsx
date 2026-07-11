@@ -1,8 +1,13 @@
 // /mcp/tools — список инструментов настроенного MCP-сервера (день 28, web P5).
 // 'use client': GET /api/mcp/tools. НИКАКИХ импортов core/ — тип инструмента инлайн.
+// Редизайн C (день 30): grid of Cards (структура с description/schema не табличная) + StatusDot.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { StatusDot } from '../../components/ui/StatusDot';
 
 interface McpTool {
   name: string;
@@ -35,62 +40,60 @@ export default function McpToolsPage() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">MCP-инструменты</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Каталог инструментов MCP-сервера (<code className="rounded bg-neutral-200 px-1 text-xs dark:bg-neutral-800">MCP_SERVER_URL</code>).
+        <SectionLabel>mcp · tools</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">MCP-инструменты</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
+          Каталог инструментов MCP-сервера (<code className="font-mono text-[12px] text-ink">MCP_SERVER_URL</code>).
           Вызов — на странице <a href="/mcp/call" className="text-accent hover:underline">/mcp/call</a>.
         </p>
       </section>
 
-      <div className="flex items-center gap-3">
-        <button
-          className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-          onClick={load}
-          disabled={loading}
-        >
-          обновить
-        </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="ghost" onClick={load} disabled={loading}>
+          {loading ? 'загрузка…' : 'обновить'}
+        </Button>
         {configured !== null && (
-          <span className={`rounded px-2 py-0.5 text-xs ${configured ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'}`}>
-            {configured ? 'настроен' : 'не настроен'}
-          </span>
+          <StatusDot status={configured ? 'ok' : 'warn'} label={configured ? 'настроен' : 'не настроен'} />
         )}
       </div>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
       )}
 
-      {tools.length === 0 ? (
-        <p className="text-sm text-neutral-400">
-          {loading ? 'Загрузка…' : configured === false
-            ? 'MCP-сервер не настроен. Задайте MCP_SERVER_URL в .env.'
-            : 'Нет инструментов (или сервер недоступен).'}
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {tools.map((t) => (
-            <li key={t.name} className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{t.name}</div>
-              {t.description && (
-                <p className="mt-1 text-sm text-neutral-500">{t.description}</p>
-              )}
-              {t.inputSchema && Object.keys(t.inputSchema).length > 0 && (
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-xs uppercase tracking-wide text-neutral-500">inputSchema</summary>
-                  <pre className="mt-1 overflow-x-auto rounded bg-neutral-100 p-2 text-xs dark:bg-neutral-950">
-                    {JSON.stringify(t.inputSchema, null, 2)}
-                  </pre>
-                </details>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <section>
+        <SectionLabel>{`tools${tools.length > 0 ? ` · ${tools.length}` : ''}`}</SectionLabel>
+        {tools.length === 0 ? (
+          <p className="text-sm text-dim">
+            {loading ? 'Загрузка…' : configured === false
+              ? 'MCP-сервер не настроен. Задайте MCP_SERVER_URL в .env.'
+              : 'Нет инструментов (или сервер недоступен).'}
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+            {tools.map((t) => (
+              <Card key={t.name}>
+                <div className="font-mono text-sm text-ink">{t.name}</div>
+                {t.description && (
+                  <p className="mt-1 text-sm leading-relaxed text-dim">{t.description}</p>
+                )}
+                {t.inputSchema && Object.keys(t.inputSchema).length > 0 && (
+                  <details className="mt-3">
+                    <summary className="cursor-pointer font-mono text-xs uppercase tracking-wider text-dim">
+                      inputSchema
+                    </summary>
+                    <pre className="mt-2 overflow-x-auto rounded bg-bg p-2 font-mono text-xs text-dim">
+                      {JSON.stringify(t.inputSchema, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -6,6 +6,8 @@
 import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { SseBlogNewsEvent } from '../../../lib/shared/sse';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 type Llm = 'local' | 'cloud';
 
@@ -18,6 +20,9 @@ interface TopNewsItem {
   score: number;
   why: string;
 }
+
+const INPUT =
+  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function BlogNewsPage() {
   const [hours, setHours] = useState(24);
@@ -117,19 +122,19 @@ export default function BlogNewsPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold">Блог-pipeline</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <h1 className="text-xl font-semibold text-ink">Блог-pipeline</h1>
+        <p className="mt-1 text-sm text-dim">
           RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг). Пост сохраняется в{' '}
-          <code className="rounded bg-neutral-200 px-1 text-xs dark:bg-neutral-800">blog.sqlite</code>.
+          <code className="rounded bg-surface-2 px-1 text-xs text-dim">blog.sqlite</code>.
         </p>
       </section>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+      <Card label="Параметры запуска">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Часов (hours)</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Часов (hours)</span>
             <input
-              className="mt-1 w-20 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-20 ${INPUT}`}
               type="number"
               min={1}
               max={168}
@@ -140,9 +145,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Топ (top)</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Топ (top)</span>
             <input
-              className="mt-1 w-16 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-16 ${INPUT}`}
               type="number"
               min={1}
               max={50}
@@ -153,9 +158,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">Пост про (index)</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">Пост про (index)</span>
             <input
-              className="mt-1 w-16 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 w-16 ${INPUT}`}
               type="number"
               min={0}
               value={forIndex}
@@ -165,9 +170,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-neutral-500">LLM</span>
+            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
             <select
-              className="mt-1 rounded border border-neutral-300 bg-neutral-50 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-950"
+              className={`mt-1 ${INPUT}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -178,72 +183,71 @@ export default function BlogNewsPage() {
           </label>
 
           <div className="ml-auto flex gap-2">
-            <button
-              className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
-              onClick={run}
-              disabled={running}
-            >
+            <Button variant="primary" onClick={run} disabled={running}>
               Запустить
-            </button>
-            <button
-              className="rounded border border-neutral-300 px-3 py-1.5 text-sm dark:border-neutral-700"
-              onClick={cancel}
-              disabled={!running}
-            >
+            </Button>
+            <Button variant="ghost" onClick={cancel} disabled={!running}>
               Отмена
-            </button>
+            </Button>
           </div>
         </div>
-        <p className="mt-2 text-xs text-neutral-400">
+        <p className="mt-2 text-xs text-dim">
           Pipeline мутирует blog.sqlite и ходит в RSS/LLM — запуск может занять до минуты.
         </p>
-      </section>
+      </Card>
 
       {running && (
-        <p className="text-sm text-accent">Pipeline работает… (RSS → 3 агента → пост)</p>
+        <Card>
+          <div className="flex items-center gap-2 font-mono text-xs text-dim">
+            <span
+              className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
+              aria-hidden
+            />
+            Pipeline работает… (RSS → 3 агента → пост)
+          </div>
+        </Card>
       )}
 
       {error && (
-        <section className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+        <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
           {error}
         </section>
       )}
 
       {topNews.length > 0 && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">
-            Топ-новости ({topNews.length})
-          </h2>
-          <ul className="mt-2 space-y-1.5 text-sm">
+        <Card label={`Топ-новости (${topNews.length})`}>
+          <ul className="space-y-1.5 text-sm">
             {topNews.map((n, i) => (
               <li key={i}>
-                <span className="text-neutral-400">[{i}]</span>{' '}
+                <span className="text-dim">[{i}]</span>{' '}
                 <span className="text-xs text-accent">{n.score}</span>{' '}
-                <span>{n.title}</span>
-                <span className="block text-xs text-neutral-400">{n.why}</span>
+                <span className="text-ink">{n.title}</span>
+                <span className="block text-xs text-dim">{n.why}</span>
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
 
       {post && (
-        <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Пост #{post.id}</h2>
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <span className="font-mono text-xs uppercase tracking-wider text-dim">
+              Пост #{post.id}
+            </span>
             <Link href={`/blog/posts/${post.id}`} className="text-xs text-accent hover:underline">
               открыть →
             </Link>
           </div>
           {verdict && (
-            <p className="mt-1 text-xs text-neutral-400">вердикт фактчекинга: {verdict}</p>
+            <p className="text-xs text-dim">вердикт фактчекинга: {verdict}</p>
           )}
-          <p className="mt-2 whitespace-pre-wrap text-sm">{post.content}</p>
-        </section>
+          <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{post.content}</p>
+        </Card>
       )}
 
       {!running && !post && !error && topNews.length === 0 && (
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-dim">
           Настройте параметры и нажмите «Запустить». Пост появится здесь и в{' '}
           <Link href="/blog/posts" className="text-accent hover:underline">/blog/posts</Link>.
         </p>

@@ -1,8 +1,13 @@
 // /admin/servers — карточки статусов сервисов (день 28, web P5).
 // 'use client': GET /api/admin/servers → индикаторы configured (БЕЗ spawn, БЕЗ значений ключей).
+// Редизайн C (день 30): grid of <Card> + <StatusDot> (Boolean only). Локальные Card/Badge удалены.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { StatusDot } from '../../components/ui/StatusDot';
 
 interface ServerStatuses {
   mcp: { configured: boolean; host: string | null; authConfigured: boolean };
@@ -13,23 +18,6 @@ interface ServerStatuses {
   botApi: { configured: boolean };
   activeModel: string | null;
   activeProvider: string | null;
-}
-
-function Badge({ on, label }: { on: boolean; label?: string }) {
-  return (
-    <span className={`rounded px-2 py-0.5 text-xs ${on ? 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300' : 'bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400'}`}>
-      {on ? (label ?? 'настроен') : (label ? `${label}: выкл` : 'не настроен')}
-    </span>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">{title}</h2>
-      <div className="mt-2 space-y-1 text-sm">{children}</div>
-    </div>
-  );
 }
 
 export default function ServersPage() {
@@ -50,68 +38,66 @@ export default function ServersPage() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <section>
-        <h1 className="text-xl font-semibold">Сервисы</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <SectionLabel>admin · servers</SectionLabel>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Сервисы</h1>
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
           Статусы конфигурации. Только индикаторы (spawn серверов из UI не предусмотрен).
         </p>
       </section>
 
-      <button className="rounded bg-accent px-3 py-1.5 text-sm font-medium text-white" onClick={load}>
-        обновить
-      </button>
+      <Button variant="ghost" onClick={load}>обновить</Button>
 
       {error && (
-        <p className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
       )}
 
       {!data ? (
-        <p className="text-sm text-neutral-400">Загрузка…</p>
+        <p className="text-sm text-dim">Загрузка…</p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Card title="MCP-сервер">
-            <Badge on={data.mcp.configured} />
-            {data.mcp.host && <div className="font-mono text-xs text-neutral-400">{data.mcp.host}</div>}
-            <div className="text-xs text-neutral-400">auth: {data.mcp.authConfigured ? 'настроен' : 'нет'}</div>
-          </Card>
+        <section>
+          <SectionLabel>configuration · values hidden</SectionLabel>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Card label="MCP-сервер">
+              <StatusDot status={data.mcp.configured ? 'ok' : 'off'} />
+              {data.mcp.host && <div className="font-mono text-xs text-dim">{data.mcp.host}</div>}
+              <div className="font-mono text-xs text-dim">auth: {data.mcp.authConfigured ? 'настроен' : 'нет'}</div>
+            </Card>
 
-          <Card title="Cloud LLM">
-            <Badge on={data.cloud.configured} />
-            {data.cloud.configured && (
-              <div className="text-xs text-neutral-400">{data.cloud.provider} · {data.cloud.model}</div>
-            )}
-          </Card>
+            <Card label="Cloud LLM">
+              <StatusDot status={data.cloud.configured ? 'ok' : 'off'} />
+              {data.cloud.configured && (
+                <div className="font-mono text-xs text-dim">{data.cloud.provider} · {data.cloud.model}</div>
+              )}
+            </Card>
 
-          <Card title="Local LLM (Ollama)">
-            <Badge on={data.local.configured} />
-            {data.local.configured && <div className="text-xs text-neutral-400">{data.local.model}</div>}
-          </Card>
+            <Card label="Local LLM (Ollama)">
+              <StatusDot status={data.local.configured ? 'ok' : 'off'} />
+              {data.local.configured && <div className="font-mono text-xs text-dim">{data.local.model}</div>}
+            </Card>
 
-          <Card title="Embeddings">
-            <Badge on={data.embed.configured} />
-            {data.embed.configured && <div className="text-xs text-neutral-400">{data.embed.model}</div>}
-          </Card>
+            <Card label="Embeddings">
+              <StatusDot status={data.embed.configured ? 'ok' : 'off'} />
+              {data.embed.configured && <div className="font-mono text-xs text-dim">{data.embed.model}</div>}
+            </Card>
 
-          <Card title="MTProto (userbot)">
-            <Badge on={data.mtproto.configured} />
-            <div className="text-xs text-neutral-400">TG-скан/сбор топиков</div>
-          </Card>
+            <Card label="MTProto (userbot)">
+              <StatusDot status={data.mtproto.configured ? 'ok' : 'off'} />
+              <div className="font-mono text-xs text-dim">TG-скан/сбор топиков</div>
+            </Card>
 
-          <Card title="Bot API (публикация)">
-            <Badge on={data.botApi.configured} />
-            <div className="text-xs text-neutral-400">Отправка в канал</div>
-          </Card>
+            <Card label="Bot API (публикация)">
+              <StatusDot status={data.botApi.configured ? 'ok' : 'off'} />
+              <div className="font-mono text-xs text-dim">Отправка в канал</div>
+            </Card>
 
-          <Card title="Активная модель">
-            <div className="text-sm text-neutral-700 dark:text-neutral-300">
-              {data.activeModel ?? '—'}
-            </div>
-            {data.activeProvider && <div className="text-xs text-neutral-400">{data.activeProvider}</div>}
-          </Card>
-        </div>
+            <Card label="Активная модель">
+              <div className="text-sm text-ink">{data.activeModel ?? '—'}</div>
+              {data.activeProvider && <div className="font-mono text-xs text-dim">{data.activeProvider}</div>}
+            </Card>
+          </div>
+        </section>
       )}
     </div>
   );

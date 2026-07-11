@@ -6,6 +6,8 @@
 // переживает reload. Без импортов core/ (тип стадии — из shared/forms).
 import { useCallback, useEffect, useState } from 'react';
 import type { PipelineStageInput } from '../../../lib/shared/forms';
+import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 
 interface HistoryEntry {
   stage: PipelineStageInput;
@@ -97,32 +99,32 @@ export default function PipelinePage() {
   }, []);
 
   if (!view) {
-    return <p className="text-sm text-neutral-500">{error ?? 'Загрузка…'}</p>;
+    return <p className="text-sm text-dim">{error ?? 'Загрузка…'}</p>;
   }
 
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold">Блог-pipeline (FSM)</h1>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+        <h1 className="text-xl font-semibold text-ink">Блог-pipeline (FSM)</h1>
+        <p className="mt-1 text-sm text-dim">
           Конечный автомат блог-агентов. Переходы валидируются core/stateMachine —
           недопустимые шаги возвращают 400. Состояние живёт в pipeline-state.json.
         </p>
       </header>
 
-      <section className="rounded border border-neutral-200 p-4 dark:border-neutral-800">
+      <Card>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="text-xs uppercase text-neutral-500">Стадия</span>
-          <strong className="text-base">{view.labels[view.stage]}</strong>
-          <span className="text-xs text-neutral-500">
-            code: <code>{view.stage}</code>
+          <span className="text-xs uppercase text-dim">Стадия</span>
+          <strong className="text-base text-ink">{view.labels[view.stage]}</strong>
+          <span className="text-xs text-dim">
+            code: <code className="font-mono text-dim">{view.stage}</code>
           </span>
           {view.revisionCount > 0 && (
-            <span className="text-xs text-neutral-500">правок: {view.revisionCount}</span>
+            <span className="text-xs text-dim">правок: {view.revisionCount}</span>
           )}
         </div>
-        <p className="mt-2 text-sm">
-          <span className="text-neutral-500">Ожидаемое действие: </span>
+        <p className="mt-2 text-sm text-ink">
+          <span className="text-dim">Ожидаемое действие: </span>
           {view.expectedAction}
         </p>
 
@@ -137,10 +139,10 @@ export default function PipelinePage() {
                 className={[
                   'rounded px-2 py-1',
                   isCurrent
-                    ? 'bg-accent text-white'
+                    ? 'bg-accent text-accent-ink'
                     : isDone
-                      ? 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-200'
-                      : 'bg-neutral-100 text-neutral-400 dark:bg-neutral-900',
+                      ? 'border border-line-strong text-dim'
+                      : 'border border-line text-dim opacity-60',
                 ].join(' ')}
               >
                 {view.labels[s]}
@@ -148,57 +150,48 @@ export default function PipelinePage() {
             );
           })}
         </ol>
-      </section>
+      </Card>
 
       <section>
-        <h2 className="mb-2 text-sm font-medium">Разрешённые переходы</h2>
+        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-dim">// Разрешённые переходы</h2>
         {view.allowed.length === 0 ? (
-          <p className="text-sm text-neutral-500">Из этой стадии нет переходов.</p>
+          <p className="text-sm text-dim">Из этой стадии нет переходов.</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {view.allowed.map((to) => (
-              <button
-                key={to}
-                type="button"
-                disabled={busy}
-                onClick={() => transition(to)}
-                className="rounded border border-accent px-3 py-1.5 text-sm text-accent hover:bg-accent hover:text-white disabled:opacity-50"
-              >
+              <Button key={to} variant="ghost" disabled={busy} onClick={() => transition(to)}>
                 → {view.labels[to]}
-              </button>
+              </Button>
             ))}
           </div>
         )}
         <div className="mt-3">
-          <button
-            type="button"
-            disabled={busy || view.stage === 'idle'}
-            onClick={reset}
-            className="rounded border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
+          <Button variant="ghost" disabled={busy || view.stage === 'idle'} onClick={reset}>
             Сбросить в idle
-          </button>
+          </Button>
         </div>
       </section>
 
       {error && (
-        <p className="rounded bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
           {error}
         </p>
       )}
 
       <section>
-        <h2 className="mb-2 text-sm font-medium">История переходов ({view.history.length})</h2>
+        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-dim">
+          // История переходов ({view.history.length})
+        </h2>
         {view.history.length === 0 ? (
-          <p className="text-sm text-neutral-500">Переходов ещё не было.</p>
+          <p className="text-sm text-dim">Переходов ещё не было.</p>
         ) : (
           <ul className="space-y-1 text-xs">
             {view.history
               .slice()
               .reverse()
               .map((h, i) => (
-                <li key={i} className="font-mono text-neutral-600 dark:text-neutral-400">
-                  <span className="text-neutral-400">
+                <li key={i} className="font-mono text-dim">
+                  <span className="opacity-70">
                     {new Date(h.timestamp).toLocaleTimeString()}
                   </span>{' '}
                   {h.step}
