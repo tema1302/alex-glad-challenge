@@ -2,15 +2,162 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Тема: zinc-нейтральный фон + accent indigo/violet. next-themes вешает класс
-   .dark на <html>; инверты заданы через dark:-классы в компонентах. */
+/*
+  Matrix-дизайн-система. forcedTheme="dark" — тема всегда тёмная.
+  Токены в формате `R G B` чтобы Tailwind opacity-modifier (<alpha-value>) работал.
+  html bg = void-deep безусловно (нет white-flash до гидратации next-themes).
+*/
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
+
+  --mx-void: 4 8 6;
+  --mx-void-deep: 3 6 5;
+  --mx-surface: 10 17 13;
+  --mx-surface-2: 14 24 19;
+  --mx-green: 0 255 102;
+  --mx-green-bright: 204 255 204;
+  --mx-cyan: 0 229 255;
+  --mx-magenta: 255 43 214;
+  --mx-amber: 255 176 32;
+  --mx-red: 255 59 59;
+  --mx-text: 226 232 220;
+  --mx-text-dim: 120 140 128;
+  --mx-border: 22 38 30;
+  --mx-border-glow: 0 255 102;
+
+  /* Landing (machine-nameplate) scoped vars. Не трогают --mx-* (внутренние страницы). */
+  --ai-ink: 10 18 24; /* #0A1218 cold blue-black — не neutral zinc дефолт */
+  --ai-panel: 17 28 36; /* #111C24 raised surface */
+  --ai-line: 30 46 56; /* #1E2E38 hairline */
+  --ai-bone: 232 228 216; /* #E8E4D8 warm off-white text */
+  --ai-dim: 122 138 146; /* #7A8A92 muted slate */
+  --ai-amber: 245 166 35; /* #F5A623 sodium/amber phosphor — не acid-green/vermilion */
+  --ai-teal: 63 184 175; /* #3FB8AF secondary cool signal */
+
+  background-color: rgb(var(--mx-void-deep));
 }
 
-html {
-  background-color: #fafafa; /* neutral-50 */
+@layer base {
+  html {
+    background-color: rgb(var(--mx-void-deep));
+    color: rgb(var(--mx-text));
+  }
+  html.dark {
+    background-color: rgb(var(--mx-void-deep));
+  }
+  body {
+    background-color: rgb(var(--mx-void));
+    color: rgb(var(--mx-text));
+    font-family: ui-monospace, 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', Menlo, Consolas,
+      'Liberation Mono', monospace;
+  }
 }
-html.dark {
-  background-color: #0a0a0a; /* neutral-950 */
+
+/* Hero-терминал: построчный fade-in. Reduced-motion глушится глобальным override ниже. */
+@keyframes ht-fade {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Landing nameplate motion: один orchestrated момент (carrier heartbeat + plate sweep на load).
+   Reduced-motion глушится глобальным override ниже (animation-duration ~0). */
+@keyframes ai-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes ai-carrier {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: 0 0 5px rgb(var(--mx-green)), 0 0 12px rgba(0, 255, 102, 0.45);
+  }
+  .text-glow-cyan {
+    text-shadow: 0 0 5px rgb(var(--mx-cyan)), 0 0 12px rgba(0, 229, 255, 0.45);
+  }
+  .text-glow-magenta {
+    text-shadow: 0 0 5px rgb(var(--mx-magenta)), 0 0 12px rgba(255, 43, 214, 0.45);
+  }
+  /* CRT scanlines overlay (статичный — без анимации, photosafety). */
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 255, 102, 0.035) 0px,
+      rgba(0, 255, 102, 0.035) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+  .glass {
+    background: rgba(10, 17, 13, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgb(var(--mx-border));
+  }
+  .neon-border {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .neon-border:hover {
+    border-color: rgb(var(--mx-border-glow));
+    box-shadow: 0 0 12px rgba(0, 255, 102, 0.45), inset 0 0 8px rgba(0, 255, 102, 0.12);
+  }
+  .active-nav {
+    color: rgb(var(--mx-green));
+    text-shadow: 0 0 5px rgba(0, 255, 102, 0.6);
+  }
+  .gradient-neon {
+    background-image: linear-gradient(
+      90deg,
+      rgb(var(--mx-green)),
+      rgb(var(--mx-cyan)),
+      rgb(var(--mx-magenta))
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Landing: machine-nameplate signature. */
+  .ai-sweep::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgb(var(--ai-amber)) 50%, transparent);
+    transform: translateX(-100%);
+    animation: ai-sweep 1.5s ease-out 0.15s forwards;
+    pointer-events: none;
+  }
+  .ai-carrier {
+    animation: ai-carrier 1.9s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

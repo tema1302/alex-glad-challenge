@@ -1,30 +1,41 @@
 'use client';
 
-// Переключатель тема dark/light. next-themes даёт хук; монтируем только после
-// hydration (иначе SSR/CSR-несоответствие класса темы).
+// RainToggle: тема всегда dark (forcedTheme), кнопка переключает цифровой дождь.
+// localStorage 'mx-rain' = 'on'|'off' + dispatch 'mx-rain-change' (MatrixRain слушает).
+// mounted-gate — иначе SSR/CSR-несоответствие (читаем localStorage только в браузере).
 import { useEffect, useState } from 'react';
-import { useTheme } from 'next-themes';
 
 export function ThemeToggle() {
-  const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const [rain, setRain] = useState(true);
+
+  useEffect(() => {
+    setMounted(true);
+    setRain(localStorage.getItem('mx-rain') !== 'off');
+  }, []);
+
+  const toggle = () => {
+    const next = !rain;
+    setRain(next);
+    localStorage.setItem('mx-rain', next ? 'on' : 'off');
+    window.dispatchEvent(new Event('mx-rain-change'));
+  };
 
   if (!mounted) {
     return (
-      <button className="rounded border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700" aria-hidden>
+      <button className="rounded border border-neutral-700 px-2 py-1 text-sm" aria-hidden>
         ···
       </button>
     );
   }
-  const isDark = theme === 'dark';
+
   return (
     <button
-      onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="rounded border border-neutral-300 px-2 py-1 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"
-      title="Переключить тему"
+      onClick={toggle}
+      className="rounded border border-neutral-700 px-2 py-1 text-sm text-neutral-300 hover:bg-neutral-900"
+      title="Цифровой дождь вкл/выкл"
     >
-      {isDark ? '☀ светлая' : '☾ тёмная'}
+      {rain ? '◉ ДОЖДЬ' : '◯ ДОЖДЬ'}
     </button>
   );
 }
