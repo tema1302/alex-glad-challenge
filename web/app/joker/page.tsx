@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SseEvent, SseUsage } from '../../lib/shared/sse';
+import { IT_FACTS } from '../../lib/shared/it-facts';
 import { Button } from '../components/ui/Button';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { StatusDot } from '../components/ui/StatusDot';
@@ -67,6 +68,36 @@ function parseBadge(content: string, streaming: boolean): { badge: string | null
     return { badge: null, body: content };
   }
   return { badge: content.slice(0, nl).trim(), body: content.slice(nl + 1) };
+}
+
+// Карусель IT-фактов пока Ollama думает и ни одного токена ещё не пришло.
+// Mount/unmount управляется родителем через условие `streaming && m.content === ''`:
+// mount — запуск setInterval 3с, unmount (первый токен / running=false / error) — cleanup.
+// SSR-safe: useEffect только клиент, useState(0) детерминирован → server/client рендерят
+// IT_FACTS[0] одинаково, hydration mismatch нет. Ротация aria-hidden — parent section
+// уже role="log" aria-live="polite", доп. live-роль была бы double-announce.
+function FactLoader() {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (IT_FACTS.length === 0) return;
+    const id = setInterval(() => {
+      setIdx((i) => (i + 1) % IT_FACTS.length);
+    }, 3000);
+    return () => clearInterval(id);
+  }, []);
+  if (IT_FACTS.length === 0) {
+    return <p className="text-sm text-dim">Думаю…</p>;
+  }
+  return (
+    <div>
+      <p className="font-mono text-xs uppercase text-dim">
+        Готовлю шутку — отвлекись на факт:
+      </p>
+      <p key={idx} className="fact-fade" aria-hidden="true">
+        {IT_FACTS[idx]}
+      </p>
+    </div>
+  );
 }
 
 export default function JokerPage() {
@@ -303,10 +334,14 @@ export default function JokerPage() {
                 {m.role === 'user' ? 'ВЫ' : 'CINE-PUN'}
               </div>
               {badge && <div className="mb-1 font-mono text-xs text-dim">{badge}</div>}
-              <div className="whitespace-pre-wrap break-words text-ink">
-                {body}
-                {streaming && <span className="text-accent animate-pulse" aria-hidden="true">▍</span>}
-              </div>
+              {streaming && m.content === '' ? (
+                <FactLoader />
+              ) : (
+                <div className="whitespace-pre-wrap break-words text-ink">
+                  {body}
+                  {streaming && <span className="text-accent animate-pulse" aria-hidden="true">▍</span>}
+                </div>
+              )}
             </div>
           );
         })}
