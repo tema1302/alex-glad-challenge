@@ -3,11 +3,11 @@
 // POST : SSE {token → done(usage)} | error. executeChat с persona-opt'ами (bare/fewShot/knobs/clean).
 // PATCH: { reset:true } → clearMessages + usage=0.
 //
-// Шаблон: гибрид api/joke/route.ts (75с-timeout + req.signal в одном AbortController) и
+// Шаблон: гибрид api/joke/route.ts (180с-timeout + req.signal в одном AbortController) и
 // api/chat/[sessionId]/route.ts (GET/PATCH + executeChat + SSE-обёртка).
 //
 // Security: (1) zod на входе (text 1..8000, temperature 0.3..1.2); (2) llm жёстко 'local'
-// (cloud-ветка не активируется — поле llm не принимается); (3) AbortSignal/timeout 75с;
+// (cloud-ветка не активируется — поле llm не принимается); (3) AbortSignal/timeout 180с;
 // (4) safeMessage в catch — без секрета/URL/пути; (5) clean() на ответе (opt-gate в executeChat).
 import 'server-only';
 import { NextRequest } from 'next/server';
@@ -23,13 +23,17 @@ import { JOKER_SYSTEM, JOKER_FEWSHOT, JOKER_KNOBS } from '../../../../lib/server
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Серверный cap 60-90с (security §2): при зависшей Ollama route обрывается сам.
-const TIMEOUT_MS = 75_000;
+// Серверный cap (security §2): при зависшей Ollama route обрывается сам. 180с = 3 мин —
+// покрывает cold-load локальной модели (~9.3с на стенде) + prompt-eval numCtx 4096 + few-shot +
+// multi-turn историю с ~20x запасом; даёт шанс до стрима при холодной/занятой Ollama.
+const TIMEOUT_MS = 180_000;
 
 const SSE_HEADERS: Record<string, string> = {
   'Content-Type': 'text/event-stream; charset=utf-8',
   'Cache-Control': 'no-cache, no-transform',
   Connection: 'keep-alive',
+  // Анти-буферизация для nginx/reverse-proxy в проде: SSE должен flush'ить по чанку.
+  'X-Accel-Buffering': 'no',
 };
 
 // Локальная схема (forms.ts от joke-схем очищен). llm НЕ принимается — жёстко 'local'.

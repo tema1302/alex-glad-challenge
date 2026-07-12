@@ -26,6 +26,34 @@ const TEMP_MAX = 1.2;
 const TEMP_STEP = 0.05;
 const TEMP_DEFAULT = 0.9;
 
+// Должно совпадать с серверным TIMEOUT_MS (app/api/joke/session/route.ts). Только для
+// текста хинта при timeout-abort.
+const JOKER_TIMEOUT_SEC = 180;
+
+type JokerErrorHint =
+  | { kind: 'cancelled' }
+  | { kind: 'timeout' }
+  | { kind: 'refused' }
+  | { kind: 'other' };
+
+// Дискриминация по тексту ошибки для точного хинта (4 ветки). Не плодим абстракции:
+// подстрока message. user-cancel = 'Отменено' (клиентский catch); серверный AbortError =
+// '...aborted'; connection-refused = 'fetch failed'/'Failed to fetch'/'ECONNREFUSED'/'network error'.
+function classifyJokerError(msg: string): JokerErrorHint {
+  if (msg === 'Отменено') return { kind: 'cancelled' };
+  const lower = msg.toLowerCase();
+  if (lower.includes('aborted')) return { kind: 'timeout' };
+  if (
+    lower.includes('fetch failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('econnrefused') ||
+    lower.includes('network error')
+  ) {
+    return { kind: 'refused' };
+  }
+  return { kind: 'other' };
+}
+
 // «Умный контекст»: первая строка assistant-реплики «🎬 Фильм (год) — сцена» (обязана промптом)
 // → badge font-mono text-dim; остаток — тело шутки. Пока первая строка стримится (без \n),
 // badge не показываем. Если модель не выдала 🎬 — весь текст телом (graceful). React text-render,
@@ -191,6 +219,8 @@ export default function JokerPage() {
     );
   }
 
+  const errorHint = error ? classifyJokerError(error) : null;
+
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       {/* Хедер */}
@@ -285,9 +315,16 @@ export default function JokerPage() {
       {error && (
         <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">
           {error}
-          <span className="mt-1 block text-dim">
-            Ollama не отвечает? Запустите <code className="font-mono text-err">ollama serve</code> на 127.0.0.1:11434 и повторите.
-          </span>
+          {errorHint?.kind === 'refused' && (
+            <span className="mt-1 block text-dim">
+              Ollama не отвечает? Запустите <code className="font-mono text-err">ollama serve</code> на 127.0.0.1:11434 и повторите.
+            </span>
+          )}
+          {errorHint?.kind === 'timeout' && (
+            <span className="mt-1 block text-dim">
+              Превысили время ожидания ({JOKER_TIMEOUT_SEC}с). Ollama долго отвечает — попробуйте ещё раз.
+            </span>
+          )}
         </p>
       )}
 

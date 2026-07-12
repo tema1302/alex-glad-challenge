@@ -14,6 +14,11 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Отключаем origin-compression (gzip/brotli): default compress:true в prod
+  // (next start/standalone) буферизует SSE-ответы (/api/joke/session, /api/chat/*) —
+  // токены идут батчами вместо token-by-token. Дополняет SSE-Headers 'X-Accel-Buffering':'no'
+  // на уровне reverse-proxy.
+  compress: false,
   // Production-build в standalone-режиме (scoped override день 30): артефакт в
   // web/.next/standalone/ — внутри web/.next/, уже в .gitignore. serverExternalPackages
   // + outputFileTracingRoot корректно трейсят нативные/тяжёлые зависимости challenge.
