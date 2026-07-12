@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { navGroups } from '../../data/nav';
 import { getKeysStatus } from '../../lib/server/env';
+import { MobileNav } from './MobileNav';
 
 const core = navGroups.find((g) => g.tag === 'core') ?? navGroups[0];
 
@@ -16,12 +17,15 @@ export default function Nav() {
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-bg/95 backdrop-blur">
       <div className="flex h-12 items-center justify-between px-5">
-        <Link href="/" className="font-mono text-sm font-semibold tracking-tight text-ink">
-          Артемий
-          <span className="text-accent">·</span>
-          <span className="text-dim">AI</span>
-        </Link>
-        <nav className="flex items-center gap-1">
+        <div className="flex items-center gap-1">
+          <MobileNav />
+          <Link href="/" className="font-mono text-sm font-semibold tracking-tight text-ink">
+            Артемий
+            <span className="text-accent">·</span>
+            <span className="text-dim">AI</span>
+          </Link>
+        </div>
+        <nav className="hidden items-center gap-1 sm:flex">
           {core.items.map((it) => (
             <Link
               key={it.href}
@@ -32,7 +36,7 @@ export default function Nav() {
             </Link>
           ))}
         </nav>
-        <div className="font-mono text-xs text-dim">
+        <div className="hidden font-mono text-xs text-dim sm:block">
           {model ? (
             <span className="inline-flex items-center gap-1.5">
               <span className="inline-block h-2 w-2 rounded-full bg-ok" />

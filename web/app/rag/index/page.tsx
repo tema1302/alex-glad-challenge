@@ -174,26 +174,28 @@ export default function RagIndexPage() {
       {result && (
         <section className="rounded-md border border-ok/40 bg-ok/10 p-4">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-ok">Готово</h2>
-          <table className="mt-2 w-full text-xs">
-            <thead>
-              <tr className="text-left text-dim">
-                <th className="py-1 pr-3">стратегия</th>
-                <th className="py-1 pr-3">чанков</th>
-                <th className="py-1 pr-3">среднее симв</th>
-                <th className="py-1">dim</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.map((r) => (
-                <tr key={r.strategy} className="tabular-nums text-ink">
-                  <td className="py-1 pr-3 font-mono">{r.strategy}</td>
-                  <td className="py-1 pr-3">{r.chunks}</td>
-                  <td className="py-1 pr-3">{r.avgLen}</td>
-                  <td className="py-1">{r.dim ?? '-'}</td>
+          <div className="overflow-x-auto">
+            <table className="mt-2 w-full text-xs">
+              <thead>
+                <tr className="text-left text-dim">
+                  <th className="py-1 pr-3">стратегия</th>
+                  <th className="py-1 pr-3">чанков</th>
+                  <th className="py-1 pr-3">среднее симв</th>
+                  <th className="py-1">dim</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {result.map((r) => (
+                  <tr key={r.strategy} className="tabular-nums text-ink">
+                    <td className="py-1 pr-3 font-mono">{r.strategy}</td>
+                    <td className="py-1 pr-3">{r.chunks}</td>
+                    <td className="py-1 pr-3">{r.avgLen}</td>
+                    <td className="py-1">{r.dim ?? '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
     </div>

@@ -14,7 +14,7 @@ import { NextRequest } from 'next/server';
 import { z } from 'zod';
 
 import type { SseEvent } from '../../../../lib/shared/sse';
-import { executeChat } from '../../../../lib/server/chat-adapter';
+import { executeGuardedJoker } from '../../../../lib/server/joke-guard';
 import { getWebSessionStore, ensureJokerSession } from '../../../../lib/server/web-session-store';
 import { withDb } from '../../../../lib/server/db';
 import { safeMessage } from '../../../../lib/server/safe-message';
@@ -82,7 +82,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
       };
       try {
-        for await (const ev of executeChat(sessionId, text, {
+        for await (const ev of executeGuardedJoker(sessionId, text, {
           llm: 'local',
           signal: ac.signal,
           systemBehavior: 'bare',

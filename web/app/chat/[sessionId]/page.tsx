@@ -15,6 +15,7 @@ import { ProfilePanel } from './panels/ProfilePanel';
 import { ConstraintsPanel } from './panels/ConstraintsPanel';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { FactLoader } from '../../components/FactLoader';
 
 type PanelTab = 'memory' | 'branches' | 'profile' | 'constraints';
 
@@ -283,13 +284,9 @@ export default function ChatSessionPage() {
                 Σ {usage.total_tokens} (↑{usage.prompt_tokens}/↓{usage.completion_tokens})
               </span>
             )}
-            <button
-              className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-              onClick={onReset}
-              disabled={running}
-            >
+            <Button variant="ghost" onClick={onReset} disabled={running}>
               reset
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -304,8 +301,8 @@ export default function ChatSessionPage() {
           />
         </label>
         <div className="mt-1 flex justify-end">
-          <button
-            className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
+          <Button
+            variant="ghost"
             onClick={() => {
               setSavingSystem(true);
               patchConfig({ system: systemDraft })
@@ -315,7 +312,7 @@ export default function ChatSessionPage() {
             disabled={running || savingSystem || systemDraft === config.system}
           >
             {savingSystem ? 'сохраняю…' : 'сохранить system'}
-          </button>
+          </Button>
         </div>
       </Card>
 
@@ -358,7 +355,7 @@ export default function ChatSessionPage() {
           <div key={i} className={`rounded-md p-3 text-sm ${m.role === 'user' ? 'bg-surface-2' : 'bg-surface'}`}>
             <div className="mb-1 font-mono text-xs uppercase tracking-wider text-dim">{m.role}</div>
             <div className="whitespace-pre-wrap text-ink">
-              {m.content || (m.role === 'assistant' && running ? '…' : '')}
+              {m.content || (m.role === 'assistant' && running ? <FactLoader /> : '')}
             </div>
           </div>
         ))}

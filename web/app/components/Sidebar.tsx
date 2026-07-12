@@ -7,7 +7,7 @@ import { navGroups } from '../../data/nav';
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="sticky top-12 h-[calc(100vh-3rem)] w-56 shrink-0 overflow-y-auto border-r border-line px-3 py-4">
+    <aside className="sticky top-12 hidden h-[calc(100vh-3rem)] w-56 shrink-0 overflow-y-auto border-r border-line px-3 py-4 lg:block">
       {navGroups.map((g) => {
         const hasActive = g.items.some(
           (it) => pathname === it.href || pathname.startsWith(it.href + '/'),

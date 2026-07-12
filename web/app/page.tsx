@@ -197,12 +197,12 @@ export default async function HomePage() {
               const isCurrent = day === 30;
               const labeled = day === 1 || day % 5 === 0;
               return (
-                <div key={day} className="flex flex-1 flex-col items-center gap-1">
+                <div key={day} className="flex min-w-0 flex-1 flex-col items-center gap-1">
                   <div
                     className={`h-10 w-full rounded-[1px] ${isCurrent ? 'bg-accent' : 'bg-line-strong'}`}
                     title={`day ${day}`}
                   />
-                  <span className={`font-mono text-[9px] ${isCurrent ? 'text-accent' : 'text-dim'}`}>
+                  <span className={`font-mono text-[10px] leading-none ${isCurrent ? 'text-accent' : 'text-dim'}`}>
                     {labeled || isCurrent ? day : ''}
                   </span>
                 </div>

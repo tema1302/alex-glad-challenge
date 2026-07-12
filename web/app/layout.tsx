@@ -1,6 +1,6 @@
 // Корневой layout. forcedTheme="dark" — тема всегда тёмная (нет light-режима).
 // Editorial-каркас: Header (Nav) сверху, main flex-1, Footer снизу (flex-col min-h-screen).
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
 import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
@@ -29,6 +29,10 @@ export const metadata: Metadata = {
   title: 'Артемий — AI-инженер',
   description: 'Локальные LLM-агенты, RAG, TG-автоматизация. Лендинг стэка на 127.0.0.1.',
 };
+
+// Viewport — отдельный export (Next 15 App Router). Без него мобильные браузеры
+// рендерят виртуальный ~980px viewport → сайт выглядит как уменьшенный десктоп.
+export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // nonce из middleware.ts — пробрасывается в next-themes prop `nonce`, чтобы anti-FOUC
