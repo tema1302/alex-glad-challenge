@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
 import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 import { ThemeProvider } from './components/ThemeProvider';
+import { PerfProbe } from './components/perf-probe';
 import Nav from './components/Nav';
 import { Sidebar } from './components/Sidebar';
 import Footer from './components/Footer';
@@ -48,6 +49,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <Footer />
           </div>
         </ThemeProvider>
+        <PerfProbe />
       </body>
     </html>
   );

@@ -115,13 +115,14 @@ export class WebSessionStore {
   // --- Sessions ---
 
   createSession(opts: {
+    idPrefix?: 's' | 'j';
     strategy?: StrategyName;
     system?: string;
     windowSize?: number;
     memoryEnabled?: boolean;
     activeProfile?: string | null;
   } = {}): string {
-    const id = `s-${randomUUID()}`;
+    const id = `${opts.idPrefix ?? 's'}-${randomUUID()}`;
     const now = new Date().toISOString();
     this.db.prepare(
       `INSERT INTO web_sessions
@@ -141,15 +142,41 @@ export class WebSessionStore {
     return id;
   }
 
-  listSessions(): SessionListItem[] {
-    const rows = this.db.prepare(
-      `SELECT s.id AS id, s.strategy AS strategy, s.system_prompt AS system_prompt,
-              s.memory_enabled AS memory_enabled, s.created_at AS created_at,
-              s.updated_at AS updated_at,
-              (SELECT COUNT(*) FROM web_messages m WHERE m.session_id = s.id) AS msg_count
-       FROM web_sessions s
-       ORDER BY s.updated_at DESC`,
-    ).all() as Array<{
+  // Joker-сессия: тот же web_sessions/web_messages, но id с префиксом 'j-' (изоляция от
+  // /chat без DDL-миграции). strategy='sliding' windowSize=12, memory off — «большой диалог»
+  // держится окном, без long-term memory/profiles/constraints-инъекций.
+  createJokerSession(opts: { system: string }): string {
+    return this.createSession({
+      idPrefix: 'j',
+      strategy: 'sliding',
+      windowSize: 12,
+      memoryEnabled: false,
+      system: opts.system,
+    });
+  }
+
+  listSessions(kindPrefix?: 's-' | 'j-'): SessionListItem[] {
+    // Фильтр по 2-символьному префиксу id ('s-' / 'j-') — parameterized, без строковой
+    // интерполяции (SQLi-инвариант). Без аргумента — все строки (back-compat).
+    const rows = (kindPrefix
+      ? this.db.prepare(
+        `SELECT s.id AS id, s.strategy AS strategy, s.system_prompt AS system_prompt,
+                s.memory_enabled AS memory_enabled, s.created_at AS created_at,
+                s.updated_at AS updated_at,
+                (SELECT COUNT(*) FROM web_messages m WHERE m.session_id = s.id) AS msg_count
+         FROM web_sessions s
+         WHERE substr(s.id, 1, 2) = ?
+         ORDER BY s.updated_at DESC`,
+      ).all(kindPrefix)
+      : this.db.prepare(
+        `SELECT s.id AS id, s.strategy AS strategy, s.system_prompt AS system_prompt,
+                s.memory_enabled AS memory_enabled, s.created_at AS created_at,
+                s.updated_at AS updated_at,
+                (SELECT COUNT(*) FROM web_messages m WHERE m.session_id = s.id) AS msg_count
+         FROM web_sessions s
+         ORDER BY s.updated_at DESC`,
+      ).all()
+    ) as Array<{
       id: string; strategy: StrategyName; system_prompt: string;
       memory_enabled: number; created_at: string; updated_at: string; msg_count: number;
     }>;
@@ -418,12 +445,25 @@ export class WebSessionStore {
   }
 }
 
-// Создаёт дефолтную сессию, если в store ещё ничего нет. Возвращает её id.
+// Создаёт дефолтную сессию /chat, если в store ещё ничего нет. Возвращает её id.
+// Фильтр 's-' — joker-сессии (префикс 'j-') не становятся дефолтной chat-сессией.
 export function ensureDefaultSession(): Promise<string> {
   return withDb(() => {
     const s = getWebSessionStore();
-    const list = s.listSessions();
+    const list = s.listSessions('s-');
     if (list.length > 0) return list[0].id;
     return s.createSession();
+  });
+}
+
+// Single-session модель /joker: одна joker-сессия на инсталляцию (префикс 'j-'). Найти
+// последнюю актуальную — иначе создать с JOKER_SYSTEM. system передан параметром, чтобы
+// store не зависел от persona-модуля (store ← persona без циклы).
+export function ensureJokerSession(system: string): Promise<string> {
+  return withDb(() => {
+    const s = getWebSessionStore();
+    const list = s.listSessions('j-');
+    if (list.length > 0) return list[0].id;
+    return s.createJokerSession({ system });
   });
 }

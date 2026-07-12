@@ -11,7 +11,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET(): Promise<Response> {
-  const list = await withDb(() => getWebSessionStore().listSessions());
+  // Только /chat-сессии (префикс 's-'); joker-сессии ('j-') в списке /chat не светятся.
+  const list = await withDb(() => getWebSessionStore().listSessions('s-'));
   return Response.json({ sessions: list });
 }
 

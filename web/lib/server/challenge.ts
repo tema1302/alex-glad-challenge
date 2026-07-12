@@ -23,7 +23,7 @@ export { makeEmbedder } from '@challenge/core/rag/embedder';
 export { answerWithRag, answerNoRag, GUARD_ANSWER } from '@challenge/core/rag/rag';
 export type { RagDebug, RagAnswer, RagStage } from '@challenge/core/rag/rag';
 export type { ScoredChunk, Quote } from '@challenge/core/rag/types';
-export type { ChatMessage, Role } from '@challenge/core/types';
+export type { ChatMessage, Role, ChatParams } from '@challenge/core/types';
 export { msg } from '@challenge/core/types';
 // P2: Chat-агент — память, стратегии, профиль, инварианты (consume as-is).
 export { Memory } from '@challenge/core/memory';

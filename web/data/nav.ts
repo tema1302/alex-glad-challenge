@@ -26,7 +26,10 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'chat',
-    items: [{ href: '/chat', label: 'Chat' }],
+    items: [
+      { href: '/chat', label: 'Chat' },
+      { href: '/joker', label: 'Шутник' },
+    ],
   },
   {
     tag: 'tg',

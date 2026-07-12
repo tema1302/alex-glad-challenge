@@ -20,8 +20,10 @@ import {
   StickyFacts,
   Branching,
   msg,
+  clean,
   dataPath,
   type ChatMessage,
+  type ChatParams,
   type ContextStrategy,
 } from './challenge';
 import { getWebSessionStore, type StrategyName, type Usage } from './web-session-store';
@@ -86,7 +88,21 @@ export interface ExecuteChatResult {
 export async function* executeChat(
   sessionId: string,
   text: string,
-  opts: { llm?: LlmPref; signal?: AbortSignal } = {},
+  opts: {
+    llm?: LlmPref;
+    signal?: AbortSignal;
+    // 'default' = подмешивать STRUCTURAL_SYSTEM (текущее поведение /chat);
+    // 'bare' = без него (joker: персоне структурный шаблон «ПЛАН/ВАЛИДАЦИЯ/ОТВЕТ» мешает).
+    systemBehavior?: 'bare' | 'default';
+    // Few-shot примеры (user/assistant), вставляются после системных сообщений, до истории.
+    fewShot?: ChatMessage[];
+    // Грубый рычаг температуры; точная настройка — через knobs.
+    temperature?: number;
+    // Полный bag sampling-параметров (temperature/maxTokens/stop/numCtx/seed). Merge поверх дефолта.
+    knobs?: ChatParams;
+    // clean() на LLM-ответе перед persist+done (defense-in-depth: ответ = tainted).
+    clean?: boolean;
+  } = {},
 ): AsyncGenerator<SseEvent> {
   // --- load (под mutex) ---
   const data = await withDb(() => getWebSessionStore().load(sessionId));
@@ -130,22 +146,31 @@ export async function* executeChat(
   const constraintMsgs = constraints.toSystemMessages();
   const profileMsg = msg.system(profile.toSystemBlock());
 
+  // systemBehavior='bare' (joker) — структурный шаблон НЕ подмешиваем (убил бы персону).
+  // fewShot — после профиль/системных сообщений, до истории (шаблон стиля раньше живых реплик).
+  const sysBlock: ChatMessage[] = opts.systemBehavior === 'bare' ? [] : [STRUCTURAL_SYSTEM];
+  const fewShot: ChatMessage[] = opts.fewShot ?? [];
+
   let context: ChatMessage[];
   if (data.memoryEnabled) {
     // memory.context уже включает: system + long-term + working + short-term (с новой user-репликой).
-    context = [...constraintMsgs, profileMsg, STRUCTURAL_SYSTEM, ...memory.context(systemPrompt)];
+    context = [...constraintMsgs, profileMsg, ...sysBlock, ...fewShot, ...memory.context(systemPrompt)];
   } else {
     // strategy.context — только сообщения; system-промпт добавляем явно (улучшение над repl,
     // где strategy-mode упускает session.system из контекста).
-    context = [...constraintMsgs, msg.system(systemPrompt), profileMsg, STRUCTURAL_SYSTEM, ...strategy.context()];
+    context = [...constraintMsgs, msg.system(systemPrompt), profileMsg, ...sysBlock, ...fewShot, ...strategy.context()];
   }
 
   const client = pickLlmClient(opts.llm ?? 'local');
 
+  // sampling: дефолт 0.7 (текущее /chat) → merge knobs → явный temperature переопределяет.
+  const params: ChatParams = { temperature: 0.7, ...(opts.knobs ?? {}) };
+  if (opts.temperature !== undefined) params.temperature = opts.temperature;
+
   // --- stream (без mutex) ---
   let answer = '';
   try {
-    for await (const delta of client.chatStream(context, { temperature: 0.7 }, opts.signal)) {
+    for await (const delta of client.chatStream(context, params, opts.signal)) {
       answer += delta;
       yield { type: 'token', delta };
     }
@@ -154,6 +179,10 @@ export async function* executeChat(
     yield { type: 'error', message };
     return;
   }
+
+  // clean() opt-gate: режет control-chars из tainted LLM-ответа перед persist+done.
+  // /chat не передаёт clean → нулевая регрессия; joker передаёт clean:true.
+  if (opts.clean) answer = clean(answer);
 
   // --- usage (аппроксимация) + flush (под mutex) ---
   const promptText = context.map((m) => m.content).join('');

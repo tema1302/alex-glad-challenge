@@ -14,9 +14,13 @@ export const runtime = 'nodejs';
 
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
+  // dev: React Refresh (@next/react-refresh-utils) использует eval() для HMR — без
+  // 'unsafe-eval' клиентский бандл валится с EvalError, гидратации нет, UI мёртв.
+  // prod: React Refresh вырезается сборкой — 'unsafe-eval' не нужен, CSP остаётся строгим.
+  const isDev = process.env.NODE_ENV !== 'production';
   const csp = [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''}`,
     "connect-src 'self'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data:",
