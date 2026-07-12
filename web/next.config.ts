@@ -9,15 +9,8 @@
 import path from 'node:path';
 import type { NextConfig } from 'next';
 
-const csp = [
-  "default-src 'self'",
-  "script-src 'self'",
-  "connect-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data:",
-  "base-uri 'self'",
-  "frame-ancestors 'self'",
-].join('; ');
+// CSP задаётся per-request через middleware.ts (nonce для inline-скриптов гидратации).
+// Статический CSP здесь убран: без nonce он блокировал bootstrap Next.js → пустой body.
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -54,14 +47,6 @@ const nextConfig: NextConfig = {
     // import.meta.dirname на top-level больше не используется. Оригинальный seed.ts
     // грузится напрямую и в CLI (tsx), и в web.
     return config;
-  },
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [{ key: 'Content-Security-Policy', value: csp }],
-      },
-    ];
   },
 };
 
