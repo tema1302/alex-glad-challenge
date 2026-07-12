@@ -21,6 +21,10 @@ const csp = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Production-build в standalone-режиме (scoped override день 30): артефакт в
+  // web/.next/standalone/ — внутри web/.next/, уже в .gitignore. serverExternalPackages
+  // + outputFileTracingRoot корректно трейсят нативные/тяжёлые зависимости challenge.
+  output: 'standalone',
   transpilePackages: ['challenge'],
   // repo root для file-tracing (вышестоящий E:\IT\package-lock.json сбивает авто-детект).
   outputFileTracingRoot: path.resolve(__dirname, '..'),

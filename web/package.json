@@ -5,6 +5,8 @@
   "description": "Локальный Next.js (день 28): dashboard + витрина поверх challenge/core. Только 127.0.0.1.",
   "scripts": {
     "dev": "next dev -H 127.0.0.1",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

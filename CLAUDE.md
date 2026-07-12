@@ -156,9 +156,11 @@ kebab-case идентификатор задачи.
   или с `.ts`.
 - **Один пакет (challenge/):** workspace содержит `challenge/` как основной пакет.
   ЗАПРЕЩЕНО создавать вложенные `package.json` внутри `challenge/`. Scoped override
-  для локального Next.js `web/` (sibling-пакет, день 28) — см. «Scoped override» ниже.
-- **Сборки нет:** запуск через `tsx` напрямую: `pnpm --filter challenge start -- <cmd>`.
-  ЗАПРЕЩЕНО добавлять шаг сборки (tsc emit, bundler) без явного требования.
+  для Next.js `web/` (sibling-пакет, день 28) — см. «Scoped override» ниже.
+- **Сборки нет (challenge/):** запуск через `tsx` напрямую: `pnpm --filter challenge start -- <cmd>`.
+  ЗАПРЕЩЕНО добавлять шаг сборки (tsc emit, bundler) для `challenge/` без явного требования.
+  Ограничение относится ТОЛЬКО к `challenge/` (Backend/CLI/Agent). Next.js `web/` имеет
+  отдельный production-build — см. «Scoped override» ниже.
 - **Секреты — только `.env`:** загрузка через `src/core/env.ts`. ЗАПРЕЩЕНО хардкодить
   токены/ключи в коде, коммитить `.env`, передавать секреты в аргументах.
 - **БД — SQLite через `node:sqlite`:** файлы в `challenge/.data/` (`blog.sqlite`,
@@ -183,17 +185,25 @@ kebab-case идентификатор задачи.
 - **Mobile MCP** (`claude-in-mobile`, зарегистрирован в `.mcp.json`) — единственный
   канал автоматизации мобайла.
 - **Web-фронта НЕТ** (в общем случае). ЗАПРЕЩЕНО создавать Next.js/React/Vue фронтенд
-  вне замороженного архива. Исключение — локальный Next.js `web/` (scoped override,
-  день 28, решение пользователя; см. ниже).
+  вне замороженного архива. Исключение — Next.js `web/` (scoped override, день 28,
+  решение пользователя; локальный dev + production build/deploy — см. ниже).
 
-### Scoped override: локальный Next.js `web/` (день 28, решение пользователя)
+### Scoped override: Next.js `web/` (день 28, решение пользователя; обновлено день 30)
 
 ЕДИНСТВЕННОЕ исключение из инвариантов «Web-фронта НЕТ» и «workspace = 1 пакет» —
-локальный пакет `web/` (Next.js 15 App Router + React 19), sibling к `challenge/`.
-Границы исключения (за их пределами исходные инварианты действуют в полном объёме):
+пакет `web/` (Next.js 15 App Router + React 19), sibling к `challenge/`. Границы
+исключения (за их пределами исходные инварианты действуют в полном объёме):
 
-- **Только локально:** `next dev` на `127.0.0.1`, без production-build/deploy/CI/Vercel.
-  Шага сборки как такового нет — это локальная dev-компиляция (bundler), не production-bundle.
+- **Локальный dev + production build/deploy — оба режима разрешены:**
+  - **Dev:** `next dev -H 127.0.0.1` (loopback).
+  - **Production build:** `pnpm --filter web build` с `output: 'standalone'` в `next.config.ts`
+    (артефакты в `web/.next/standalone/` — внутри `web/.next/`, уже в `.gitignore`).
+  - **Smoke-доступ на сервере:** standalone-сервер / `next start` на loopback (`127.0.0.1`),
+    публичный доступ — ТОЛЬКО через SSH-туннель. Деплой на сервер допускается.
+  - **Публичный доступ (когда потребуется) — ОБЯЗАТЕЛЬНЫЙ харденинг** (отдельная задача):
+    loopback-бинд + reverse-proxy (nginx/Caddy) с TLS и basic-auth, либо edge-провайдер
+    с auth. **ЗАПРЕЩЕНО** выставлять `web/` на `0.0.0.0`/внешний интерфейс без auth/TLS.
+    `next start -H 0.0.0.0` без reverse-proxy = триггер обязательного возражения.
 - **Сервер-only для всего тяжёлого:** ключи/`TG_SESSION`/MTProto (`telegram`)/
   `node:sqlite` — только в server-модулях (`web/lib/server/*` + Route Handlers +
   Server Components). ЗАПРЕЩЕНО тащить их в client bundle.
@@ -204,7 +214,7 @@ kebab-case идентификатор задачи.
 - **Никаких `NEXT_PUBLIC_*` секретов:** ключи/сессии читаются через `core/env.ts`
   (`loadEnvUpward`); наружу отдаются только флаги наличия (`Boolean`) и typed-accessors
   без значений. Dashboard показывает «DeepSeek: ✓», не сам ключ.
-- **Bind 127.0.0.1:** Next dev и MCP-серверы — только loopback.
+- **Bind:** Next dev и MCP-серверы — loopback (`127.0.0.1`). Для `web/` production — loopback + reverse-proxy/edge (см. выше); голый `0.0.0.0` без auth ЗАПРЕЩЁН.
 - **CSP** (`next.config.ts`): `default-src 'self'; script-src 'self'; connect-src 'self'`
   (SSE — same-origin; внешние fetch к Ollama/TG идут с server, не из браузера).
 - **Валидация на границе** — zod на каждой форме/Route (тип/длина/enum). Taint-контент
@@ -212,8 +222,10 @@ kebab-case идентификатор задачи.
 - **SQL** — parameterized (`?`-плейсхолдеры), как и в `challenge/`. WAL для `node:sqlite`.
 - **Верификация client bundle:** `grep -rl "telegram\|TG_SESSION\|DEEPSEEK_API_KEY" web/.next/static`
   → 0 совпадений (после каждой фазы web/).
-- **Git:** `web/.next/`, `web/.env.local`, `web/node_modules/` — в `.gitignore`. `.env`
-  и `.data/` (всех пакетов) — НИКОГДА в git.
+- **Git:** `web/.next/` (включая `standalone/`), `web/.env.local`, `web/node_modules/` —
+  в `.gitignore`. Если когда-либо включится `output: 'export'` — добавить `web/out/`
+  (сейчас decision = standalone, `web/out/` не образуется). `.env` и `.data/` (всех
+  пакетов) — НИКОГДА в git.
 
 Исходные инварианты «Web-фронта НЕТ» и «Один пакет» действуют для всех остальных
 случаев (любой фронтенд вне `web/` и вложенные `package.json` внутри `challenge/`).
@@ -239,7 +251,7 @@ Reproduce / код-ревью; haiku-класс (`claude-haiku-4-5-20251001`) = 
 | Проверка | Команда | Статус |
 |---|---|---|
 | typecheck | `pnpm --filter challenge typecheck` | ОБЯЗАТЕЛЕН. Единственный статический гейт. До и после изменений. |
-| build | НЕТ | Шаг сборки отсутствует (tsx напрямую). НЕ выдумывать `pnpm build`. |
+| build | `challenge/`: НЕТ. `web/`: `pnpm --filter web build` (Next.js standalone) | Шаг сборки `challenge/` отсутствует (tsx напрямую), НЕ выдумывать `pnpm build`. `web/` production-build разрешён (scoped override). |
 | lint | НЕ настроен | Ограничение. НЕ вызывать несуществующий lint-скрипт. |
 | unit-тесты | НЕ настроены | Ограничение. Не ссылаться на `pnpm test`. |
 
@@ -253,8 +265,9 @@ Reproduce / код-ревью; haiku-класс (`claude-haiku-4-5-20251001`) = 
 - `pnpm --filter challenge start -- db-stats`
 - REPL-сценарий (`/help /day /strategy /system /branch /switch /usage /reset /quit`)
 
-STRICT: Validation опирается **исключительно** на `typecheck` + реальный прогон CLI.
-Автотестов, lint и build не существует — не вызывать и не планировать.
+STRICT: Validation `challenge/` опирается **исключительно** на `typecheck` + реальный прогон CLI.
+Автотестов и lint не существует — не вызывать. `build` отсутствует для `challenge/`; для `web/`
+(scoped override) `build`/`start` существуют и валидируются отдельно (см. платформу Web ниже).
 
 ## Стадия Validation (общая для профилей, STRICT)
 
@@ -270,21 +283,22 @@ STRICT: Validation опирается **исключительно** на `typec
 
 ### Согласование платформ (AskUserQuestion, multiSelect)
 
-Варианты (Web не предлагать — поверхности нет):
+Варианты:
 
 - `Backend/CLI/Agent (Node+TS)` — прогон CLI-команд.
 - `MCP-серверы in-repo` — поднять/опрокинуть сервер, проверить endpoint.
 - `Mobile (Mobile MCP claude-in-mobile)` — через `.mcp.json`.
+- `web/` (Next.js, scoped override) — `pnpm --filter web typecheck` + `build` + smoke `start` (loopback).
 
 ### Маппинг платформа → инструмент
 
 | Платформа | Инструмент | Метод |
 |---|---|---|
 | Backend/CLI/Agent (Node+TS) | Bash | `pnpm --filter challenge start -- <cmd>` |
-| Статический гейт (единственный) | Bash | `pnpm --filter challenge typecheck` — ДО и ПОСЛЕ |
+| Статический гейт challenge/ | Bash | `pnpm --filter challenge typecheck` — ДО и ПОСЛЕ |
 | MCP-серверы in-repo (`core/mcp*`) | Bash | поднять сервер `tsx`, проверить endpoint `curl`/fetch, затем `kill` |
 | Mobile | Mobile MCP (`claude-in-mobile`) | через `.mcp.json` |
-| Web | — | отсутствует, не валидировать |
+| Web (`web/`, scoped override) | Bash | `pnpm --filter web typecheck` (ДО/ПОСЛЕ); `pnpm --filter web build` (standalone); smoke — `pnpm --filter web start` на loopback, HTTP 200 на ключевых маршрутах; client-bundle grep (см. scoped override) → 0 совпадений |
 
 ### Критерий прохода
 
@@ -316,7 +330,7 @@ STRICT: Validation опирается **исключительно** на `typec
 <Бизнес-фича | Поиск бага>
 
 ## Стек / тулчейн
-pnpm workspace, пакет challenge/, tsx, typecheck (tsc --noEmit, strict). lint/build/unit — отсутствуют.
+pnpm workspace, пакет challenge/ (tsx, typecheck — tsc --noEmit, strict; lint/unit отсутствуют). Пакет `web/` — Next.js (typecheck + build/start, scoped override).
 
 ## Что сделано
 - <изменение 1>
@@ -340,6 +354,7 @@ typecheck: PASS / FAIL
 - [ ] MTProto-сессия (TG_SESSION) не утекла в лог/промпт/субагента [да/нет]
 - [ ] fetch по tainted-URL — через allowlist хостов [да/нет]
 - [ ] LLM-ответ — валидация схемы перед потреблением [да/нет]
+- [ ] web/ prod-deploy: start на loopback ИЛИ reverse-proxy/edge с auth/TLS; голый 0.0.0.0 без auth — НЕТ; client bundle grep чист [да/нет]
 
 ## Риски / допущения
 - <риск или допущение>
@@ -376,6 +391,7 @@ typecheck: PASS / FAIL
 | `undici`/`fetch` к внешним URL | SSRF, если URL из ввода/RSS/LLM | Allowlist хостов. Блок `localhost`, `127.0.0.1`, `169.254.*`, `10.*`, `192.168.*`, `metadata.google.internal` при fetch из tainted-источника. |
 | Прокси (`socks`/`https-proxy-agent`) | Утечка конфигурации прокси и credentials в логах | Только из `.env`. Не логировать proxy-URL с credentials. |
 | `dotenv` / `.env` | Коммит `.env`, утечка через stacktrace/log-дамп | `.env` в `.gitignore`. `env.ts` не выбрасывает значения в error. `.env.example` — только placeholder. |
+| Next.js `web/` production deploy (standalone) | Публичный доступ к dashboard/Route Handlers без auth/TLS; пробой server-only chokepoint; утечка через ослабление CSP | Bind loopback + reverse-proxy (nginx/Caddy) TLS+basic-auth или edge с auth. Сохранить server-only chokepoint, CSP `'self'`, client-bundle grep. Запрет `0.0.0.0` без auth. |
 
 ## .gitignore-инварианты (STRICT)
 
@@ -395,7 +411,7 @@ typecheck: PASS / FAIL
 - Хардкод секрета/ключа/токена/сессии в коде/конфиге/тесте/коммите/промпте.
 - Строковая интерполяция в SQL (`${var}`, конкатенация `+`).
 - Отсутствие sanitize внешнего контента (RSS/TG/LLM) перед БД или промптом.
-- Bind MCP-сервера на `0.0.0.0`/внешний интерфейс без auth.
+- Bind MCP-сервера или `web/` `next start`/`next dev` на `0.0.0.0`/внешний интерфейс без auth/reverse-proxy.
 - `--no-verify`, `--no-gpg-sign`, `--force`, обход safety-проверок.
 - «потом поправим»/«сойдёт для MVP»/«временно» для security-вопросов.
 - Запись секретов в лог/промпт/error.
@@ -562,7 +578,7 @@ Reproduce. Reproduce стартует только по подтверждённ
   с `.js`).
 - **Runtime:** Node.js 24+ (нативный `fetch`, `node:sqlite`).
 - **Пакетный менеджер:** pnpm 10.28.0, workspace = 1 пакет `challenge/`.
-- **Запуск:** `tsx` напрямую, шага сборки нет.
+- **Запуск:** `challenge/` — `tsx` напрямую, шага сборки нет. `web/` (scoped override) — `next dev` (локально) + `next build`/`next start` standalone (production).
 - **HTTP:** нативный `fetch` + `undici`.
 - **Env:** `dotenv` (`src/core/env.ts`).
 - **LLM-провайдеры:** DeepSeek + OpenRouter (OpenAI-совместимый `/chat/completions`),
@@ -574,7 +590,7 @@ Reproduce. Reproduce стартует только по подтверждённ
 - **MCP:** свои MCP-серверы (`core/mcp*`, демо day-17/18/20) + Mobile MCP
   (`claude-in-mobile` в `.mcp.json`).
 - **Платформы-поверхности:** Backend/CLI/Agent (Node+TS); MCP-серверы in-repo (HTTP);
-  Mobile через Mobile MCP; локальный Next.js `web/` (день 28, scoped override — см.
+  Mobile через Mobile MCP; Next.js `web/` (день 28, scoped override: локальный dev + production build/deploy — см.
   «Инварианты стека»). Замороженный архив `1-day..10-day` отдельно, не активная поверхность.
 - **Тулчейн:** typecheck = `pnpm --filter challenge typecheck` (единственный статический
   гейт); прогон = `pnpm --filter challenge start -- <cmd>`. Lint/unit/build/CI НЕ
