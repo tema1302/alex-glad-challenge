@@ -29,7 +29,7 @@ const TEMP_DEFAULT = 0.9;
 
 // Должно совпадать с серверным TIMEOUT_MS (app/api/joke/session/route.ts). Только для
 // текста хинта при timeout-abort.
-const JOKER_TIMEOUT_SEC = 180;
+const JOKER_TIMEOUT_SEC = 300;
 
 type JokerErrorHint =
   | { kind: 'cancelled' }

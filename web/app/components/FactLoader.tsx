@@ -17,11 +17,21 @@ const FACT_INTERVAL_MS = 8000; // фикс п.4: было magic-number 3000 в �
 const ELAPSED_TICK_MS = 1000;
 
 export function FactLoader() {
+  // null до mount-эффекта: первый рендер детерминирован (IT_FACTS[idx]) → SSR/hydration
+  // без mismatch. В эффекте (browser-only) Fisher-Yates shuffle → случайный порядок фактов.
+  const [order, setOrder] = useState<string[] | null>(null);
   const [idx, setIdx] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const t0 = useRef(Date.now()); // монотонный старт = mount (≈ момент send в родителе).
 
   useEffect(() => {
+    // Fisher-Yates: стабильный перемешанный порядок за сессию (рандомный старт + обход).
+    const shuffled = [...IT_FACTS];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setOrder(shuffled);
     if (IT_FACTS.length === 0) return;
     const carousel = setInterval(
       () => setIdx((i) => (i + 1) % IT_FACTS.length),
@@ -46,7 +56,7 @@ export function FactLoader() {
         Думаю · ждём {elapsed}с
       </p>
       <p key={idx} className="fact-fade" aria-hidden="true">
-        {IT_FACTS[idx]}
+        {order ? order[idx] : IT_FACTS[idx]}
       </p>
     </div>
   );

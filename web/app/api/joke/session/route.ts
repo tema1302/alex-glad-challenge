@@ -26,7 +26,7 @@ export const dynamic = 'force-dynamic';
 // Серверный cap (security §2): при зависшей Ollama route обрывается сам. 180с = 3 мин —
 // покрывает cold-load локальной модели (~9.3с на стенде) + prompt-eval numCtx 4096 + few-shot +
 // multi-turn историю с ~20x запасом; даёт шанс до стрима при холодной/занятой Ollama.
-const TIMEOUT_MS = 180_000;
+const TIMEOUT_MS = 300_000;
 
 const SSE_HEADERS: Record<string, string> = {
   'Content-Type': 'text/event-stream; charset=utf-8',
