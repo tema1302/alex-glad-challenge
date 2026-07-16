@@ -35,6 +35,9 @@ import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
 import { McpHttpClient } from './core/mcpHttpClient.js';
 import { parseTodoArgs } from './core/todoParser.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
+import { runAssistantServer } from './core/assistantMcp.js';
+import { indexDocsCorpus, askDevAssistant } from './core/rag/devAssistant.js';
+import { findRepoRoot } from './core/rag/docsCorpus.js';
 import {
   RagStore,
   Retriever,
@@ -141,6 +144,9 @@ function printHelp(): void {
   console.log('    --port <N>         порт world-mcp (по умолчанию 3021); telegram-mcp = port+1');
   console.log('  day-25           RAG-чат с памятью задачи (REPL: история + цель/термины/ограничения)');
   console.log('  day-25-server    STDIO-MCP-сервер чата с RAG + памятью задачи (tools: chat, task-state)');
+  console.log('  ask "<вопрос>"   Ответ ассистента о структуре репо (RAG docs → local draft → cloud refine)');
+  console.log('  rag index-docs   Индексировать кураторский корпус dev-assistant (README/AGENTS/docs → стратегия docs)');
+  console.log('  assistant-server Поднять STDIO-MCP dev-assistant (tool: git_branch, read-only)');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
@@ -429,6 +435,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'ask') {
+    const question = argv.slice(1).join(' ').trim();
+    if (!question) {
+      console.error('Укажите вопрос: pnpm --filter challenge start -- ask "..."');
+      process.exit(1);
+    }
+    await runAskCommand(question);
+    return;
+  }
+
   if (arg === 'help' || arg === '--help' || arg === '-h') {
     printHelp();
     return;
@@ -460,6 +476,12 @@ async function main(): Promise<void> {
   if (arg === 'day-25-server') {
     console.log('▶ Day-25 rag-chat: STDIO-MCP-сервер (JSON-RPC over stdin/stdout)');
     await runDay25Server();
+    return;
+  }
+
+  if (arg === 'assistant-server') {
+    console.log('▶ dev-assistant: STDIO-MCP-сервер (JSON-RPC over stdin/stdout, tool: git_branch)');
+    await runAssistantServer();
     return;
   }
 
@@ -875,11 +897,58 @@ function printReplChatHelp(): void {
   console.log('  (с topicId снесёт ВСЕ telegram-чаты — известный баг).\n');
 }
 
+async function runAskCommand(question: string): Promise<void> {
+  const store = new RagStore(RAG_DB_PATH);
+  try {
+    console.log(`▶ dev-assistant /ask: ${question}\n`);
+    const res = await askDevAssistant(question, store);
+    console.log(res.answer);
+    console.log('');
+    console.log('Источники:');
+    const srcLines = res.sources.map(
+      (s, i) =>
+        `  [${i + 1}] ${s.chunk.metadata.section} (score=${s.score.toFixed(2)}, source=${s.chunk.metadata.source})`,
+    );
+    console.log(srcLines.length > 0 ? srcLines.join('\n') : '(нет — сработал guard «не знаю»)');
+    const quoteLines = (res.quotes ?? []).map(
+      (q) => `- [${q.chunkId}] ${q.snippet.replace(/\s+/g, ' ')}`,
+    );
+    if (quoteLines.length > 0) {
+      console.log('\nЦитаты:');
+      console.log(quoteLines.join('\n'));
+    }
+    const tag =
+      res.cloudStatus === 'ok'
+        ? `cloud: ${res.cloudModel} (${res.dtMs ?? 0}ms)`
+        : res.cloudStatus === 'no-key'
+          ? 'cloud: нет OPENROUTER_API_KEY (draft-only)'
+          : 'cloud: недоступен (draft-only, fallback)';
+    console.log(`\n[${tag}]`);
+  } finally {
+    store.close();
+  }
+}
+
 async function runRagCommand(argv: string[]): Promise<void> {
   const sub = argv[0];
   try {
     if (sub === 'index-tg') {
       await runRagIndexTgCommand(argv.slice(1));
+      return;
+    }
+
+    if (sub === 'index-docs') {
+      // Кураторский корпус dev-assistant → партиция 'docs'. Через indexDocuments
+      // (НЕ runIndexing): clearStrategy('docs') чистит ТОЛЬКО 'docs', партиции
+      // fixed/structure/telegram не затрагиваются.
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        console.log('▶ RAG index-docs: кураторский корпус dev-assistant → стратегия docs');
+        const r = await indexDocsCorpus(store, findRepoRoot());
+        console.log(`  docs: проиндексировано ${r.chunks} чанков (всего в 'docs': ${store.count('docs')})`);
+      } finally {
+        store.close();
+      }
       return;
     }
 

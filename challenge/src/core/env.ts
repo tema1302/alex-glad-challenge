@@ -62,6 +62,23 @@ export function getLlmProviderConfig(): LlmProviderConfig {
   );
 }
 
+/**
+ * Конфиг cloud-refine для dev-assistant: ИМЕННО OpenRouter (default Claude),
+ * БЕЗ приоритета DeepSeek (в отличие от getLlmProviderConfig — там DeepSeek
+ * перебивает, а refine-стадия всегда идёт через cloud Claude). null если
+ * OPENROUTER_API_KEY не задан — потребитель (devAssistant) показывает cloud-down
+ * fallback. Значение ключа НЕ попадает в error/логи.
+ */
+export function getOpenRouterConfig(): LlmProviderConfig | null {
+  const orKey = process.env.OPENROUTER_API_KEY?.trim();
+  if (!orKey) return null;
+  return {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: orKey,
+    defaultModel: process.env.OPENROUTER_MODEL?.trim() || 'anthropic/claude-haiku-4-5',
+  };
+}
+
 /** Конфиг локального LLM (Ollama). Бросает generic-ошибку без значений. */
 export interface LocalLlmConfig {
   baseUrl: string;

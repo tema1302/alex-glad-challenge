@@ -17,7 +17,12 @@ export interface Chunk {
 // инлайн-маппером (core/tg/topicCollector.ts → messageToChunk) и индексируются
 // через indexDocuments напрямую, минуя runIndexing/chunkDoc. Изоляция стратегий
 // в rag.sqlite (partition by strategy TEXT) сохраняет fixed/structure нетронутыми.
-export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram';
+// 'docs' — НЕ входит в RAG_STRATEGIES: кураторский корпус dev-assistant
+// (core/rag/docsCorpus.ts, явный allow-list .md) → chunkDoc(strategy='docs')
+// роутится в chunkStructured (chunker.ts тернарник :265, markdown section-aware),
+// индексируется через indexDocuments напрямую. Изоляция в rag.sqlite сохраняет
+// остальные партиции нетронутыми.
+export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram' | 'docs';
 
 export interface Embedder {
   /** Размерность вектора. Неизвестна до первого вызова. */

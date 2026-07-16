@@ -21,6 +21,8 @@ import { BlogDb } from './core/db.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
 import { runDay20 } from './demos/day-20.js';
 import { dataPath } from './core/paths.js';
+import { RagStore } from './core/rag/index.js';
+import { askDevAssistant } from './core/rag/devAssistant.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -93,6 +95,7 @@ const ALL_COMMANDS = [
   '/todo ', '/remind ', '/todos', '/todos --pending', '/todos --done', '/done ', '/dismiss ', '/rm-todo ', '/summary', '/mcp ', '/mcp-tools',
   '/agent ',
   '/briefing ', '/briefing --write',
+  '/ask ',
   '/quit', '/exit',
 ];
 
@@ -316,6 +319,37 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
     }
     case 'list': {
       printDemosList();
+      return;
+    }
+    case 'ask': {
+      const q = arg.trim();
+      if (!q) {
+        console.log(c.gray + 'Использование: /ask <вопрос>\n' + c.reset);
+        return;
+      }
+      const store = new RagStore(dataPath('rag.sqlite'));
+      try {
+        console.log(c.cyan + '▶ dev-assistant:' + c.reset + ' ' + q + '\n');
+        const res = await askDevAssistant(q, store);
+        console.log(res.answer);
+        const srcLines = res.sources.map(
+          (s, i) =>
+            `  [${i + 1}] ${s.chunk.metadata.section} (score=${s.score.toFixed(2)}, source=${s.chunk.metadata.source})`,
+        );
+        console.log(c.gray + 'Источники:' + c.reset);
+        console.log(srcLines.length > 0 ? srcLines.join('\n') : c.gray + '(нет — guard «не знаю»)' + c.reset);
+        const tag =
+          res.cloudStatus === 'ok'
+            ? `cloud: ${res.cloudModel} (${res.dtMs ?? 0}ms)`
+            : res.cloudStatus === 'no-key'
+              ? 'cloud: нет OPENROUTER_API_KEY (draft-only)'
+              : 'cloud: недоступен (draft-only)';
+        console.log(c.gray + '[' + tag + ']' + c.reset + '\n');
+      } catch (err) {
+        console.log(c.red + 'Ошибка /ask: ' + (err instanceof Error ? err.message : String(err)) + c.reset + '\n');
+      } finally {
+        store.close();
+      }
       return;
     }
     case 'day': {
@@ -933,6 +967,9 @@ function printFullHelp(state: SessionState): void {
   header('Оркестрация дня 20 (filesystem + world + telegram)');
   row('/briefing <запрос>', 'мульти-MCP брифинг по vault (dry-run, только чтение)');
   row('/briefing <запрос> --write', 'записать брифинг в vault и отправить в Telegram');
+  console.log('');
+  header('Dev-assistant');
+  row('/ask <вопрос>', 'ответ о структуре репо (RAG docs → local draft → cloud refine)');
   console.log('');
   header('Системные');
   row('/help, /h', 'эта справка');
