@@ -79,6 +79,13 @@ export function getOpenRouterConfig(): LlmProviderConfig | null {
   };
 }
 
+/** HTTPS-прокси для исходящих fetch к cloud-провайдерам (OpenRouter/DeepSeek).
+ *  null если не задан — запрос идёт напрямую. Чтение сосредоточено в env.ts
+ *  (инвариант: process.env вне env.ts запрещён). */
+export function getHttpsProxy(): string | null {
+  return process.env['HTTPS_PROXY']?.trim() || process.env['https_proxy']?.trim() || null;
+}
+
 /** Конфиг локального LLM (Ollama). Бросает generic-ошибку без значений. */
 export interface LocalLlmConfig {
   baseUrl: string;

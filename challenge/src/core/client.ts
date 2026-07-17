@@ -2,7 +2,8 @@
 // Работает с любым провайдером: DeepSeek, OpenRouter, OpenAI, локальные сервера.
 
 import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, LlmTimings, Usage } from './types.js';
-import { loadEnvUpward, getLlmProviderConfig } from './env.js';
+import { ProxyAgent } from 'undici';
+import { loadEnvUpward, getLlmProviderConfig, getHttpsProxy } from './env.js';
 
 loadEnvUpward();
 
@@ -30,14 +31,17 @@ export class LlmClient {
   // Низкоуровневый POST к /chat/completions. Все демо используют его.
   async chatRaw(req: LlmRequest): Promise<LlmResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
-    const resp = await fetch(url, {
+    const proxy = getHttpsProxy();
+    const fetchOptions: Record<string, unknown> = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify(req),
-    });
+    };
+    if (proxy) fetchOptions['dispatcher'] = new ProxyAgent(proxy);
+    const resp = await fetch(url, fetchOptions as RequestInit);
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
       throw new Error(`LLM API error ${resp.status}: ${body}`);

@@ -134,6 +134,7 @@ export async function askDevAssistant(
   const threshold = opts.threshold ?? DEFAULT_RAG_THRESHOLD;
 
   // 1. retrieve(local) → 2. draft(local qwen3.5:4b) через answerWithRag (reuse).
+  console.log('[dev-assistant] ▸ поиск по индексу «docs» + локальный черновик (Ollama)…');
   const draftClient = makeLocalLlmClient();
   const retriever = new Retriever(store, makeEmbedder(), DOCS_STRATEGY);
   const draft = await answerWithRag(draftClient, retriever, question, { k, pool, threshold });
@@ -150,6 +151,10 @@ export async function askDevAssistant(
       cloudStatus: 'no-key',
     };
   }
+
+  console.log(
+    `[dev-assistant] ▸ cloud refine (Claude via OpenRouter, источников: ${draft.sources.length})…`,
+  );
 
   try {
     const t0 = Date.now();
