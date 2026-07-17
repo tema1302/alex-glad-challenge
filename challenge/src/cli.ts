@@ -15,6 +15,7 @@
 //   pnpm --filter challenge start -- help
 
 import path from 'node:path';
+import fs from 'node:fs';
 import readline from 'node:readline';
 
 import { loadEnvUpward } from './core/env.js';
@@ -37,6 +38,7 @@ import { parseTodoArgs } from './core/todoParser.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
 import { runAssistantServer } from './core/assistantMcp.js';
 import { indexDocsCorpus, askDevAssistant } from './core/rag/devAssistant.js';
+import { reviewPr } from './core/rag/prReview.js';
 import { findRepoRoot } from './core/rag/docsCorpus.js';
 import {
   RagStore,
@@ -145,6 +147,12 @@ function printHelp(): void {
   console.log('  day-25           RAG-чат с памятью задачи (REPL: история + цель/термины/ограничения)');
   console.log('  day-25-server    STDIO-MCP-сервер чата с RAG + памятью задачи (tools: chat, task-state)');
   console.log('  ask "<вопрос>"   Ответ ассистента о структуре репо (RAG docs → local draft → cloud refine)');
+  console.log('  pr-review        AI-ревью Pull Request (diff → cloud Claude → markdown; для GitHub Action)');
+  console.log('    --diff-file <path>     файл unified diff PR (обязательно; Action пишет сюда `gh pr diff`)');
+  console.log('    --files <path>         файл со списком изменённых путей, по одному на строку (опц.)');
+  console.log('    --out <path>           писать markdown в файл (default — stdout)');
+  console.log('    --max-diff-bytes <N>   лимит длины diff, далее truncate (по умолч. 48000)');
+  console.log('    --local                включить retrieval из индекса docs (Ollama) перед cloud-ревью');
   console.log('  rag index-docs   Индексировать кураторский корпус dev-assistant (README/AGENTS/docs → стратегия docs)');
   console.log('  assistant-server Поднять STDIO-MCP dev-assistant (tool: git_branch, read-only)');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
@@ -442,6 +450,11 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     await runAskCommand(question);
+    return;
+  }
+
+  if (arg === 'pr-review') {
+    await runPrReviewCommand(argv.slice(1));
     return;
   }
 
@@ -927,6 +940,145 @@ async function runAskCommand(question: string): Promise<void> {
   } finally {
     store.close();
   }
+}
+
+interface PrReviewFlags {
+  diffFile?: string;
+  filesFile?: string;
+  base?: string;
+  head?: string;
+  local: boolean;
+  out?: string;
+  maxDiffBytes?: number;
+}
+
+function parsePrReviewFlags(argv: string[]): PrReviewFlags {
+  const flags: PrReviewFlags = { local: false };
+  const num = (v: string): number | undefined => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--diff-file' && argv[i + 1]) { flags.diffFile = argv[++i]; continue; }
+    if (a === '--files' && argv[i + 1]) { flags.filesFile = argv[++i]; continue; }
+    if (a === '--base' && argv[i + 1]) { flags.base = argv[++i]; continue; }
+    if (a === '--head' && argv[i + 1]) { flags.head = argv[++i]; continue; }
+    if (a === '--out' && argv[i + 1]) { flags.out = argv[++i]; continue; }
+    if (a === '--max-diff-bytes' && argv[i + 1]) { flags.maxDiffBytes = num(argv[++i]); continue; }
+    if (a === '--local') { flags.local = true; continue; }
+  }
+  return flags;
+}
+
+// День 32: AI-ревью PR. diff из --diff-file → cloud Claude (через prReview.reviewPr)
+// → markdown в --out/stdout. Режим --local = +retrieval из индекса docs. Cloud-down:
+// нет ключа/сеть упала → fallback-тело, всегда exit 0 (GitHub Action НЕ краснеет).
+async function runPrReviewCommand(argv: string[]): Promise<void> {
+  const flags = parsePrReviewFlags(argv);
+
+  if (!flags.diffFile) {
+    // base/head git-режим — stretch из плана; MVP требует --diff-file (как в workflow).
+    console.error(
+      'Укажите --diff-file <path>: pr-review --diff-file diff.patch [--files files.txt] [--out review.md]',
+    );
+    process.exit(1);
+  }
+
+  let diff: string;
+  try {
+    diff = fs.readFileSync(flags.diffFile, 'utf8');
+  } catch (err) {
+    const m = err instanceof Error ? err.message : String(err);
+    console.error(`Не удалось прочитать --diff-file "${flags.diffFile}": ${m}`);
+    process.exit(1);
+  }
+
+  const changedFiles: string[] = [];
+  if (flags.filesFile) {
+    try {
+      const raw = fs.readFileSync(flags.filesFile, 'utf8');
+      for (const line of raw.split(/\r?\n/)) {
+        const t = line.trim();
+        if (t.length > 0) changedFiles.push(t);
+      }
+    } catch (err) {
+      const m = err instanceof Error ? err.message : String(err);
+      console.error(`Не удалось прочитать --files "${flags.filesFile}": ${m}`);
+      process.exit(1);
+    }
+  }
+
+  const mode: 'cloud' | 'local' = flags.local ? 'local' : 'cloud';
+
+  let review: string;
+  let meta: { cloudStatus: string; truncated: boolean; sourcesLen: number; cloudModel?: string; dtMs?: number };
+  try {
+    if (mode === 'local') {
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        const result = await reviewPr({
+          mode: 'local',
+          store,
+          diff,
+          changedFiles,
+          maxDiffBytes: flags.maxDiffBytes,
+        });
+        review = result.review;
+        meta = {
+          cloudStatus: result.cloudStatus,
+          truncated: result.truncated,
+          sourcesLen: result.sources.length,
+          cloudModel: result.cloudModel,
+          dtMs: result.dtMs,
+        };
+      } finally {
+        store.close();
+      }
+    } else {
+      const result = await reviewPr({
+        mode: 'cloud',
+        diff,
+        changedFiles,
+        maxDiffBytes: flags.maxDiffBytes,
+      });
+      review = result.review;
+      meta = {
+        cloudStatus: result.cloudStatus,
+        truncated: result.truncated,
+        sourcesLen: result.sources.length,
+        cloudModel: result.cloudModel,
+        dtMs: result.dtMs,
+      };
+    }
+  } catch (err) {
+    // reviewPr сам ловит cloud-ошибки; сюда попадаем только при неожиданном падении
+    // (например, open RagStore). Guard: НЕ красним Action — fallback + exit 0.
+    const m = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[pr-review] unexpected error: ${m.split('\n')[0].slice(0, 200)}\n`);
+    review =
+      '⚠ Cloud-ревью недоступно — внутренняя ошибка pr-review (см. логи Action).\n\nАвтоматическое ревью пропущено.';
+    meta = { cloudStatus: 'fallback', truncated: false, sourcesLen: 0 };
+  }
+
+  // Метастатус — ТОЛЬКО в stderr (review в stdout/--out не смешивается с мета).
+  const metaParts = [
+    `cloudStatus=${meta.cloudStatus}`,
+    `truncated=${meta.truncated}`,
+    `sources=${meta.sourcesLen}`,
+  ];
+  if (meta.cloudModel) metaParts.push(`model=${meta.cloudModel}`);
+  if (meta.dtMs != null) metaParts.push(`dt=${meta.dtMs}ms`);
+  process.stderr.write(`[pr-review] ${metaParts.join(' ')}\n`);
+
+  if (flags.out) {
+    fs.writeFileSync(flags.out, review);
+    process.stderr.write(`[pr-review] markdown written to ${flags.out}\n`);
+  } else {
+    console.log(review);
+  }
+  // Явный exit 0: cloud-down/неожиданная ошибка НЕ краснят GitHub Action.
+  process.exit(0);
 }
 
 async function runRagCommand(argv: string[]): Promise<void> {
