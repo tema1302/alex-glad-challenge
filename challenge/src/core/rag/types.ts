@@ -22,7 +22,11 @@ export interface Chunk {
 // роутится в chunkStructured (chunker.ts тернарник :265, markdown section-aware),
 // индексируется через indexDocuments напрямую. Изоляция в rag.sqlite сохраняет
 // остальные партиции нетронутыми.
-export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram' | 'docs';
+// 'faq' — НЕ входит в RAG_STRATEGIES: кураторский FAQ-корпус support-assistant
+// (core/support/faqCorpus.ts, ручные Chunk[] = один Q&A на чанк), индексируется
+// через indexDocuments напрямую. Изоляция в rag.sqlite сохраняет остальные
+// партиции нетронутыми (clearStrategy('faq') чистит только 'faq').
+export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram' | 'docs' | 'faq';
 
 export interface Embedder {
   /** Размерность вектора. Неизвестна до первого вызова. */

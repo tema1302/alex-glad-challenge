@@ -40,6 +40,10 @@ import { runAssistantServer } from './core/assistantMcp.js';
 import { indexDocsCorpus, askDevAssistant } from './core/rag/devAssistant.js';
 import { reviewPr } from './core/rag/prReview.js';
 import { findRepoRoot } from './core/rag/docsCorpus.js';
+import { runCrmServer } from './core/crmMcp.js';
+import { CrmDb } from './core/crmDb.js';
+import { askSupportAssistant, buildFaqChunks } from './core/support/supportAssistant.js';
+import { seedSupport } from './core/support/faqSeed.js';
 import {
   RagStore,
   Retriever,
@@ -155,6 +159,11 @@ function printHelp(): void {
   console.log('    --local                включить retrieval из индекса docs (Ollama) перед cloud-ревью');
   console.log('  rag index-docs   Индексировать кураторский корпус dev-assistant (README/AGENTS/docs → стратегия docs)');
   console.log('  assistant-server Поднять STDIO-MCP dev-assistant (tool: git_branch, read-only)');
+  console.log('  support-seed     Залить CRM-демо-данные CloudNote (5 users + 5 tickets в blog.sqlite, идемпотентно)');
+  console.log('  rag index-faq    Индексировать FAQ-корпус support-assistant (4 Q&A CloudNote → стратегия faq)');
+  console.log('  support --user <N> [--ticket <N>] "<вопрос>"');
+  console.log('                   Ответ поддержки CloudNote (RAG faq → local draft → CRM через MCP → cloud refine)');
+  console.log('  crm-server       Поднять STDIO-MCP crm-server (tools: get_user, get_ticket — read-only)');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
@@ -458,6 +467,22 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'support') {
+    await runSupportCommand(argv.slice(1));
+    return;
+  }
+
+  if (arg === 'support-seed') {
+    await runSupportSeedCommand();
+    return;
+  }
+
+  if (arg === 'crm-server') {
+    console.log('▶ crm-server: STDIO-MCP-сервер (JSON-RPC over stdin/stdout, tools: get_user, get_ticket)');
+    await runCrmServer();
+    return;
+  }
+
   if (arg === 'help' || arg === '--help' || arg === '-h') {
     printHelp();
     return;
@@ -561,7 +586,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, help');
   process.exit(1);
 }
 
@@ -1081,6 +1106,100 @@ async function runPrReviewCommand(argv: string[]): Promise<void> {
   process.exit(0);
 }
 
+// --- support-assistant (день 33): RAG faq + CRM (MCP round-trip) + cloud refine ---
+
+interface SupportFlags {
+  userId?: number;
+  ticketId?: number;
+}
+
+function parseSupportFlags(argv: string[]): { flags: SupportFlags; rest: string[] } {
+  const flags: SupportFlags = {};
+  const rest: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--user' && argv[i + 1]) { flags.userId = Number(argv[++i]); continue; }
+    if (a === '--ticket' && argv[i + 1]) { flags.ticketId = Number(argv[++i]); continue; }
+    rest.push(a);
+  }
+  return { flags, rest };
+}
+
+async function runSupportCommand(argv: string[]): Promise<void> {
+  const { flags, rest } = parseSupportFlags(argv);
+  const question = rest.join(' ').trim();
+  if (!question) {
+    console.error(
+      'Укажите вопрос: pnpm --filter challenge exec tsx src/cli.ts support --user <N> [--ticket <N>] "вопрос"',
+    );
+    process.exit(1);
+  }
+  if (flags.userId == null || !Number.isInteger(flags.userId) || flags.userId <= 0) {
+    console.error('--user <N> обязательно (положительное целое): support --user 1 [--ticket 1] "вопрос"');
+    process.exit(1);
+  }
+  if (flags.ticketId != null && (!Number.isInteger(flags.ticketId) || flags.ticketId <= 0)) {
+    console.error('--ticket <N> должен быть положительным целым.');
+    process.exit(1);
+  }
+  const store = new RagStore(RAG_DB_PATH);
+  try {
+    console.log(
+      `▶ support: user=${flags.userId}${flags.ticketId != null ? ` ticket=${flags.ticketId}` : ''} | ${question}\n`,
+    );
+    const res = await askSupportAssistant(question, store, {
+      userId: flags.userId,
+      ticketId: flags.ticketId,
+    });
+    console.log(res.answer);
+    console.log('');
+    console.log('Источники FAQ:');
+    const srcLines = res.sources.map(
+      (s, i) =>
+        `  [${i + 1}] ${s.chunk.metadata.section} (score=${s.score.toFixed(2)}, source=${s.chunk.metadata.source})`,
+    );
+    console.log(srcLines.length > 0 ? srcLines.join('\n') : '(нет — guard/crm-miss)');
+    if (res.user) {
+      console.log(
+        `\nПрофиль CRM: ${res.user.name} (plan=${res.user.plan}, two_fa=${res.user.two_fa ? 'on' : 'off'}, email=${res.user.email})`,
+      );
+    }
+    if (res.ticket) {
+      const det =
+        typeof res.ticket.details === 'string' ? res.ticket.details : JSON.stringify(res.ticket.details);
+      console.log(
+        `Тикет CRM #${res.ticket.id}: ${res.ticket.subject} [status=${res.ticket.status}, priority=${res.ticket.priority}]`,
+      );
+      console.log(`  details: ${det}`);
+    }
+    const tag =
+      res.cloudStatus === 'ok'
+        ? `cloud: ${res.cloudModel} (${res.dtMs ?? 0}ms)`
+        : res.cloudStatus === 'no-key'
+          ? 'cloud: нет OPENROUTER_API_KEY (draft-only)'
+          : res.cloudStatus === 'fallback'
+            ? 'cloud: недоступен (draft-only, fallback)'
+            : res.cloudStatus === 'guard'
+              ? 'guard: FAQ не нашёл релевантного (без LLM/MCP)'
+              : 'crm: пользователь не найден';
+    console.log(`\n[${tag}]`);
+  } finally {
+    store.close();
+  }
+}
+
+async function runSupportSeedCommand(): Promise<void> {
+  const db = new CrmDb(DB_PATH);
+  try {
+    const r = seedSupport(db);
+    console.log(
+      `CRM seed: добавлено ${r.users} пользователей и ${r.tickets} тикетов (всего в БД: users=${db.usersCount()}, tickets=${db.ticketsCount()}).`,
+    );
+  } finally {
+    db.close();
+  }
+}
+
 async function runRagCommand(argv: string[]): Promise<void> {
   const sub = argv[0];
   try {
@@ -1098,6 +1217,25 @@ async function runRagCommand(argv: string[]): Promise<void> {
         console.log('▶ RAG index-docs: кураторский корпус dev-assistant → стратегия docs');
         const r = await indexDocsCorpus(store, findRepoRoot());
         console.log(`  docs: проиндексировано ${r.chunks} чанков (всего в 'docs': ${store.count('docs')})`);
+      } finally {
+        store.close();
+      }
+      return;
+    }
+
+    if (sub === 'index-faq') {
+      // Кураторский FAQ-корпус support-assistant → партиция 'faq'. Через
+      // indexDocuments (НЕ runIndexing): clearStrategy('faq') чистит ТОЛЬКО 'faq',
+      // партиции fixed/structure/telegram/docs не затрагиваются (memory:
+      // RAG index read-only для существующих партиций). Эмбеддинги локальные (Ollama).
+      const store = new RagStore(RAG_DB_PATH);
+      try {
+        console.log('▶ RAG index-faq: кураторский FAQ support-assistant → стратегия faq');
+        const embedder = makeEmbedder();
+        const chunks = buildFaqChunks();
+        store.clearStrategy('faq');
+        await indexDocuments(store, 'faq', chunks, embedder, 32);
+        console.log(`  faq: проиндексировано ${chunks.length} чанков (всего в 'faq': ${store.count('faq')})`);
       } finally {
         store.close();
       }
