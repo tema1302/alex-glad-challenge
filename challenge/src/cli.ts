@@ -46,6 +46,7 @@ import { askSupportAssistant, buildFaqChunks } from './core/support/supportAssis
 import { seedSupport } from './core/support/faqSeed.js';
 import { runFileServer } from './core/fileMcp.js';
 import { runFindUsages, runUpdateDocs } from './core/fileAssistant.js';
+import { runRefactor, runScaffold, runClassify } from './core/fileAgent.js';
 import { GuardError } from './core/fileGuard.js';
 import {
   RagStore,
@@ -175,6 +176,13 @@ function printHelp(): void {
   console.log('  files docs "<goal>" [--write]');
   console.log("                        Сценарий 2: обновить doc (README|AGENTS|docs/*) по цели;");
   console.log('                        default dry-run = unified diff; --write персистит.');
+  console.log('  files refactor "<goal>" [--write]');
+  console.log('                        Сценарий 3: refactor .ts в challenge/src/ (cloud draft + typecheck-rollback);');
+  console.log('                        protected-set (cli/registry/env/client/types/sanitize/file*/mcp*) — отказ exit 3.');
+  console.log('  files scaffold "<goal>" [--write]');
+  console.log('                        Сценарий 4: создать новый .ts в challenge/src/utils/** (dry-run preview / --write);');
+  console.log('                        не перезаписывает существующее, в registry не вписывается.');
+  console.log('  files run "<goal>"    Сценарий 5: classify NL → docs|refactor|scaffold и делегировать (dry-run).');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
@@ -625,7 +633,44 @@ async function main(): Promise<void> {
       await runFilesDocsCommand(goal, write);
       return;
     }
-    console.error('Использование: files find <symbol> | files docs "<goal>" [--write]');
+    if (sub === 'refactor') {
+      const rest = argv.slice(2);
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.error(
+          'Укажите цель: files refactor "переименуй X в challenge/src/core/memory.ts" [--write]',
+        );
+        process.exit(1);
+      }
+      await runFilesRefactorCommand(goal, write);
+      return;
+    }
+    if (sub === 'scaffold') {
+      const rest = argv.slice(2);
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.error('Укажите цель: files scaffold "создай утилиту string-utils" [--write]');
+        process.exit(1);
+      }
+      await runFilesScaffoldCommand(goal, write);
+      return;
+    }
+    if (sub === 'run') {
+      const goal = argv.slice(2).join(' ').trim();
+      if (!goal) {
+        console.error(
+          'Укажите цель: files run "обновить README | переименуй X | создай утилиту Y"',
+        );
+        process.exit(1);
+      }
+      await runFilesRunCommand(goal);
+      return;
+    }
+    console.error(
+      'Использование: files find <symbol> | files docs|refactor|scaffold "<goal>" [--write] | files run "<goal>"',
+    );
     process.exit(1);
   }
 
@@ -1250,6 +1295,80 @@ async function runFilesDocsCommand(goal: string, write: boolean): Promise<void> 
     console.error(`files docs error: ${m.split('\n')[0].slice(0, 300)}`);
     process.exit(e instanceof GuardError ? 3 : 1);
   }
+}
+
+// День 34 (fixup): files refactor — cloud draft .ts с typecheck-rollback.
+async function runFilesRefactorCommand(goal: string, write: boolean): Promise<void> {
+  console.log(`▶ files refactor (${write ? 'write' : 'dry-run'}): ${goal}\n`);
+  try {
+    const res = await runRefactor(goal, { write });
+    console.log(`target: ${res.targetPath}`);
+    if (res.cloudStatus !== 'ok') {
+      console.log(CLOUD_DOWN_MESSAGE);
+    }
+    if (res.rollback) {
+      console.log(`⚠ typecheck FAILED (${res.rollback.reason}) → rollback restored snapshot.`);
+      console.error(res.rollback.stderr);
+      process.exit(1);
+    }
+    if (res.written) {
+      console.log(`записано ${res.afterBytes} байт (было ${res.beforeBytes}).`);
+    } else {
+      console.log('--- diff (dry-run) ---');
+      console.log(res.diff || '(нет изменений)');
+    }
+    process.exit(0);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    console.error(`files refactor error: ${m.split('\n')[0].slice(0, 300)}`);
+    process.exit(e instanceof GuardError ? 3 : 1);
+  }
+}
+
+// День 34 (fixup): files scaffold — новый .ts в challenge/src/utils/**.
+async function runFilesScaffoldCommand(goal: string, write: boolean): Promise<void> {
+  console.log(`▶ files scaffold (${write ? 'write' : 'dry-run'}): ${goal}\n`);
+  try {
+    const res = await runScaffold(goal, { write });
+    console.log(`target: ${res.targetPath}`);
+    if (res.cloudStatus !== 'ok') {
+      console.log(CLOUD_DOWN_MESSAGE);
+    }
+    if (res.rollback) {
+      console.log(`⚠ typecheck FAILED (${res.rollback.reason}) → rollback (new file unlinked).`);
+      console.error(res.rollback.stderr);
+      process.exit(1);
+    }
+    if (res.created) {
+      console.log(`создан новый файл (${res.targetPath}).`);
+    } else {
+      console.log('--- preview (dry-run) ---');
+      console.log(res.preview || '(пустой драфт)');
+    }
+    process.exit(0);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    console.error(`files scaffold error: ${m.split('\n')[0].slice(0, 300)}`);
+    process.exit(e instanceof GuardError ? 3 : 1);
+  }
+}
+
+// День 34 (fixup): files run — classify NL → {docs|refactor|scaffold} и делегировать.
+async function runFilesRunCommand(goal: string): Promise<void> {
+  console.log(`▶ files run: ${goal}\n`);
+  const cls = runClassify(goal);
+  if (cls.type === 'ambiguous') {
+    console.error(
+      `Не удалось определить тип задачи (matched: ${cls.matched?.join(', ') || 'none'}). ` +
+        'Уточните: «док/readme» (docs), «рефактор/переименуй» (refactor), «создай утилиту» (scaffold).',
+    );
+    process.exit(1);
+  }
+  console.log(`classify → ${cls.type}`);
+  // Делегируем в dry-run варианты (run = safe-by-default, без авто --write).
+  if (cls.type === 'docs') await runFilesDocsCommand(goal, false);
+  else if (cls.type === 'refactor') await runFilesRefactorCommand(goal, false);
+  else await runFilesScaffoldCommand(goal, false);
 }
 
 // Один readline на prompt — зеркало defaultAsk из telegramScanner.ts (не экспортируется).

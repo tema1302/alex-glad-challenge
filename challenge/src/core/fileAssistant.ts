@@ -86,7 +86,7 @@ export interface DocsResult {
   cloudModel?: string;
 }
 
-function stripLineNumbers(numbered: string): string {
+export function stripLineNumbers(numbered: string): string {
   return numbered
     .split(/\r?\n/)
     .map((l) => l.replace(/^L\d+\t/, ''))
@@ -97,7 +97,7 @@ function stripLineNumbers(numbered: string): string {
  * Опц. snippets из кодовых токенов goal: CamelCase/UPPER_SNAKE → top-3 →
  * file_search ext .ts maxMatches 5. Cap 8KB. Non-fatal (сбой/нет токенов → '').
  */
-async function collectSnippets(mcp: McpStdioClient, goal: string): Promise<string> {
+export async function collectSnippets(mcp: McpStdioClient, goal: string): Promise<string> {
   const tokens = Array.from(
     new Set(goal.match(/\b[A-Z][A-Za-z0-9]{2,}\b/g) ?? []),
   ).slice(0, 3);

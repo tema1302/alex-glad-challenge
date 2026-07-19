@@ -187,12 +187,26 @@ export const fileReadTool: McpServerTool = {
   },
 };
 
-/** file_write: полный перезапись файла. Регистрируется только при runFileServer(true). */
+/**
+ * file_write: полная перезапись файла. Регистрируется только при runFileServer(true).
+ *
+ * Write-allowlist (assertWriteAllowed): docs (README.md | AGENTS.md | docs-*.md) +
+ * code (.ts в challenge/src/, КРОМЕ protected-set: cli, registry, env, client, types,
+ * sanitize, assistantMcp, file-любые, mcp-любые, -Mcp-суффикс). Контент sanitize через clean().
+ *
+ * ВНИМАНИЕ: code-write allowlist — это safety-net НА ВЫЗЫВАЮЩЕЙ СТОРОНЕ (fileAgent.ts:
+ * pre-валидация + typecheck-rollback в fileSafety.ts). file_write повторяет guard
+ * как defense-in-depth, но НЕ поднимайте file-server --write как долгоживущий сервис
+ * — это STDIO-only инструмент для разового round-trip из CLI-агента.
+ */
 export const fileWriteTool: McpServerTool = {
   name: 'file_write',
   description:
     'Перезаписать файл целиком (full write). Path-confinement + write-allowlist enforced: ' +
-    'допускаются только README.md | AGENTS.md | docs/*.md. Контент sanitize через clean().',
+    'docs (README.md, AGENTS.md, docs/*.md) + code (.ts в challenge/src/, КРОМЕ protected-set: ' +
+    'cli, registry, env, client, types, sanitize, assistantMcp, file-префикс, mcp-префикс, Mcp-суффикс). ' +
+    'Контент sanitize через clean(). Code-write safety-net — на вызывающей стороне (fileAgent.ts); ' +
+    'не использовать как долгоживущий сервис.',
   inputSchema: {
     type: 'object',
     properties: {

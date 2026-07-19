@@ -86,21 +86,94 @@ export function isDenylisted(abs: string, repoRoot: string): DenyVerdict {
   return { denied: false };
 }
 
+// Protected-set: refactor ОТКАЗ для точек регистрации/конфигурации/транспорта и
+// семейств file*/mcp*/*Mcp (GLOB — покрывает новые fileAgent.ts/fileSafety.ts).
+// Refactor PASS если p.startsWith('challenge/src/') && p.endsWith('.ts') И НЕ protected.
+const PROTECTED_CODE_EXACT = new Set([
+  'challenge/src/cli.ts',
+  'challenge/src/demos/registry.ts',
+  'challenge/src/core/env.ts',
+  'challenge/src/core/client.ts',
+  'challenge/src/core/types.ts',
+  'challenge/src/core/sanitize.ts',
+  'challenge/src/core/assistantMcp.ts',
+]);
+
+function isProtectedCodePath(p: string): boolean {
+  if (PROTECTED_CODE_EXACT.has(p)) return true;
+  if (p.startsWith('challenge/src/core/')) {
+    const base = p.slice('challenge/src/core/'.length);
+    if (/^file.*\.ts$/.test(base)) return true; // file*.ts (guard/agent/safety/mcp)
+    if (/^mcp.*\.ts$/.test(base)) return true; // mcp*.ts (transport/auth)
+    if (/^.*Mcp\.ts$/.test(base)) return true; // *Mcp.ts (backup-glob)
+  }
+  return false;
+}
+
 /**
- * Write-allowlist: только docs-цели. Бросает GuardError('write-not-allowed').
- * Расширение «код» (файлы .ts в challenge/src/core) — default OFF; оставить
- * закомментированным хуком, НЕ активировать в MVP.
+ * Write-allowlist: docs (README.md | AGENTS.md | docs/*.md) + code (.ts в
+ * challenge/src/, КРОМЕ protected-set). Бросает GuardError('write-not-allowed').
+ * Scaffold-цели лежат в challenge/src/utils/** — это не-protected .ts, проходят.
+ * Defense-in-depth: эту же проверку повторяет file_write в file-server.
  */
 export function assertWriteAllowed(rel: string): void {
   const p = toPosix(rel).replace(/^\.\//, '');
   if (p === 'README.md' || p === 'AGENTS.md') return;
   if (p.startsWith('docs/') && p.endsWith('.md')) return;
-  // MVP: код не правится. Расширение:
-  // if (p.startsWith('challenge/src/core/') && p.endsWith('.ts')) return;
+  if (p.startsWith('challenge/src/') && p.endsWith('.ts')) {
+    if (!isProtectedCodePath(p)) return;
+    throw new GuardError('write-not-allowed', `запись в protected-файл запрещена: ${p}`);
+  }
   throw new GuardError(
     'write-not-allowed',
-    `запись вне allowlist (допустимы README.md | AGENTS.md | docs/*.md): ${p}`,
+    `запись вне allowlist (docs/*.md | README.md | AGENTS.md | не-protected .ts в challenge/src/): ${p}`,
   );
+}
+
+/**
+ * Map цели пользователя → rel-путь target-файла .ts (существующего) внутри
+ * code-allowlist. Детерминировано, pure-fn (без I/O). Path-traversal невозможен:
+ * char-class не содержит '.', '..' не matches. Не нашла путь → { error }.
+ */
+export function resolveCodeTarget(
+  goal: string,
+): { relPath: string } | { error: string } {
+  const m = goal.match(/(challenge\/src\/[A-Za-z0-9_\/\-]+\.ts|src\/[A-Za-z0-9_\/\-]+\.ts)/);
+  if (!m) {
+    return {
+      error:
+        'не удалось определить target-файл .ts из goal; укажите путь явно, напр. challenge/src/core/memory.ts',
+    };
+  }
+  const rel = m[0].startsWith('challenge/') ? m[0] : `challenge/${m[0]}`;
+  return { relPath: rel };
+}
+
+/**
+ * Map цели «создай утилиту <name>» → rel-путь НОВОГО файла в sandbox
+ * challenge/src/utils/<slug>.ts (kebab-case, max 40). Pure-fn (без I/O).
+ * Существование файла проверяет агент (fs.stat → GuardError на перезапись).
+ */
+export function resolveScaffoldPath(
+  goal: string,
+): { relPath: string } | { error: string } {
+  const m = goal.match(
+    /(?:создай|сгенерируй|добавь|new|create)\s+(?:новый\s+|new\s+)?(?:утилит[а-я]*|хелпер|helper|util|модуль|module|функци[а-я]*|function)\s+([A-Za-z][A-Za-z0-9_-]{1,40})/i,
+  );
+  if (!m) {
+    return {
+      error:
+        'не удалось определить имя новой утилиты из goal; формат: «создай утилиту <name>»',
+    };
+  }
+  const raw = m[1].toLowerCase();
+  const slug = raw
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+  if (!slug) return { error: 'пустое имя утилиты после нормализации' };
+  return { relPath: `challenge/src/utils/${slug}.ts` };
 }
 
 /**
