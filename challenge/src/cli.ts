@@ -37,13 +37,16 @@ import { McpHttpClient } from './core/mcpHttpClient.js';
 import { parseTodoArgs } from './core/todoParser.js';
 import { runAgentRequest } from './core/mcpAgentLoop.js';
 import { runAssistantServer } from './core/assistantMcp.js';
-import { indexDocsCorpus, askDevAssistant } from './core/rag/devAssistant.js';
+import { indexDocsCorpus, askDevAssistant, CLOUD_DOWN_MESSAGE } from './core/rag/devAssistant.js';
 import { reviewPr } from './core/rag/prReview.js';
 import { findRepoRoot } from './core/rag/docsCorpus.js';
 import { runCrmServer } from './core/crmMcp.js';
 import { CrmDb } from './core/crmDb.js';
 import { askSupportAssistant, buildFaqChunks } from './core/support/supportAssistant.js';
 import { seedSupport } from './core/support/faqSeed.js';
+import { runFileServer } from './core/fileMcp.js';
+import { runFindUsages, runUpdateDocs } from './core/fileAssistant.js';
+import { GuardError } from './core/fileGuard.js';
 import {
   RagStore,
   Retriever,
@@ -167,6 +170,11 @@ function printHelp(): void {
   console.log('  support --user <N> [--ticket <N>] "<вопрос>"');
   console.log('                   Legacy one-shot: ответ поддержки CloudNote (RAG faq → local draft → CRM через MCP → cloud refine)');
   console.log('  crm-server       Поднять STDIO-MCP crm-server (tools: get_user, get_ticket — read-only)');
+  console.log('  file-server [--write]  Поднять STDIO-MCP file-server (file_search, file_read[ + file_write])');
+  console.log('  files find <symbol>    Сценарий 1: найти использования символа (read-only, без cloud)');
+  console.log('  files docs "<goal>" [--write]');
+  console.log("                        Сценарий 2: обновить doc (README|AGENTS|docs/*) по цели;");
+  console.log('                        default dry-run = unified diff; --write персистит.');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
   console.log('  agent "<запрос>"  Юзер вводит запрос → агент сам гонит цепочку MCP-тулов на сервере');
@@ -586,6 +594,41 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'file-server') {
+    const allowWrite = argv.slice(1).includes('--write');
+    console.log(
+      `▶ file-server: STDIO-MCP (tools: file_search, file_read${allowWrite ? ', file_write' : ''})`,
+    );
+    await runFileServer(allowWrite);
+    return;
+  }
+
+  if (arg === 'files') {
+    const sub = argv[1];
+    if (sub === 'find') {
+      const symbol = argv.slice(2).join(' ').trim();
+      if (!symbol) {
+        console.error('Укажите символ: files find "LlmClient"');
+        process.exit(1);
+      }
+      await runFilesFindCommand(symbol);
+      return;
+    }
+    if (sub === 'docs') {
+      const rest = argv.slice(2);
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.error('Укажите цель: files docs "обновить README раздел про install" [--write]');
+        process.exit(1);
+      }
+      await runFilesDocsCommand(goal, write);
+      return;
+    }
+    console.error('Использование: files find <symbol> | files docs "<goal>" [--write]');
+    process.exit(1);
+  }
+
   // Если это день из реестра — прогоняем демо.
   const demo = findDemo(arg);
   if (demo) {
@@ -596,7 +639,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -1164,6 +1207,48 @@ async function runSupportCommand(argv: string[]): Promise<void> {
     printSupportAnswer(res);
   } finally {
     store.close();
+  }
+}
+
+// День 34: файловый ассистент. Сценарий 1 — find-usages (read-only, без cloud).
+async function runFilesFindCommand(symbol: string): Promise<void> {
+  console.log(`▶ files find: ${symbol}\n`);
+  try {
+    const res = await runFindUsages(symbol);
+    if (res.matches.length === 0) {
+      console.log('(нет совпадений внутри allowlist)');
+    } else {
+      for (const m of res.matches) console.log(`${m.file}:${m.line}: ${m.text}`);
+      if (res.truncated) console.log(`\n…[показаны первые ${res.matches.length}]…`);
+    }
+    process.exit(0);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    console.error(`files find error: ${m.split('\n')[0].slice(0, 300)}`);
+    process.exit(e instanceof GuardError ? 3 : 1);
+  }
+}
+
+// День 34: файловый ассистент. Сценарий 2 — обновить doc (cloud draft → dry-run/--write).
+async function runFilesDocsCommand(goal: string, write: boolean): Promise<void> {
+  console.log(`▶ files docs (${write ? 'write' : 'dry-run'}): ${goal}\n`);
+  try {
+    const res = await runUpdateDocs(goal, { write });
+    console.log(`target: ${res.targetPath}`);
+    if (res.cloudStatus !== 'ok') {
+      console.log(CLOUD_DOWN_MESSAGE);
+    }
+    if (res.written) {
+      console.log(`записано ${res.afterBytes} байт (было ${res.beforeBytes}).`);
+    } else {
+      console.log('--- diff (dry-run) ---');
+      console.log(res.diff || '(нет изменений)');
+    }
+    process.exit(0);
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    console.error(`files docs error: ${m.split('\n')[0].slice(0, 300)}`);
+    process.exit(e instanceof GuardError ? 3 : 1);
   }
 }
 
