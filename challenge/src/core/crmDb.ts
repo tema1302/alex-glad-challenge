@@ -94,6 +94,22 @@ export class CrmDb {
     return (row ?? null) as UserRow | null;
   }
 
+  // LOWER с обеих сторон = case-insensitive матч без миграции схемы
+  // (COLLATE в схеме не задан = BINARY). Для login-валидации по email.
+  getUserByEmail(email: string): UserRow | null {
+    const row = this.db
+      .prepare('SELECT * FROM users WHERE LOWER(email) = LOWER(?)')
+      .get(email);
+    return (row ?? null) as UserRow | null;
+  }
+
+  // Минимизация PII: только id/name/email/plan (без created_at/two_fa).
+  listUsers(): UserRow[] {
+    return this.db
+      .prepare('SELECT id, name, email, plan FROM users ORDER BY id')
+      .all() as unknown as UserRow[];
+  }
+
   getTicket(id: number): TicketRow | null {
     const row = this.db.prepare('SELECT * FROM tickets WHERE id = ?').get(id);
     return (row ?? null) as TicketRow | null;

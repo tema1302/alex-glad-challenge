@@ -84,6 +84,7 @@ import {
 import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
+import { clean } from './core/sanitize.js';
 
 const DB_PATH = dataPath('blog.sqlite');
 const PROFILE_DIR = dataPath('profiles');
@@ -161,8 +162,10 @@ function printHelp(): void {
   console.log('  assistant-server Поднять STDIO-MCP dev-assistant (tool: git_branch, read-only)');
   console.log('  support-seed     Залить CRM-демо-данные CloudNote (5 users + 5 tickets в blog.sqlite, идемпотентно)');
   console.log('  rag index-faq    Индексировать FAQ-корпус support-assistant (4 Q&A CloudNote → стратегия faq)');
+  console.log('  support           Интерактивный режим: спросит email (login-gate по CRM) и вопрос');
+  console.log('  support --list    Показать список пользователей CRM (id, name, email, plan)');
   console.log('  support --user <N> [--ticket <N>] "<вопрос>"');
-  console.log('                   Ответ поддержки CloudNote (RAG faq → local draft → CRM через MCP → cloud refine)');
+  console.log('                   Legacy one-shot: ответ поддержки CloudNote (RAG faq → local draft → CRM через MCP → cloud refine)');
   console.log('  crm-server       Поднять STDIO-MCP crm-server (tools: get_user, get_ticket — read-only)');
   console.log('  day-20 [текст]   Оркестрация: filesystem-mcp (vault, stdio) + world-mcp. Текст = запрос');
   console.log('    --write           разрешить write_file и send_to_chat в Telegram (иначе dry-run)');
@@ -468,7 +471,14 @@ async function main(): Promise<void> {
   }
 
   if (arg === 'support') {
-    await runSupportCommand(argv.slice(1));
+    const a = argv.slice(1);
+    if (a.includes('--list')) {
+      await runSupportListCommand();
+    } else if (a.includes('--user')) {
+      await runSupportCommand(a);
+    } else {
+      await runSupportInteractive();
+    }
     return;
   }
 
@@ -1151,41 +1161,57 @@ async function runSupportCommand(argv: string[]): Promise<void> {
       userId: flags.userId,
       ticketId: flags.ticketId,
     });
-    console.log(res.answer);
-    console.log('');
-    console.log('Источники FAQ:');
-    const srcLines = res.sources.map(
-      (s, i) =>
-        `  [${i + 1}] ${s.chunk.metadata.section} (score=${s.score.toFixed(2)}, source=${s.chunk.metadata.source})`,
-    );
-    console.log(srcLines.length > 0 ? srcLines.join('\n') : '(нет — guard/crm-miss)');
-    if (res.user) {
-      console.log(
-        `\nПрофиль CRM: ${res.user.name} (plan=${res.user.plan}, two_fa=${res.user.two_fa ? 'on' : 'off'}, email=${res.user.email})`,
-      );
-    }
-    if (res.ticket) {
-      const det =
-        typeof res.ticket.details === 'string' ? res.ticket.details : JSON.stringify(res.ticket.details);
-      console.log(
-        `Тикет CRM #${res.ticket.id}: ${res.ticket.subject} [status=${res.ticket.status}, priority=${res.ticket.priority}]`,
-      );
-      console.log(`  details: ${det}`);
-    }
-    const tag =
-      res.cloudStatus === 'ok'
-        ? `cloud: ${res.cloudModel} (${res.dtMs ?? 0}ms)`
-        : res.cloudStatus === 'no-key'
-          ? 'cloud: нет OPENROUTER_API_KEY (draft-only)'
-          : res.cloudStatus === 'fallback'
-            ? 'cloud: недоступен (draft-only, fallback)'
-            : res.cloudStatus === 'guard'
-              ? 'guard: FAQ не нашёл релевантного (без LLM/MCP)'
-              : 'crm: пользователь не найден';
-    console.log(`\n[${tag}]`);
+    printSupportAnswer(res);
   } finally {
     store.close();
   }
+}
+
+// Один readline на prompt — зеркало defaultAsk из telegramScanner.ts (не экспортируется).
+function ask(prompt: string): Promise<string> {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(prompt, (a) => {
+      rl.close();
+      resolve(a.trim());
+    });
+  });
+}
+
+// Общий формат вывода ответа support (legacy one-shot и interactive).
+function printSupportAnswer(res: Awaited<ReturnType<typeof askSupportAssistant>>): void {
+  console.log(res.answer);
+  console.log('');
+  console.log('Источники FAQ:');
+  const srcLines = res.sources.map(
+    (s, i) =>
+      `  [${i + 1}] ${s.chunk.metadata.section} (score=${s.score.toFixed(2)}, source=${s.chunk.metadata.source})`,
+  );
+  console.log(srcLines.length > 0 ? srcLines.join('\n') : '(нет — guard/crm-miss)');
+  if (res.user) {
+    console.log(
+      `\nПрофиль CRM: ${res.user.name} (plan=${res.user.plan}, two_fa=${res.user.two_fa ? 'on' : 'off'}, email=${res.user.email})`,
+    );
+  }
+  if (res.ticket) {
+    const det =
+      typeof res.ticket.details === 'string' ? res.ticket.details : JSON.stringify(res.ticket.details);
+    console.log(
+      `Тикет CRM #${res.ticket.id}: ${res.ticket.subject} [status=${res.ticket.status}, priority=${res.ticket.priority}]`,
+    );
+    console.log(`  details: ${det}`);
+  }
+  const tag =
+    res.cloudStatus === 'ok'
+      ? `cloud: ${res.cloudModel} (${res.dtMs ?? 0}ms)`
+      : res.cloudStatus === 'no-key'
+        ? 'cloud: нет OPENROUTER_API_KEY (draft-only)'
+        : res.cloudStatus === 'fallback'
+          ? 'cloud: недоступен (draft-only, fallback)'
+          : res.cloudStatus === 'guard'
+            ? 'guard: FAQ не нашёл релевантного (без LLM/MCP)'
+            : 'crm: пользователь не найден';
+  console.log(`\n[${tag}]`);
 }
 
 async function runSupportSeedCommand(): Promise<void> {
@@ -1197,6 +1223,62 @@ async function runSupportSeedCommand(): Promise<void> {
     );
   } finally {
     db.close();
+  }
+}
+
+async function runSupportListCommand(): Promise<void> {
+  const db = new CrmDb(DB_PATH);
+  try {
+    const users = db.listUsers();
+    if (users.length === 0) {
+      console.log('CRM пуст. Залейте демо: support-seed');
+      return;
+    }
+    for (const u of users) {
+      console.log(`#${u.id}  ${u.name} <${u.email}> [${u.plan}]`);
+    }
+  } finally {
+    db.close();
+  }
+}
+
+// support без --list/--user → интерактивный диалог.
+// Email → login-gate по CRM (miss = стоп, exit 2) → вопрос → pipeline.
+const MAX_SUPPORT_EMAIL = 254;
+const MAX_SUPPORT_QUESTION = 1000;
+
+async function runSupportInteractive(): Promise<void> {
+  const emailRaw = await ask('Email: ');
+  const email = clean(emailRaw, MAX_SUPPORT_EMAIL);
+  if (email.length === 0) {
+    console.log('Email не введён.');
+    process.exit(2);
+  }
+  const db = new CrmDb(DB_PATH);
+  let userId: number;
+  try {
+    const user = db.getUserByEmail(email);
+    if (!user) {
+      console.log('Пользователь не найден. Проверьте email или посмотрите список: support --list');
+      process.exit(2);
+    }
+    userId = user.id;
+  } finally {
+    db.close();
+  }
+  const questionRaw = await ask('Вопрос: ');
+  const question = clean(questionRaw, MAX_SUPPORT_QUESTION);
+  if (question.length === 0) {
+    console.log('Вопрос не указан.');
+    process.exit(1);
+  }
+  const store = new RagStore(RAG_DB_PATH);
+  try {
+    console.log(`\n▶ support: user=${userId} | ${question}\n`);
+    const res = await askSupportAssistant(question, store, { userId });
+    printSupportAnswer(res);
+  } finally {
+    store.close();
   }
 }
 
