@@ -55,6 +55,14 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
+  .bento-enter {
+    animation: bentoFadeUp 0.4s ease-out both;
+    animation-delay: calc(var(--i, 0) * 60ms);
+  }
+  @keyframes bentoFadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
