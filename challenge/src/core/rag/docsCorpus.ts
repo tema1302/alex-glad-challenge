@@ -24,6 +24,7 @@ const CURATED_REL: readonly string[] = [
   'docs/HERMES-DEPLOY-RUNBOOK.md',
   'docs/superpowers/plans/2026-07-11-web-product-redesign.md',
   'docs/superpowers/specs/2026-07-11-web-product-redesign-design.md',
+  'challenge/docs/UD33768B_Baseline_Network-Video-Recorder-I-and-M-Series_User-Manual_V4.63.010_20230609.md',
 ];
 
 export function curatedDocsFiles(): readonly string[] {
