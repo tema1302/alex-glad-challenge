@@ -22,7 +22,9 @@ import { runAgentRequest } from './core/mcpAgentLoop.js';
 import { runDay20 } from './demos/day-20.js';
 import { dataPath } from './core/paths.js';
 import { RagStore } from './core/rag/index.js';
-import { askDevAssistant } from './core/rag/devAssistant.js';
+import { askDevAssistant, CLOUD_DOWN_MESSAGE } from './core/rag/devAssistant.js';
+import { runRefactor, runScaffold, runClassify } from './core/fileAgent.js';
+import { runFindUsages, runUpdateDocs } from './core/fileAssistant.js';
 
 interface ReplOptions {
   systemPrompt?: string;
@@ -96,6 +98,7 @@ const ALL_COMMANDS = [
   '/agent ',
   '/briefing ', '/briefing --write',
   '/ask ',
+  '/files', '/files ',
   '/quit', '/exit',
 ];
 
@@ -763,6 +766,10 @@ async function handleCommand(raw: string, state: SessionState, _rl: unknown): Pr
       console.log('');
       return;
     }
+    case 'files': {
+      await handleFilesCommand(arg);
+      return;
+    }
     default:
       console.log(c.red + `Неизвестная команда /${cmd}` + c.reset + c.gray + '  /help — список.\n' + c.reset);
   }
@@ -970,6 +977,13 @@ function printFullHelp(state: SessionState): void {
   console.log('');
   header('Dev-assistant');
   row('/ask <вопрос>', 'ответ о структуре репо (RAG docs → local draft → cloud refine)');
+  console.log('');
+  header('Файловый агент (день 34)');
+  row('/files find <symbol>', 'найти использования символа (read-only, без cloud)');
+  row('/files docs <goal> [--write]', 'обновить doc (README|AGENTS|docs/*): dry-run diff / --write');
+  row('/files refactor <goal> [--write]', 'рефактор .ts в challenge/src/ (typecheck-rollback)');
+  row('/files scaffold <goal> [--write]', 'новый .ts в challenge/src/utils/** (dry-run / --write)');
+  row('/files run <NL>', 'классификация NL → docs|refactor|scaffold (dry-run, без --write)');
   console.log('');
   header('Системные');
   row('/help, /h', 'эта справка');
@@ -1901,6 +1915,198 @@ async function handlePostPublishCommand(arg: string): Promise<void> {
     }
   } finally {
     db.close();
+  }
+}
+
+// --- Файловый агент (день 34) в REPL ---
+// Зеркало cli.ts:runFiles*Command по выводу, но БЕЗ process.exit — REPL продолжает.
+
+function printFilesError(e: unknown): void {
+  const m = e instanceof Error ? e.message : String(e);
+  console.log(c.red + 'files error: ' + m.split('\n')[0].slice(0, 300) + c.reset + '\n');
+}
+
+function printCloudStatus(status: 'ok' | 'no-key' | 'fallback'): void {
+  if (status !== 'ok') console.log(c.gray + CLOUD_DOWN_MESSAGE + c.reset);
+}
+
+function printDocsResult(res: Awaited<ReturnType<typeof runUpdateDocs>>): void {
+  console.log(c.gray + 'target:' + c.reset + ' ' + res.targetPath);
+  printCloudStatus(res.cloudStatus);
+  if (res.written) {
+    console.log(c.green + `записано ${res.afterBytes} байт (было ${res.beforeBytes}).` + c.reset);
+  } else {
+    console.log(c.gray + '--- diff (dry-run) ---' + c.reset);
+    console.log(res.diff || c.gray + '(нет изменений)' + c.reset);
+  }
+}
+
+function printRefactorResult(res: Awaited<ReturnType<typeof runRefactor>>): void {
+  console.log(c.gray + 'target:' + c.reset + ' ' + res.targetPath);
+  printCloudStatus(res.cloudStatus);
+  if (res.rollback) {
+    console.log(c.yellow + `⚠ typecheck FAILED (${res.rollback.reason}) → rollback restored snapshot.` + c.reset);
+    console.log(c.gray + res.rollback.stderr + c.reset);
+  }
+  if (res.written) {
+    console.log(c.green + `записано ${res.afterBytes} байт (было ${res.beforeBytes}).` + c.reset);
+  } else {
+    console.log(c.gray + '--- diff (dry-run) ---' + c.reset);
+    console.log(res.diff || c.gray + '(нет изменений)' + c.reset);
+  }
+}
+
+function printScaffoldResult(res: Awaited<ReturnType<typeof runScaffold>>): void {
+  console.log(c.gray + 'target:' + c.reset + ' ' + res.targetPath);
+  printCloudStatus(res.cloudStatus);
+  if (res.rollback) {
+    console.log(c.yellow + `⚠ typecheck FAILED (${res.rollback.reason}) → rollback (new file unlinked).` + c.reset);
+    console.log(c.gray + res.rollback.stderr + c.reset);
+  }
+  if (res.created) {
+    console.log(c.green + `создан новый файл (${res.targetPath}).` + c.reset);
+  } else {
+    console.log(c.gray + '--- preview (dry-run) ---' + c.reset);
+    console.log(res.preview || c.gray + '(пустой драфт)' + c.reset);
+  }
+}
+
+function printFilesUsage(): void {
+  console.log(c.gray + 'Файловый агент. Команды:' + c.reset);
+  console.log('  ' + c.cyan + '/files find <symbol>' + c.reset + c.gray + ' — использования символа (read-only)' + c.reset);
+  console.log('  ' + c.cyan + '/files docs <goal> [--write]' + c.reset + c.gray + ' — обновить doc (README|AGENTS|docs/*)' + c.reset);
+  console.log('  ' + c.cyan + '/files refactor <goal> [--write]' + c.reset + c.gray + ' — рефактор .ts в challenge/src/' + c.reset);
+  console.log('  ' + c.cyan + '/files scaffold <goal> [--write]' + c.reset + c.gray + ' — новый .ts в challenge/src/utils/**' + c.reset);
+  console.log('  ' + c.cyan + '/files run <NL>' + c.reset + c.gray + ' — классификация → docs|refactor|scaffold (dry-run)' + c.reset);
+  console.log('');
+}
+
+async function handleFilesCommand(arg: string): Promise<void> {
+  const [sub, ...rest] = arg.split(/\s+/);
+  const subArg = rest.join(' ').trim();
+
+  switch (sub) {
+    case '':
+    case 'help':
+      printFilesUsage();
+      return;
+
+    case 'find': {
+      const symbol = subArg;
+      if (!symbol) {
+        console.log(c.gray + 'Использование: /files find <symbol>\n' + c.reset);
+        return;
+      }
+      console.log(c.cyan + '▶ files find:' + c.reset + ' ' + symbol + '\n');
+      try {
+        const res = await runFindUsages(symbol);
+        if (res.matches.length === 0) {
+          console.log(c.gray + '(нет совпадений внутри allowlist)' + c.reset);
+        } else {
+          for (const m of res.matches) console.log(`${m.file}:${m.line}: ${m.text}`);
+          if (res.truncated) console.log(c.gray + `\n…[показаны первые ${res.matches.length}]…` + c.reset);
+        }
+      } catch (e) {
+        printFilesError(e);
+        return;
+      }
+      console.log('');
+      return;
+    }
+
+    case 'docs': {
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.log(c.gray + 'Использование: /files docs <goal> [--write]\n' + c.reset);
+        return;
+      }
+      console.log(c.cyan + `▶ files docs (${write ? 'write' : 'dry-run'}):` + c.reset + ' ' + goal + '\n');
+      try {
+        printDocsResult(await runUpdateDocs(goal, { write }));
+      } catch (e) {
+        printFilesError(e);
+        return;
+      }
+      console.log('');
+      return;
+    }
+
+    case 'refactor': {
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.log(c.gray + 'Использование: /files refactor <goal> [--write]\n' + c.reset);
+        return;
+      }
+      console.log(c.cyan + `▶ files refactor (${write ? 'write' : 'dry-run'}):` + c.reset + ' ' + goal + '\n');
+      try {
+        printRefactorResult(await runRefactor(goal, { write }));
+      } catch (e) {
+        printFilesError(e);
+        return;
+      }
+      console.log('');
+      return;
+    }
+
+    case 'scaffold': {
+      const write = rest.includes('--write');
+      const goal = rest.filter((a) => a !== '--write').join(' ').trim();
+      if (!goal) {
+        console.log(c.gray + 'Использование: /files scaffold <goal> [--write]\n' + c.reset);
+        return;
+      }
+      console.log(c.cyan + `▶ files scaffold (${write ? 'write' : 'dry-run'}):` + c.reset + ' ' + goal + '\n');
+      try {
+        printScaffoldResult(await runScaffold(goal, { write }));
+      } catch (e) {
+        printFilesError(e);
+        return;
+      }
+      console.log('');
+      return;
+    }
+
+    case 'run': {
+      // NL-классификация → docs|refactor|scaffold. В БЕЗ --write (REPL-безопасность),
+      // --write не парсится (зеркало cli.ts:runFilesRunCommand).
+      const nl = subArg;
+      if (!nl) {
+        console.log(c.gray + 'Использование: /files run <NL>\n' + c.reset);
+        return;
+      }
+      console.log(c.cyan + '▶ files run:' + c.reset + ' ' + nl + '\n');
+      const cls = runClassify(nl);
+      if (cls.type === 'ambiguous') {
+        console.log(
+          c.yellow +
+            `Не удалось определить тип задачи (matched: ${cls.matched?.join(', ') || 'none'}).` +
+            c.reset,
+        );
+        console.log(
+          c.gray +
+            'Уточни: «док/readme» (docs), «рефактор/переименуй» (refactor), «создай утилиту» (scaffold).\n' +
+            c.reset,
+        );
+        return;
+      }
+      console.log(c.gray + `classify → ${cls.type}` + c.reset + '\n');
+      try {
+        if (cls.type === 'docs') printDocsResult(await runUpdateDocs(nl, { write: false }));
+        else if (cls.type === 'refactor') printRefactorResult(await runRefactor(nl, { write: false }));
+        else printScaffoldResult(await runScaffold(nl, { write: false }));
+      } catch (e) {
+        printFilesError(e);
+        return;
+      }
+      console.log('');
+      return;
+    }
+
+    default:
+      console.log(c.red + `Неизвестная подкоманда /files ${sub}` + c.reset);
+      printFilesUsage();
   }
 }
 
