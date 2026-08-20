@@ -8,9 +8,19 @@
 // наши страницы force-dynamic, fresh nonce на каждый view.
 //
 // runtime = nodejs: standalone-стек на Node, Buffer доступен, нет риска edge-API-гэпов.
+//
+// Day 36 — admin-auth гейт ПОСЛЕ nonce-кода (nonce-логика не тронута: прошлый инцидент
+// «пустой body»). Публичные пути: /, /login, /api/auth/{login,logout}. Остальное:
+// страницы → 302 /login?next=<pathname> (query выкидывается), /api/* → 401 JSON
+// (клиентские страницы ждут JSON, не HTML-redirect). 401/302 строятся напрямую,
+// без nonce — это не HTML, CSP им не нужен. Fail-closed: env не задан → сессий
+// не бывает → всё кроме публичного уводит на /login.
 import { NextRequest, NextResponse } from 'next/server';
+import { SESSION_COOKIE, isValidSession } from './lib/auth';
 
 export const runtime = 'nodejs';
+
+const PUBLIC_PATHS = new Set(['/', '/login', '/api/auth/login', '/api/auth/logout']);
 
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
@@ -36,6 +46,23 @@ export function middleware(request: NextRequest) {
     request: { headers: requestHeaders },
   });
   response.headers.set('Content-Security-Policy', csp);
+
+  // --- Admin-auth гейт (day 36) ---
+  const { pathname } = request.nextUrl;
+  const authed = isValidSession(request.cookies.get(SESSION_COOKIE)?.value);
+  if (!PUBLIC_PATHS.has(pathname) && !authed) {
+    if (pathname.startsWith('/api')) {
+      return NextResponse.json(
+        { error: 'unauthorized' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+    return NextResponse.redirect(
+      new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url),
+      302,
+    );
+  }
+
   return response;
 }
 
@@ -49,5 +76,9 @@ export const config = {
         { type: 'header', key: 'purpose', value: 'prefetch' },
       ],
     },
+    // API — отдельным entry БЕЗ prefetch-исключения: крафтовый next-router-prefetch-хедер
+    // не должен обходить auth для /api/*. Prefetch-утечка страниц невозможна: все роуты
+    // динамические (layout await headers()), prefetch динамических страниц payload не отдаёт.
+    { source: '/api/:path*' },
   ],
 };

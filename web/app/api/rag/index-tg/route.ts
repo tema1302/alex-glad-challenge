@@ -9,11 +9,16 @@ import { ragIndexTgSchema } from '../../../../lib/shared/forms';
 import type { SseRagIndexTgEvent } from '../../../../lib/shared/sse';
 import { executeRagIndexTg } from '../../../../lib/server/rag-index-tg-adapter';
 import { safeMessage } from '../../../../lib/server/safe-message';
+import { requireAuth } from '../../../../lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<Response> {
+  // Второй auth-слой (день 36): reset:true сносит telegram-партицию RAG (LANDMINE).
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const parsed = ragIndexTgSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return new Response(

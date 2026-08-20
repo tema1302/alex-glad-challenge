@@ -277,3 +277,12 @@ export const tgPublishSchema = z.object({
   text: z.string().trim().min(1, 'Текст обязателен').max(4000, 'TG: до 4096 символов'),
 });
 export type TgPublishInput = z.infer<typeof tgPublishSchema>;
+
+// --- Day 36: admin-auth ---
+
+// POST /api/auth/login — пароль единственного админа. Без .trim(): пробелы в
+// пароле легальны (граница = длина, валидация — на сервере).
+export const loginSchema = z.object({
+  password: z.string().min(1, 'Введите пароль').max(200),
+});
+export type LoginInput = z.infer<typeof loginSchema>;

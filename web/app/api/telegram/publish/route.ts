@@ -8,11 +8,17 @@ import { NextRequest } from 'next/server';
 import { tgPublishSchema } from '../../../../lib/shared/forms';
 import { publishPost, isTelegramConfigured } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
+import { requireAuth } from '../../../../lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<Response> {
+  // Второй auth-слой (день 36): реальный внешний эффект — ошибка в middleware-matcher
+  // не должна открывать отправку в TG-канал.
+  const denied = requireAuth(req);
+  if (denied) return denied;
+
   const parsed = tgPublishSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return Response.json(

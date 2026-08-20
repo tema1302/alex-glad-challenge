@@ -110,3 +110,8 @@ export function getMcpServerUrl(): McpServerUrlStatus {
 export function isMcpAuthConfigured(): boolean {
   return Boolean(process.env.MCP_AUTH_TOKEN?.trim());
 }
+
+// Admin-auth web/ (день 36): флаг наличия для UI-индикаторов (точка для будущего
+// индикатора /settings). Реализация — lib/auth.ts, единая для middleware и роутов
+// (оттуда её же видит middleware — поэтому НЕ здесь). Наружу только Boolean.
+export { isAdminAuthConfigured } from '../auth';

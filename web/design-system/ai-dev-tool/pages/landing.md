@@ -1,8 +1,8 @@
 # Landing Page Overrides — AI Dev Tool (alex-glad-challenge)
 
-> **PROJECT:** AI Dev Tool — лендинг стэка (локальные LLM-агенты, RAG, MCP, TG-автоматизация)
-> **Page Type:** Marketing landing → переходы на дашборды (`/dashboard`, `/joker`, `/ask`, `/chat`)
-> **Создан:** 2026-07-20
+> **PROJECT:** AI Dev Tool — личный продающий лендинг владельца challenge (день 36)
+> **Page Type:** Personal marketing landing (`/`, публичный; routing-решение day-35: `/` = лендинг)
+> **Создан:** 2026-07-20 · **Переписан:** день 36 (products-лендинг → личный)
 
 > ⚠️ **IMPORTANT:** Правила здесь **переопределяют** `MASTER.md`.
 > Только отклонения от Master. Остальное — из Master.
@@ -11,98 +11,87 @@
 
 ## Контекст страницы
 
-Цель лендинга: презентовать стэк alex-glad-challenge как **product-grade AI/dev tool** и
-провести посетителя в конкретный работающий дашборд (не «общая информация», а live-демо).
+Цель лендинга: продать **человека**, а не стэк. Главный продающий актив — сам челлендж
+(35 дней подряд, каждая подсистема доведена до работающего состояния). Продукты day-35
+(RAG, joker, MCP, TG, blog, dialog memory) переезжают в секцию proof в новой рамке
+«построено», а не «live». Маршрут `/` — единственный публичный (день 36: admin-auth на
+весь app, `/` и `/login` — исключения в middleware `PUBLIC_PATHS`).
 
-**Вписка в каркас `web/`:** лендинг рендерится внутри существующего layout
-(`Nav` + `Sidebar` + `<main max-w-6xl>` + `Footer`). Не переопределять корневой layout —
-собирать из секций внутри main. См. `web/app/layout.tsx`.
+**Контент:** единственный источник — `web/data/landing.ts` (имя-плейсхолдер, нарратив,
+вехи, метрики, продукты, core, стек, принципы, контакты-плейсхолдеры). Числа — ручной
+срез (дрейф 35 → 36+ правится в data-файле). Tailwind-литералы — в `app/page.tsx`.
 
-**Маршрут:** уточнить при реализации (вероятно `/` — текущий `app/page.tsx`, или новый `/landing`).
-Это решение Research/Plan стадии профиля «Бизнес-фича», НЕ дизайн-решение.
-
----
-
-## Section Order (override: AI Personalization Landing → под стэк)
-
-| # | Секция | Контент | CTA |
-|---|--------|---------|-----|
-| 1 | **Hero** | Headline (mono, uppercase): локальные LLM-агенты + RAG + MCP. Sub: TG-автоматизация. 2 кнопки. | primary `Открыть dashboard` → `/dashboard`; secondary `Смотреть демо` → `/joker` |
-| 2 | **Bento: модули** | 6–8 плиток реальных демо (см. ниже) | каждая плитка = ссылка в свой дашборд |
-| 3 | **Bento: ядро** | 2×2 плитки архитектуры: RAG pipeline, MCP round-trip, LLM-gateway, TG MTProto | ссылки на docs/исходники |
-| 4 | **Метрики** | Stagger числа: дней челленджа, MCP-серверов in-repo, LLM-провайдеров, дней с локальной моделью | — |
-| 5 | **Smart CTA** | Финальный блок: «Выбрать свой entry-point» — карточки-линки на 4 dashboard | `dashboard` / `joker` / `ask` / `chat` |
+**Вписка в каркас `web/`:** рендерится внутри root layout. Хром условный (день 36):
+гость — Nav без core-ссылок/статуса модели + «Войти», БЕЗ Sidebar/Footer; админ — полный
+каркас + «Выйти». Решение — в `web/app/layout.tsx`, НЕ на странице.
 
 ---
 
-## Bento: модули (секция 2) — конкретные плитки
+## Роли страницы: гость vs админ (KEY, день 36)
 
-Каждая плитка = `<a href="...">` обёрнутая в Bento Card (см. MASTER). Real content, не lorem.
+| Элемент | Гость (нет сессии) | Админ (cookie admin_session) |
+|---|---|---|
+| proof-карточки продуктов (S3) | `<article>` БЕЗ href — карточка-доказательство, badge-маршрут как артефакт | `<Link>` на live-маршрут (стрелка «→», focus-ring) |
+| Hero-CTA | primary «Связаться» → `#contacts`; secondary «Смотреть работы ↓» → `#proof` (якоря, НЕ логин) | + ghost «В дашборд →» |
+| Строка «Полный обзор — /showcase» (S4) | НЕ показывается | показывается |
 
-| Tile (span) | Заголовок | Контент | Ссылка |
-|---|---|---|---|
-| 2×1 (широкая) | **RAG-движок** | local-embed → rerank → цитаты; guard «не знаю». Ollama native client. | `/chat` (rag chat) |
-| 1×1 | **/joker** | CINE-PUN чат; локальная qwen3.5:4b; факты 8с + shuffle. | `/joker` |
-| 1×1 | **/ask** | Dev-assistant: README+docs RAG, cloud-Claude draft. | `/ask` |
-| 2×1 (широкая) | **MCP round-trip** | Свои MCP-серверы (crm, files); deterministic, no LLM-loop. | `/files` |
-| 1×1 | **/support** | CRM users/tickets + faq RAG. | `/support` |
-| 1×1 | **/pr-review** | GitHub Action: diff → cloud Claude → PR-комментарий. | docs / GH |
-| 2×1 (широкая) | **TG-автоматизация** | MTProto userbot; RSS sports.ru/championat/bbc. | `/blog/scout` |
+Инвариант: гость не должен попадать в login-стену кликами по лендингу. Primary-CTA —
+контакт, не «Войти». BentoCard: `href` опционален (`web/app/components/ui/BentoCard.tsx`).
 
-Порядок и span — переставить в Plan-стадии под actual наполнение. Не плодить пустые плитки: **лучше 4 реальные, чем 8 с lorem**.
+---
+
+## Section Order (override: 5 секций, hero-личность → контакты)
+
+| # | Секция | id | Контент |
+|---|--------|----|---------|
+| 1 | **Hero** (личность) | — | SectionLabel `ai-инженер · 35 дней челленджа`; H1 mono uppercase = имя; позиционирование; intro 2–3 предложения; 2–3 CTA (см. таблицу ролей) |
+| 2 | **Proof-of-work** | `proof` | Нарратив челленджа; 6 карточек-вех (grid 1/2, mono-диапазон дней + название + 1 строка); 4 метрики-плитки; mono-футноут (партиции · коммиты) |
+| 3 | **Продукты** | — | 6 BentoCard (тексты day-35); SectionLabel `продукты · построено` |
+| 4 | **Навыки/стек** | — | 2×2 core-карточки (Card + `core` label); mono-строка стека; mono-строка принципов; `/showcase` — только админ |
+| 5 | **Контакты** | `contacts` | 3 карточки (label mono + value-ссылка, `rel="noopener noreferrer"`). Плейсхолдеры — без формы обратной связи |
+
+Тон = факты и числа, RU. Анти-дублирование: `/` — «кто и что умеет», `/showcase` — «что
+внутри» (админ), `/dashboard` — «что живо» (админ). Лендинг переупаковывает, не копипастит.
 
 ---
 
 ## Layout Overrides
 
-- **Max Width:** `max-w-6xl` (72rem) — канон main уже даёт; не переопределять.
-- **Layout:** full-width sections внутри main, контент centered. Hero может вырваться за `max-w-6xl` через отрицательные маржины или отдельную section-обёртку — решение Plan-стадии.
-- **Sidebar:** на лендинге может скрываться (`hidden md:block` или убрать) — лендинг обычно full-width без боковой нав. **Решение Plan-стадии** (не дизайн).
-- **Bento grid:** `grid grid-cols-1 md:grid-cols-4 gap-4 md:gap-6 auto-rows-[minmax(180px,auto)] md:auto-rows-[200px]`. Mobile 1 колонка, tablet 2, desktop 4.
+- **Max Width:** `max-w-6xl` (канон main) — не переопределять.
+- **Sidebar на лендинге — РЕШЕНО (день 36):** гостю НЕ рендерится (вместе с Footer) —
+  оба светят все 23 защищённых маршрута → login-стена на каждом клике. Управляет
+  root layout по `isAdminAuthed()`, не классами на странице.
+- **Grid продуктов:** `grid-cols-1 sm:grid-cols-2 md:grid-cols-3` (6 плиток). Вехи:
+  `grid-cols-1 sm:grid-cols-2`. Метрики: `grid-cols-2 sm:grid-cols-4`. Контакты:
+  `grid-cols-1 sm:grid-cols-3`.
+- **Anchor-CTA:** секции с `id` (`proof`, `contacts`) получают `scroll-mt-20`
+  (компенсация sticky header h-12).
 
-## Color Overrides
+## Color / Typography Overrides
 
-- **Не переопределять** — брать канон Graphite+Teal из MASTER.
-- Hero фон: `bg-bg` + опционально teal-glow радиалкой (`radial-gradient` teal/5%) — decorative, не функциональный цвет.
-- Smart-CTA блок (секция 5): `bg-surface` + teal-акцент на карточках (активный = teal-border).
-
-## Typography Overrides
-
-- **Hero headline:** `font-mono text-4xl md:text-6xl font-semibold uppercase tracking-tight text-ink` — mono-ритм как у существующих pages (`/dashboard`, `/chat`).
-- **Метрики числа:** `font-mono text-4xl text-accent` (teal, tabular figures).
-- Остальное — из MASTER type scale.
+- Палитра — канон Graphite+Teal из MASTER, БЕЗ переопределений.
+- Hero H1: mono uppercase (как day-35), имя-плейсхолдер из data-файла.
+- Метрики: `font-mono text-4xl tabular-nums text-accent`.
+- Остальное — type scale MASTER.
 
 ## Motion Overrides
 
-- **Hero:** fade-up sub+headline (200ms), кнопки появляются на 100ms позже.
-- **Bento секции 2-3:** Stagger List из MASTER (`back.out(1.4)`, each 0.06, from 'center').
-- **Метрики:** stagger + опционально count-up (только если `motion-safe`; reduced-motion → сразу финальное число).
-- **card hover:** `border-line-strong` + `bg-surface-2`, 200ms ease-out. **Без** scale-transform (layout-shift антипаттерн) — hover scale (1.02) из движка **отклонён** для bento-карточек со ссылками (читается как дрожание при наведении на сетку).
-
----
+- Только CSS-stagger `.bento-enter` (глобальный, `globals.css`). Нового JS-motion — 0.
+- Card hover: `border-line-strong` + `bg-surface-2`, 200ms. Без transform.
+- Гостевые proof-карточки: hover остаётся мягким (без стрелки/`group`).
 
 ## Component Overrides
 
-- **Bento Card как `<a>`:** вся плитка кликабельна → `cursor-pointer`, `focus-visible:ring-accent`, `aria-label` с названием модуля. Tile = одна navigation-цель, не плодить внутренние ссылки.
-- **Иконки:** Lucide на tile-header (16×16, teal). Один сет на весь лендинг.
-- **Числа-метрики:** `font-mono` + `tabular-nums` (Tailwind `tabular-nums`) — чтобы не прыгали при count-up.
+- **BentoCard:** `href?: string` — см. таблицу ролей. Иконки — маппинг
+  `LandingIconId → icons.tsx` (7 существующих, новых НЕ добавлять).
+- Контакты: внешние ссылки с `rel="noopener noreferrer"`; mailto — без target.
 
 ---
 
-## Recommendations (content-level)
+## Открытые вопросы (day 36 → пользователю, не блокаторы)
 
-- ✅ Real data в плитках: реальные названия модулей (`/joker`, `/ask` и т.д.), реальные ссылки.
-- ✅ Чётко помечать что локальное (Ollama/qwen) vs cloud (OpenRouter/Claude) — dev-tool прозрачность.
-- ✅ Метрики — точные (дней в registry, MCP-сёрверов в `core/mcp*`).
-- ❌ Avoid: static «обобщённое AI» без конкретики.
-- ❌ Avoid: present AI as human (нет «наш AI-ассистент поможет» — есть «qwen3.5:4b генерит cinepun»).
-- ❌ Avoid: lorem ipsum, заглушки-фишки без реализации.
-
----
-
-## Открытые вопросы (на Research/Plan стадию)
-
-1. **Маршрут лендинга:** `/` (перезаписать текущий `app/page.tsx`) или новый `/landing`?
-2. **Sidebar на лендинге:** скрыть или оставить?
-3. **Метрики:** точные числа — снять с `registry.ts` / `git log --oneline | wc -l` / `core/mcp*` count на стадии Plan.
-4. **Аналитика для personalization** (паттерн требует): НЕТ в каноне (privacy, loopback-only). Personalization-сегмент заменить на **один универсальный hero** без аналитики. Зафиксировать как отклонение от паттерна.
+1. Реальные имя/тайтл (плейсхолдер «АРТЕМИЙ») + metadata description.
+2. Реальные контакты (email/TG/GitHub) — правка `web/data/landing.ts`.
+3. Фиксировать ли «35 дней» или поддерживать числа актуальными (ручная правка).
+4. Публичный доступ `/` наружу домена — инфраструктурная задача (исключение `/` и
+   `/login` из basic-auth прокси), НЕ решается кодом лендинга.
