@@ -2,6 +2,7 @@
 // Editorial-каркас: Header (Nav) сверху, main flex-1, Footer снизу (flex-col min-h-screen).
 // Admin-auth (день 36): гость — урезанный хром (Nav без core-ссылок/статуса модели,
 // БЕЗ Sidebar/Footer — те светят все защищённые маршруты); админ — полный каркас.
+// Гостевая ветка main — БЕЗ контейнера (landing-v2): лендинг сам владеет секциями.
 // Layout уже динамический (await headers() для nonce) — cookie-чтение кэш не ломает.
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
@@ -24,15 +25,15 @@ const plexSans = IBM_Plex_Sans({
 
 const plexMono = IBM_Plex_Mono({
   subsets: ['cyrillic', 'latin'],
-  weight: ['400', '500'],
+  weight: ['400', '500', '600'],
   variable: '--font-mono',
   display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: 'Артемий — AI-инженер',
+  title: 'Артемий Артель — AI-инженер',
   description:
-    'AI-инженер: локальные LLM-агенты, RAG, MCP, TG-автоматизация. 35 дней челленджа — proof-of-work.',
+    'AI-инженер: локальные LLM-агенты, RAG, MCP-серверы, TG-автоматизация — системы, собранные и доведённые до работающего состояния.',
 };
 
 // Viewport — отдельный export (Next 15 App Router). Без него мобильные браузеры
@@ -61,9 +62,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 <Footer />
               </>
             ) : (
-              <main className="flex-1 px-5 py-6">
-                <div className="mx-auto max-w-6xl">{children}</div>
-              </main>
+              <main className="flex-1">{children}</main>
             )}
           </div>
         </ThemeProvider>

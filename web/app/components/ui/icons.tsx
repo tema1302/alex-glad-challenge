@@ -1,6 +1,7 @@
 // Inline SVG-сет (16×16, stroke=currentColor, stroke-width=1.5).
 // Paths скопированы дословно из Lucide (MIT) — не добавляет runtime-dep.
 // Единый файл = консистентность stroke-width/viewBox на всём лендинге.
+// 8 иконок (landing-v2: +IconTelegram — глиф канала для primary-CTA подписки).
 
 interface IconProps {
   className?: string;
@@ -91,6 +92,15 @@ export function IconCpu({ className }: IconProps) {
       <path d="M20 9h2" />
       <path d="M9 2v2" />
       <path d="M9 20v2" />
+    </svg>
+  );
+}
+
+export function IconTelegram({ className }: IconProps) {
+  return (
+    <svg {...SVG_ATTRS} className={className}>
+      <path d="M3.714 3.048a.498.498 0 0 0-.683.627l2.843 7.627a2 2 0 0 1 0 1.396l-2.842 7.627a.498.498 0 0 0 .682.627l18-8.5a.5.5 0 0 0 0-.904z" />
+      <path d="M6 12h16" />
     </svg>
   );
 }

@@ -8,7 +8,7 @@ import { isAdminAuthConfigured } from '../../lib/auth';
 import { isAdminAuthed } from '../../lib/server/session';
 import { LoginForm } from './LoginForm';
 
-export const metadata: Metadata = { title: 'Вход — Артемий·AI' };
+export const metadata: Metadata = { title: 'Вход — Артемий Артель·AI' };
 
 function sanitizeNext(raw: string | string[] | undefined): string {
   const next = Array.isArray(raw) ? raw[0] : raw;
@@ -30,7 +30,7 @@ export default async function LoginPage({
   const safeNext = sanitizeNext(next);
 
   return (
-    <div className="flex min-h-[60vh] items-center justify-center">
+    <div className="flex min-h-[60vh] items-center justify-center px-5">
       <div className="w-full max-w-sm">
         {isAdminAuthConfigured() ? (
           <LoginForm next={safeNext} />
