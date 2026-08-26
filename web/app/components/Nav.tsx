@@ -23,7 +23,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
         <div className="flex items-center gap-1">
           {isAdmin && <MobileNav />}
           <Link href="/" className="font-mono text-sm font-semibold tracking-tight text-ink">
-            Артемий Артель
+            Артемия Артель
             <span className="text-accent">·</span>
             <span className="text-dim">AI</span>
           </Link>

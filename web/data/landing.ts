@@ -3,7 +3,8 @@
 // Curated-дубликат фактов challenge (registry.ts, CHANGELOG, git log), без импорта:
 // лендинг — server component без тяги в lib/server или @challenge/core.
 // Tailwind-классы намеренно полные-литералы (JIT-детект) — в app/page.tsx, здесь только данные.
-// Числа — завершённый срез челленджа: 36/10+/7/82.
+// Числа в метриках — объёмы системы (артефакты/подсистемы/MCP/коммиты); длительность
+// челленджа в рендеримых текстах не упоминается.
 
 /** Id иконки из app/components/ui/icons.tsx (8 существующих, включая telegram). */
 export type LandingIconId =
@@ -31,11 +32,11 @@ export const offerVariants = {
     headline: 'Локальный AI без облака и без магии',
     subhead:
       'Ollama на ноутбуке, свой RAG, MCP-инструменты — связки, которые работают без дорогих API. ' +
-      'Показываю схемы и грабли, на которые наступил. 36 дней такого уже построено.',
+      'Показываю схемы и грабли, на которые наступил. Стэк уже собран и работает.',
   },
   C: {
     // «челлендж-нарратив» — личная история
-    headline: '36 дней подряд я собирал AI-стэк с нуля',
+    headline: 'Я собирал AI-стэк с нуля — подсистема за подсистемой',
     subhead:
       'Каждый день — новая подсистема: RAG-движок, MCP-серверы, TG-userbot, web-дашборд. ' +
       'Теперь разбираю это в канале: как устроено, что не взлетело, что пошло в бой.',
@@ -45,17 +46,17 @@ export const offerVariants = {
 /** Активный оффер — свитч одной строкой (offerVariants.A / .B / .C или микс полей). */
 export const offer = offerVariants.A;
 
-/** Description для page-local metadata `/` (тон подписки, число 36). */
+/** Description для page-local metadata `/` (тон подписки, без упоминания длительности). */
 export const offerMeta = {
   metaDescription:
-    'AI-инженер Артемий Артель. 36 дней подряд строил по AI-системе в день — RAG, MCP, ' +
+    'AI-инженер Артемия Артель. Собрал рабочий стэк AI-агентов — RAG, MCP-серверы, ' +
     'Telegram-автоматизация. В канале разбираю, как это устроено: что сделал, что сломалось, почему.',
 };
 
 // --- Личность (имя — подстрока hero-лейбла + metadata) ---
 
 export const person = {
-  name: 'Артемий Артель',
+  name: 'Артемия Артель',
   role: 'AI-инженер',
 };
 
@@ -67,47 +68,7 @@ export const channel = {
   subscribeLabel: 'Подписаться на канал',
 };
 
-// --- S2. Proof ---
-
-export const challengeNarrative =
-  '36 дней подряд я собирал по одной AI-подсистеме в день: поиск по своим текстам, ' +
-  'tool-серверы для LLM-агентов, Telegram-userbot, web-дашборд. Всё в одном репо и проходит ' +
-  'строгий typecheck — показываю и то, что вышло, и то, что сломалось. ' +
-  'Работающий стэк вместо списка технологий.';
-
-export const proofMetrics = {
-  dominant: { value: '36', label: 'дней подряд' },
-  rest: [
-    { value: '10+', label: 'подсистем с нуля' },
-    { value: '7', label: 'MCP-серверов' },
-    { value: '82', label: 'коммита в main' },
-  ],
-} as const;
-
-export const milestones = [
-  {
-    days: '18–20',
-    title: 'MCP + Telegram',
-    desc: 'Свои tool-серверы, напоминания, ежедневные сводки.',
-  },
-  {
-    days: '21–25',
-    title: 'RAG и память',
-    desc: 'Поиск по своим текстам с guard «не знаю» + 3 слоя памяти диалога.',
-  },
-  {
-    days: '28–30',
-    title: 'Web-дашборд',
-    desc: 'Next.js 15, 23 раздела, приватный LLM-gateway.',
-  },
-  {
-    days: '31–36',
-    title: 'Агенты и этот лендинг',
-    desc: 'dev-assistant, PR-ревью, файловый агент — и страница, которую читаете.',
-  },
-] as const;
-
-// --- S3. Артефакты (products+core слиты; href — live-маршрут, кликабелен только админ) ---
+// --- Сетка артефактов (S3) — объявлена до Proof: её длина = доминанта Proof-секции ---
 
 export const artifacts = [
   {
@@ -159,6 +120,81 @@ export const artifacts = [
   href?: string;
   icon: LandingIconId;
 }>;
+
+// --- Ряд «можно попробовать» (S3, над витриной): публичные интерактивы, ссылки
+// активны у обеих ролей — гость тоже тыкает. В отличие от артефактов-доказательств,
+// где href только админу (анти-утечка админских маршрутов). ---
+
+export const tryItems = [
+  {
+    tag: 'JIRA',
+    title: 'Задача в Jira за минуту',
+    desc: 'Опишите фичу парой предложений — ИИ-тимлид развернёт её в полную постановку: сценарий, критерии приемки, ожидаемый результат. Копируется в трекер одним кликом.',
+    href: '/jira',
+    icon: 'sparkles',
+  },
+  {
+    tag: 'PIPELINE',
+    title: 'Конвейер агентов: новость → пост',
+    desc: 'Живой автомат из четырёх агентов: выбор темы → черновик → фактчекинг → правка. Покликайте переходы FSM в демо-режиме — без логина.',
+    href: '/blog/pipeline',
+    icon: 'rss',
+  },
+  {
+    tag: 'DOCS',
+    title: 'Харнес-шаблоны для AI-ассистентов',
+    desc: 'Три готовых шаблона инструкций (CLAUDE.md / AGENTS.md): контракт вызова, память, профили. Скопируйте и положите в свой проект.',
+    href: '/harness',
+    icon: 'messages',
+  },
+] as const satisfies ReadonlyArray<{
+  tag: string;
+  title: string;
+  desc: string;
+  href: string;
+  icon: LandingIconId;
+}>;
+
+export const challengeNarrative =
+  'Подсистема за подсистемой я собирал рабочий AI-стэк: поиск по своим текстам, ' +
+  'tool-серверы для LLM-агентов, Telegram-userbot, web-дашборд. Всё в одном репо и проходит ' +
+  'строгий typecheck — показываю и то, что вышло, и то, что сломалось. ' +
+  'Работающий стэк вместо списка технологий.';
+
+/** Доминанта Proof-секции = размер сетки артефактов (ниже), а не длительность. */
+export const proofMetrics = {
+  dominant: { value: String(artifacts.length), label: 'инструментов собрано и работает' },
+  rest: [
+    { value: '10+', label: 'подсистем с нуля' },
+    { value: '7', label: 'MCP-серверов' },
+    { value: '82', label: 'коммита в main' },
+  ],
+} as const;
+
+export const milestones = [
+  {
+    phase: 'Интеграции',
+    title: 'MCP + Telegram',
+    desc: 'Свои tool-серверы, напоминания, ежедневные сводки.',
+  },
+  {
+    phase: 'Поиск',
+    title: 'RAG и память',
+    desc: 'Поиск по своим текстам с guard «не знаю» + 3 слоя памяти диалога.',
+  },
+  {
+    phase: 'Продукт',
+    title: 'Web-дашборд',
+    desc: 'Next.js 15, 23 раздела, приватный LLM-gateway.',
+  },
+  {
+    phase: 'Автономность',
+    title: 'Агенты и этот лендинг',
+    desc: 'dev-assistant, PR-ревью, файловый агент — и страница, которую читаете.',
+  },
+] as const;
+
+// --- S3. Артефакты (тексты сетки; сам массив объявлен выше — его длина питает доминанту Proof) ---
 
 export const stackLine =
   'TypeScript strict · Node.js 24 · Next.js 15 · React 19 · node:sqlite · Ollama / DeepSeek / OpenRouter · gramjs';

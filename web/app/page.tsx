@@ -37,11 +37,12 @@ import {
   person,
   proofMetrics,
   stackLine,
+  tryItems,
   type LandingIconId,
 } from '../data/landing';
 import { isAdminAuthed } from '../lib/server/session';
 
-// page-local metadata: тон подписки, число 36 (layout-description — генеральный fallback).
+// page-local metadata: тон подписки (layout-description — генеральный fallback).
 // openGraph НЕ добавляем: без metadataBase Next даёт build-warning; OG-изображений нет (CSP).
 export const metadata: Metadata = {
   title: `${person.name} — ${person.role}`,
@@ -74,7 +75,7 @@ export default async function HomePage() {
       <section>
         <div className="mx-auto w-full max-w-6xl px-5 pb-16 pt-10 md:pb-24 md:pt-20">
           <div className="bento-enter" style={{ '--i': '0' } as CSSProperties}>
-            <SectionLabel>{`${person.name} · ${person.role} · ${proofMetrics.dominant.value} дней челленджа`}</SectionLabel>
+            <SectionLabel>{`${person.name} · ${person.role}`}</SectionLabel>
           </div>
           <h1
             className="bento-enter mt-4 font-mono text-[clamp(2rem,6.5vw,4.5rem)] font-semibold uppercase leading-[0.95] tracking-tight text-ink"
@@ -117,9 +118,9 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* S2. Proof — сжатое доказательство (доминанта 36 + лог-строки вех + inline-CTA) */}
+      {/* S2. Proof — сжатое доказательство (доминанта-метрика + лог-строки вех + inline-CTA) */}
       <div className="l-reveal">
-        <SectionShell n="01" label={`proof · ${proofMetrics.dominant.value} дней`} id="proof">
+        <SectionShell n="01" label="proof · в цифрах" id="proof">
           <p className="max-w-2xl text-sm leading-relaxed text-dim md:text-base">
             {challengeNarrative}
           </p>
@@ -148,11 +149,11 @@ export default async function HomePage() {
           <div className="mt-12">
             {milestones.map((m) => (
               <div
-                key={m.days}
+                key={m.phase}
                 className="flex flex-col gap-1 border-t border-line py-4 sm:flex-row sm:gap-8"
               >
                 <div className="w-24 shrink-0 pt-1 font-mono text-xs uppercase tracking-wider text-dim">
-                  {m.days}
+                  {m.phase}
                 </div>
                 <div>
                   <h3 className="font-sans text-base font-semibold text-ink">{m.title}</h3>
@@ -170,6 +171,30 @@ export default async function HomePage() {
       {/* S3. Артефакты — products+core слиты (гость: карточка-доказательство, админ: live-ссылка) */}
       <div className="l-reveal">
         <SectionShell n="02" label="артефакты · построено">
+          {/* Ряд «можно попробовать»: публичные интерактивы, href у обеих ролей.
+              Семантика отличается от витрины ниже — действие vs доказательство. */}
+          <h2 className="font-mono text-xs uppercase tracking-wider text-dim">// можно попробовать</h2>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-5">
+            {tryItems.map((t, i) => {
+              const Icon = ICONS[t.icon];
+              return (
+                <BentoCard
+                  key={t.tag}
+                  href={t.href}
+                  badge={t.tag}
+                  title={t.title}
+                  desc={t.desc}
+                  icon={<Icon />}
+                  index={i + 1}
+                />
+              );
+            })}
+          </div>
+
+          {/* Витрина артефактов — доказательства: кликабельна только админу (анти-утечка маршрутов) */}
+          <h2 className="mt-10 font-mono text-xs uppercase tracking-wider text-dim">
+            // построено · доказательства
+          </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 md:gap-5">
             {artifacts.map((a, i) => {
               const Icon = ICONS[a.icon];

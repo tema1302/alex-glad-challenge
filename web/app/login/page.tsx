@@ -8,7 +8,7 @@ import { isAdminAuthConfigured } from '../../lib/auth';
 import { isAdminAuthed } from '../../lib/server/session';
 import { LoginForm } from './LoginForm';
 
-export const metadata: Metadata = { title: 'Вход — Артемий Артель·AI' };
+export const metadata: Metadata = { title: 'Вход — Артемия Артель·AI' };
 
 function sanitizeNext(raw: string | string[] | undefined): string {
   const next = Array.isArray(raw) ? raw[0] : raw;

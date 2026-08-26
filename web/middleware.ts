@@ -10,7 +10,7 @@
 // runtime = nodejs: standalone-стек на Node, Buffer доступен, нет риска edge-API-гэпов.
 //
 // Day 36 — admin-auth гейт ПОСЛЕ nonce-кода (nonce-логика не тронута: прошлый инцидент
-// «пустой body»). Публичные пути: /, /login, /harness, /api/auth/{login,logout}. Остальное:
+// «пустой body»). Публичные пути: /, /login, /harness, /jira (+его API). Остальное:
 // страницы → 302 /login?next=<pathname> (query выкидывается), /api/* → 401 JSON
 // (клиентские страницы ждут JSON, не HTML-redirect). 401/302 строятся напрямую,
 // без nonce — это не HTML, CSP им не нужен. Fail-closed: env не задан → сессий
@@ -20,7 +20,19 @@ import { SESSION_COOKIE, isValidSession } from './lib/auth';
 
 export const runtime = 'nodejs';
 
-const PUBLIC_PATHS = new Set(['/', '/login', '/harness', '/api/auth/login', '/api/auth/logout']);
+// Публичные пути: точное совпадение pathname (префиксы не открываем). /jira и его API
+// открыты одновременно — иначе гость получает 401 от формы генератора.
+const PUBLIC_PATHS = new Set([
+  '/',
+  '/login',
+  '/harness',
+  '/jira',
+  '/blog/pipeline',
+  '/api/jira/generate',
+  '/api/blog/pipeline',
+  '/api/auth/login',
+  '/api/auth/logout',
+]);
 
 export function middleware(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');

@@ -31,7 +31,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Артемий Артель — AI-инженер',
+  title: 'Артемия Артель — AI-инженер',
   description:
     'AI-инженер: локальные LLM-агенты, RAG, MCP-серверы, TG-автоматизация — системы, собранные и доведённые до работающего состояния.',
 };

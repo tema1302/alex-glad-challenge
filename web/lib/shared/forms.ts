@@ -184,10 +184,13 @@ export const pipelineStageSchema = z.enum([
 export type PipelineStageInput = z.infer<typeof pipelineStageSchema>;
 
 // POST /api/blog/pipeline — transition | reset. `to` обязателен для transition.
+// `from` — для гостевого sandbox-режима: клиент заявляет свою текущую стадию,
+// сервер валидирует переход от неё (боевой pipeline-state.json не читается/не пишется).
 export const pipelineActionSchema = z
   .object({
     action: z.enum(['transition', 'reset']),
     to: pipelineStageSchema.optional(),
+    from: pipelineStageSchema.optional(),
     detail: z.string().trim().max(500).optional(),
   })
   .refine((d) => d.action !== 'transition' || d.to !== undefined, {
@@ -286,3 +289,17 @@ export const loginSchema = z.object({
   password: z.string().min(1, 'Введите пароль').max(200),
 });
 export type LoginInput = z.infer<typeof loginSchema>;
+
+// --- Meetup: публичный генератор Jira-задач (/jira) ---
+
+// POST /api/jira/generate — описание фичи своими словами. Публичный LLM-endpoint:
+// cap длины здесь + rate-limit в роуте. clean() на сервере перед промптом.
+export const jiraGenerateSchema = z.object({
+  description: z
+    .string()
+    .trim()
+    .min(20, 'Опишите фичу подробнее — минимум 20 символов')
+    .max(2000, 'Слишком длинное описание — максимум 2000 символов'),
+  llm: z.enum(['local', 'cloud']).optional(),
+});
+export type JiraGenerateInput = z.infer<typeof jiraGenerateSchema>;
