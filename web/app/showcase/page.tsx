@@ -16,11 +16,11 @@ export default function ShowcasePage() {
   return (
     <div className="space-y-10">
       <section>
-        <SectionLabel>showcase · v30</SectionLabel>
+        <SectionLabel>showcase · capabilities</SectionLabel>
         <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Витрина возможностей</h1>
         <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">
-          Что умеет система на день 27 — по модулям. Это функциональный обзор, а не
-          хронология дней челленджа. Многие поверхности доступны сейчас только в
+          Что умеет система — по модулям. Это функциональный обзор, а не
+          хронология разработки. Многие поверхности доступны сейчас только в
           CLI/REPL; web-обвязка разделов появится в следующих фазах (P1+).
         </p>
       </section>

@@ -96,7 +96,7 @@ export default function RagIndexPage() {
       <section>
         <h1 className="text-xl font-semibold text-ink">RAG index — документы</h1>
         <p className="mt-1 text-sm text-dim">
-          Переиндексация <code className="font-mono text-ink">challenge/src/data/rag-sample</code> в{' '}
+          Переиндексация встроенного набора документов в{' '}
           <code className="font-mono text-ink">rag.sqlite</code>. Зеркало CLI{' '}
           <code className="font-mono text-ink">rag index</code>.
         </p>

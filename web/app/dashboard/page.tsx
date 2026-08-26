@@ -68,12 +68,12 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-8">
       <section>
-        <SectionLabel>dashboard · v30</SectionLabel>
+        <SectionLabel>dashboard · live</SectionLabel>
         <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Dashboard</h1>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Состояние системы на день 30. Данные из{' '}
-          <code className="font-mono text-[12px] text-ink">challenge/.data</code>; ключи — только факт
-          настройки, значения не светятся.
+          Состояние системы в реальном времени. Данные из локального{' '}
+          <code className="font-mono text-[12px] text-ink">SQLite</code>-хранилища (вне git); ключи —
+          только факт настройки, значения не светятся.
         </p>
       </section>
 

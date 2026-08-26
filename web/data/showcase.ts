@@ -109,7 +109,7 @@ export const architectureLayers: LayerSpec[] = [
   {
     name: 'Хранилище',
     role: 'SQLite через node:sqlite, WAL. Вне git.',
-    nodes: ['challenge/.data/*.sqlite', 'memory.json, profiles, tg-session.json'],
+    nodes: ['локальные SQLite-базы (*.sqlite)', 'memory.json, profiles, tg-session.json'],
   },
 ];
 
@@ -121,7 +121,7 @@ export interface WebChokepointNote {
 export const webChokepoint: WebChokepointNote[] = [
   {
     title: 'server-only chokepoint',
-    detail: 'web → web/lib/server/challenge.ts (единственный импорт @challenge/core/*) → core/. Ключи, MTProto-сессия и node:sqlite не покидают сервер.',
+    detail: 'web → единый server-only chokepoint → core. Ключи, MTProto-сессия и node:sqlite не покидают сервер.',
   },
   {
     title: 'Локально, без deploy',
@@ -136,7 +136,7 @@ export interface StackGroup {
 
 export const stack: StackGroup[] = [
   {
-    name: 'Ядро (challenge)',
+    name: 'Ядро (CLI/агенты)',
     items: ['TypeScript (strict, ESM)', 'Node.js 24', 'node:sqlite (WAL)', 'tsx', 'gramjs (MTProto)', 'fast-xml-parser', 'undici', 'dotenv'],
   },
   {
