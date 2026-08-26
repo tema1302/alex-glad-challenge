@@ -57,8 +57,19 @@ export function middleware(request: NextRequest) {
         { status: 401, headers: { 'Cache-Control': 'no-store' } },
       );
     }
+    // За reverse-proxy (Caddy → 127.0.0.1:3000) request.url строится от внутреннего
+    // origin (localhost:3000) — Host/X-Forwarded-Host на него не влияют (проверено
+    // curl'ом напрямую). Публичный origin: WEB_PUBLIC_ORIGIN → X-Forwarded-Host →
+    // Host → request.url как последний fallback.
+    const fwdHost = request.headers.get('x-forwarded-host');
+    const rawHost = fwdHost ?? request.headers.get('host');
+    const proto =
+      request.headers.get('x-forwarded-proto') ??
+      (rawHost && (rawHost.startsWith('localhost:') || rawHost.startsWith('127.')) ? 'http' : 'https');
+    const envOrigin = process.env.WEB_PUBLIC_ORIGIN?.trim();
+    const base = envOrigin || (rawHost ? `${proto}://${rawHost}` : request.url);
     return NextResponse.redirect(
-      new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url),
+      new URL(`/login?next=${encodeURIComponent(pathname)}`, base),
       302,
     );
   }
