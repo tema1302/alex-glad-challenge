@@ -14,6 +14,9 @@ import {
 } from '../../../lib/shared/pipeline-explainer';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+// Полный конвейер (feat): одна кнопка — scout SSE → news SSE → фаза 3 «ready to publish»
+// (клиентский чейнінг существующих роутов, новых endpoint'ов нет).
+import { FullPipelineRun } from './FullPipelineRun';
 
 interface HistoryEntry {
   stage: PipelineStageInput;
@@ -197,6 +200,9 @@ export default function PipelinePage() {
           </li>
         </ul>
       </Card>
+
+      {/* Полный конвейер: одна кнопка — scout → news → финал (клиентский чейнінг SSE). */}
+      <FullPipelineRun sandbox={view.sandbox === true} />
 
       <section>
         <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-dim">// Разрешённые переходы</h2>
