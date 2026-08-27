@@ -1,11 +1,11 @@
 // /api/jira/generate — публичный single-shot генератор Jira-задач (meetup-web).
-// POST {description, llm?} → 200 {ok:true, story} | ошибки: 400 (zod), 429 (rate-limit),
+// POST {description, llm?, format?} → 200 {ok:true, story} | ошибки: 400 (zod), 429 (rate-limit),
 // 502 (модель не по контракту/сеть), 503 (LLM не настроен).
 //
 // Stateless: без истории, БД и персиста; ответ целиком (не UX-стриминг) — генерация
 // идёт server-side через chatStream как транспорт abort (signal в fetch), AbortController
-// 120 с на попытку, максимум 2 попытки (повтор при нарушении моделью 7-блочного контракта
-// или сетевом сбое). LLM-ответ tainted → clean() перед отдачей.
+// 120 с на попытку, максимум 2 попытки (повтор при нарушении моделью контракта формата
+// (7 блоков User Story / 6 секций STAR) или сетевом сбое). LLM-ответ tainted → clean() перед отдачей.
 //
 // Security публичного LLM-endpoint: двойной rate-limit (per-IP + глобальный предохранитель,
 // in-memory fixed-window на globalThis — переживает HMR dev, сбрасывается рестартом),
@@ -28,6 +28,10 @@ import {
   JIRA_FEWSHOT,
   JIRA_KNOBS,
   validateJiraStory,
+  STAR_SYSTEM,
+  STAR_FEWSHOT,
+  STAR_KNOBS,
+  validateStarStory,
 } from '../../../../lib/server/jira-persona';
 
 export const runtime = 'nodejs';
@@ -126,9 +130,17 @@ export async function POST(req: NextRequest): Promise<Response> {
   }
 
   const description = clean(parsed.data.description, 2000);
+  // Формат вывода: опционален в схеме, дефолт 'user-story' — запросы без поля
+  // получают байт-в-байт прежнее поведение (тот же промпт/knobs/валидатор).
+  const format = parsed.data.format ?? 'user-story';
+  const isStar = format === 'star';
+  const system = isStar ? STAR_SYSTEM : JIRA_SYSTEM;
+  const fewshot = isStar ? STAR_FEWSHOT : JIRA_FEWSHOT;
+  const knobs = isStar ? STAR_KNOBS : JIRA_KNOBS;
+  const validate = isStar ? validateStarStory : validateJiraStory;
   const messages: ChatMessage[] = [
-    msg.system(JIRA_SYSTEM),
-    ...JIRA_FEWSHOT,
+    msg.system(system),
+    ...fewshot,
     msg.user(description),
   ];
   const client = pickLlmClient(pref);
@@ -140,11 +152,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
     try {
       let out = '';
-      for await (const chunk of client.chatStream(messages, JIRA_KNOBS, ac.signal)) {
+      for await (const chunk of client.chatStream(messages, knobs, ac.signal)) {
         out += chunk;
       }
       out = clean(out, MAX_STORY_LEN);
-      const invalid = validateJiraStory(out);
+      const invalid = validate(out);
       if (!invalid) {
         return NextResponse.json(
           { ok: true, story: out },

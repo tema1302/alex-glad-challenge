@@ -1,6 +1,7 @@
 // /jira — форма генератора (единственный client-компонент страницы; паттерн agent/page.tsx).
-// textarea + radio провайдера + чип «вставить пример» → POST /api/jira/generate → ответ
-// целиком в <pre> + CopyButton (реюз /harness). Без markdown-рендера и dangerouslySetInnerHTML.
+// textarea + чип «вставить пример» + radio формата (User Story | STAR) + radio провайдера →
+// POST /api/jira/generate → ответ целиком в <pre> + CopyButton (реюз /harness).
+// Без markdown-рендера и dangerouslySetInnerHTML.
 // Флаги провайдеров приходят с сервера как props (только Boolean/имена провайдеров);
 // дефолт — cloud при настроенном ключе (решение плана), переключатель остаётся.
 'use client';
@@ -10,7 +11,7 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { CopyButton } from '../harness/CopyButton';
-import type { JiraGenerateInput } from '../../lib/shared/forms';
+import type { JiraGenerateInput, JiraFormat } from '../../lib/shared/forms';
 
 const INPUT =
   'w-full rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
@@ -28,6 +29,7 @@ export function JiraForm({ providers, example }: { providers: JiraProviderFlags;
   const [llm, setLlm] = useState<'local' | 'cloud'>(
     providers.cloudConfigured ? 'cloud' : 'local',
   );
+  const [format, setFormat] = useState<JiraFormat>('user-story');
   const [story, setStory] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +41,7 @@ export function JiraForm({ providers, example }: { providers: JiraProviderFlags;
       const body: JiraGenerateInput = {
         description: description.trim(),
         llm,
+        format,
       };
       const r = await fetch('/api/jira/generate', {
         method: 'POST',
@@ -54,7 +57,7 @@ export function JiraForm({ providers, example }: { providers: JiraProviderFlags;
     } finally {
       setSubmitting(false);
     }
-  }, [description, llm, submitting]);
+  }, [description, llm, format, submitting]);
 
   const canSubmit = description.trim().length >= 20 && !submitting;
 
@@ -78,6 +81,29 @@ export function JiraForm({ providers, example }: { providers: JiraProviderFlags;
             вставить пример
           </Button>
         </div>
+
+        <fieldset className="mt-3 text-sm">
+          <span className="block text-xs uppercase tracking-wide text-dim">формат</span>
+          <div className="mt-1 flex gap-3">
+            {(['user-story', 'star'] as const).map((v) => (
+              <label key={v} className="flex items-center gap-1.5 text-ink">
+                <input
+                  type="radio"
+                  name="format"
+                  checked={format === v}
+                  onChange={() => setFormat(v)}
+                  disabled={submitting}
+                />
+                {v === 'user-story' ? 'User Story' : 'STAR'}
+              </label>
+            ))}
+          </div>
+          {format === 'star' && (
+            <span className="mt-1 block text-xs text-dim">
+              S ситуация · T задача · A действия · R результат · Acceptance Criteria (Gherkin) · Scope
+            </span>
+          )}
+        </fieldset>
 
         <fieldset className="mt-3 text-sm">
           <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>

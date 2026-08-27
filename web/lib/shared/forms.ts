@@ -294,6 +294,13 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 // POST /api/jira/generate — описание фичи своими словами. Публичный LLM-endpoint:
 // cap длины здесь + rate-limit в роуте. clean() на сервере перед промптом.
+
+// Формат выходного контракта генератора: 'user-story' (7 блоков, дефолт на сервере)
+// | 'star' (6 секций S/T/A/R + Gherkin-AC + Scope). Enum в shared — виден обоим
+// берегам без server-only (прецедент strategyNameSchema); сервер потребляет в jira-persona.
+export const jiraFormatSchema = z.enum(['user-story', 'star']);
+export type JiraFormat = z.infer<typeof jiraFormatSchema>;
+
 export const jiraGenerateSchema = z.object({
   description: z
     .string()
@@ -301,5 +308,6 @@ export const jiraGenerateSchema = z.object({
     .min(20, 'Опишите фичу подробнее — минимум 20 символов')
     .max(2000, 'Слишком длинное описание — максимум 2000 символов'),
   llm: z.enum(['local', 'cloud']).optional(),
+  format: jiraFormatSchema.optional(),
 });
 export type JiraGenerateInput = z.infer<typeof jiraGenerateSchema>;
