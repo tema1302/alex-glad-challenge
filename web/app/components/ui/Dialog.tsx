@@ -37,13 +37,15 @@ export function Dialog({
   useEffect(() => setMounted(true), []);
 
   // Фокус в первый контрол при открытии; возврат фокуса инициатору при закрытии.
+  // Зависимость от mounted: при open=true с первого рендера портал появляется
+  // только после mounted-эффекта — фокусить нужно после его появления.
   useEffect(() => {
-    if (!open) return;
+    if (!open || !mounted) return;
     const initiator = document.activeElement as HTMLElement | null;
     const first = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panelRef.current)?.focus();
     return () => initiator?.focus();
-  }, [open]);
+  }, [open, mounted]);
 
   // Блокировка скролла фона на время диалога.
   useEffect(() => {
