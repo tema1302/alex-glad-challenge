@@ -38,3 +38,4 @@ Thumbs.db
 
 # Playwright MCP runtime artifacts
 .playwright-mcp/
+.shots/
