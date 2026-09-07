@@ -134,6 +134,13 @@ export const artifacts = [
 
 export const tryItems = [
   {
+    tag: 'DEMO',
+    title: 'Спроси мою базу знаний',
+    desc: 'Живое RAG-демо: вопрос по руководству EVOLUTE i-SPACE — поиск по базе, ответ со ссылками на источники и честное «не знаю» вне корпуса. Без логина.',
+    href: '/demo',
+    icon: 'database',
+  },
+  {
     tag: 'JIRA',
     title: 'Задача в Jira за минуту',
     desc: 'Опишите фичу парой предложений — ИИ-тимлид развернёт её в полную постановку: сценарий, критерии приемки, ожидаемый результат. Копируется в трекер одним кликом.',
@@ -162,6 +169,8 @@ export const tryItems = [
   desc: string;
   href: string;
   icon: LandingIconId;
+  /** Арт из FEATURE_ART (лендинг S6); опционален — карточка демо рисует ArtRag. */
+  art?: 'rag' | 'mcp' | 'gateway' | 'tg' | 'memory' | 'dash';
 }>;
 
 export const challengeNarrative =

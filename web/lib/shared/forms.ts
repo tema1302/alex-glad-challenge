@@ -313,3 +313,17 @@ export const jiraGenerateSchema = z.object({
   format: jiraFormatSchema.optional(),
 });
 export type JiraGenerateInput = z.infer<typeof jiraGenerateSchema>;
+
+// --- Demo: публичный RAG (/demo) ---
+
+// POST /api/demo/rag — вопрос гостя к публичной базе знаний (партиция structure).
+// Публичный LLM+RAG-endpoint: cap 300 здесь + rate-limit в роуте. Полей llm/strategy/k
+// в схеме НЕТ — сервер фиксирует всё сам (замороженный контракт, план §2).
+export const demoRagSchema = z.object({
+  question: z
+    .string()
+    .trim()
+    .min(1, 'Введите вопрос')
+    .max(300, 'Слишком длинный вопрос — максимум 300 символов'),
+});
+export type DemoRagInput = z.infer<typeof demoRagSchema>;

@@ -84,14 +84,32 @@ const FEATURE_ART: Record<string, ComponentType> = {
 const CHANNEL_URL_TEXT = channel.url.replace(/^https?:\/\//, '');
 
 // Орбитальные чипы hero: живые ссылки на соответствующие разделы.
-// Для гостя защищённые маршруты отдаёт middleware (302 → /login?next=…),
-// после входа человек попадает именно туда, куда тыкнул.
-const ORBIT_LINKS = [
-  { label: 'RAG-поиск', href: '/rag/chat', dot: 'bg-brand-600', pos: 'left-1/2 top-[13%] -translate-x-1/2', float: '' },
+// guestHref — публичная альтернатива для гостя (без логина): чип «RAG-поиск»
+// ведёт на демо-страницу /demo, админ попадает в полный /rag/chat. Для чипов
+// без guestHref защищённые маршруты по-прежнему отдаёт middleware
+// (302 → /login?next=…), после входа человек попадает именно туда, куда тыкнул.
+type OrbitLink = {
+  label: string;
+  href: string;
+  guestHref?: string;
+  dot: string;
+  pos: string;
+  float: string;
+};
+
+const ORBIT_LINKS: readonly OrbitLink[] = [
+  {
+    label: 'RAG-поиск',
+    href: '/rag/chat',
+    guestHref: '/demo',
+    dot: 'bg-brand-600',
+    pos: 'left-1/2 top-[13%] -translate-x-1/2',
+    float: '',
+  },
   { label: 'MCP-серверы', href: '/mcp/tools', dot: 'bg-brand-600', pos: 'right-[1%] top-[30%]', float: 'lp-float' },
   { label: 'TG-юзербот', href: '/tg/top', dot: 'bg-brand-600', pos: 'left-[1%] bottom-[26%]', float: 'lp-float-2 lp-float' },
   { label: 'Память', href: '/chat', dot: 'bg-brand-mint', pos: 'right-[7%] bottom-[23%]', float: 'lp-float-3 lp-float' },
-] as const;
+];
 
 const FOCUS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-paper';
@@ -177,7 +195,7 @@ export default async function HomePage() {
             {ORBIT_LINKS.map((l) => (
               <Link
                 key={l.label}
-                href={l.href}
+                href={!isAdmin && l.guestHref ? l.guestHref : l.href}
                 title={`${l.label} — открыть раздел`}
                 className={`z-10 absolute inline-flex items-center gap-2 rounded-full border border-p-line bg-paper-2 px-4 py-2 text-sm font-semibold text-p-ink shadow-card transition-all duration-base ease-system hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${l.pos} ${l.float}`}
               >
@@ -391,7 +409,7 @@ export default async function HomePage() {
             </p>
           </div>
 
-          <div className="mt-12 grid gap-5 md:grid-cols-3">
+          <div className="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
             {tryItems.map((t) => {
               const Icon = ICONS[t.icon];
               return (
