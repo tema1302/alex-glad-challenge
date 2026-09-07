@@ -11,7 +11,7 @@ interface FinalCtaProps {
 
 export function FinalCta({ heading, points, children }: FinalCtaProps) {
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-accent/30 bg-surface-2 p-8 md:p-12">
+    <div className="relative overflow-hidden rounded-lg border border-accent/30 bg-surface-2 p-8 shadow-panel md:p-12">
       <div
         aria-hidden
         className="pointer-events-none absolute -top-28 left-1/2 h-72 w-[42rem] max-w-full -translate-x-1/2 rounded-full bg-accent/10 blur-3xl"

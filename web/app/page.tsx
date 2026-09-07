@@ -43,10 +43,15 @@ import {
 import { isAdminAuthed } from '../lib/server/session';
 
 // page-local metadata: тон подписки (layout-description — генеральный fallback).
-// openGraph НЕ добавляем: без metadataBase Next даёт build-warning; OG-изображений нет (CSP).
+// metadataBase задан в layout (WEB_PUBLIC_ORIGIN ?? localhost) — OG без build-warning.
 export const metadata: Metadata = {
   title: `${person.name} — ${person.role}`,
   description: offerMeta.metaDescription,
+  openGraph: {
+    title: `${person.name} — ${person.role}`,
+    description: offerMeta.metaDescription,
+    type: 'website',
+  },
 };
 
 const FOCUS =
@@ -78,7 +83,7 @@ export default async function HomePage() {
             <SectionLabel>{`${person.name} · ${person.role}`}</SectionLabel>
           </div>
           <h1
-            className="bento-enter mt-4 font-mono text-[clamp(2rem,6.5vw,4.5rem)] font-semibold uppercase leading-[0.95] tracking-tight text-ink"
+            className="bento-enter mt-4 font-mono text-[clamp(2rem,6.5vw,4.5rem)] font-semibold uppercase leading-[0.95] tracking-tight text-ink [text-wrap:balance]"
             style={{ '--i': '1' } as CSSProperties}
           >
             {offer.headline}
@@ -90,13 +95,13 @@ export default async function HomePage() {
             {offer.subhead}
           </p>
           <div
-            className="bento-enter mt-8 flex flex-wrap gap-3"
+            className="bento-enter mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
             style={{ '--i': '3' } as CSSProperties}
           >
-            <SubscribeButton href={channel.url} label={channel.subscribeLabel} />
+            <SubscribeButton href={channel.url} label={channel.subscribeLabel} className="w-full justify-center sm:w-auto" />
             <a
               href="#proof"
-              className={`inline-flex min-h-[44px] items-center rounded-md border border-line-strong px-6 text-sm font-semibold text-ink transition-colors hover:border-accent ${FOCUS}`}
+              className={`inline-flex min-h-[44px] w-full items-center justify-center rounded-md border border-line-strong px-6 text-sm font-semibold text-ink transition-colors hover:border-accent sm:w-auto ${FOCUS}`}
             >
               Смотреть, что построено ↓
             </a>

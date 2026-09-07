@@ -32,6 +32,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.WEB_PUBLIC_ORIGIN?.trim() || 'http://127.0.0.1:3000'),
   title: 'Артемия Артель — AI-инженер',
   description:
     'AI-инженер: локальные LLM-агенты, RAG, MCP-серверы, TG-автоматизация — системы, собранные и доведённые до работающего состояния.',

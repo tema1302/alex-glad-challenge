@@ -21,7 +21,7 @@ const FOCUS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
 
 const BASE =
-  'bento-enter flex flex-col justify-between rounded-2xl border border-line bg-surface p-6 transition-colors duration-200 hover:border-line-strong hover:bg-surface-2';
+  'bento-enter flex flex-col justify-between rounded-lg border border-line bg-surface p-6 shadow-panel transition-all duration-base ease-system hover:-translate-y-0.5 hover:border-accent-dim hover:bg-surface-2';
 
 export function BentoCard({
   href,

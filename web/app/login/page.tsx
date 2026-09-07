@@ -35,7 +35,7 @@ export default async function LoginPage({
         {isAdminAuthConfigured() ? (
           <LoginForm next={safeNext} />
         ) : (
-          <div className="bento-enter rounded-2xl border border-warn/40 bg-warn/10 p-6">
+          <div className="bento-enter rounded-lg border border-warn/40 bg-warn/10 p-6">
             <h1 className="font-mono text-lg font-semibold uppercase tracking-tight text-warn">
               Админ-доступ не настроен
             </h1>
