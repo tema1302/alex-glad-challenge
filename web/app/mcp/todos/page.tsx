@@ -9,6 +9,7 @@ import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusDot } from '../../components/ui/StatusDot';
+import { IconCheck, IconTrash, IconX } from '../../components/ui/icons';
 
 type Recurring = 'daily' | 'weekly' | 'hourly';
 type FormRecurring = 'none' | Recurring;
@@ -219,27 +220,15 @@ export default function TodosPage() {
                     {badge && <div className="mt-0.5 font-mono text-xs text-dim">{badge}</div>}
                   </div>
                   <div className="flex shrink-0 gap-1">
-                    <button
-                      title="Выполнить"
-                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-                      onClick={() => void act(t.id, 'complete')}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      title="Отменить"
-                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-                      onClick={() => void act(t.id, 'dismiss')}
-                    >
-                      ✗
-                    </button>
-                    <button
-                      title="Удалить"
-                      className="rounded border border-line-strong px-2 py-0.5 text-xs text-err transition-colors hover:bg-err/10 disabled:opacity-50"
-                      onClick={() => void act(t.id, 'delete')}
-                    >
-                      🗑
-                    </button>
+                    <Button size="sm" square variant="ghost" title="Выполнить" aria-label={`Выполнить: ${t.text}`} onClick={() => void act(t.id, 'complete')}>
+                      <IconCheck />
+                    </Button>
+                    <Button size="sm" square variant="ghost" title="Отменить" aria-label={`Отменить: ${t.text}`} onClick={() => void act(t.id, 'dismiss')}>
+                      <IconX />
+                    </Button>
+                    <Button size="sm" square variant="danger" title="Удалить" aria-label={`Удалить: ${t.text}`} onClick={() => void act(t.id, 'delete')}>
+                      <IconTrash />
+                    </Button>
                   </div>
                 </li>
               );

@@ -3,6 +3,7 @@
 'use client';
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
+import { Button } from '../../../components/ui/Button';
 
 interface BranchItem { id: number; label: string; parentId: number | null; active: boolean; messageCount: number; }
 interface BranchView { branches: BranchItem[]; activeId: number; }
@@ -50,13 +51,9 @@ export function BranchesPanel({ sessionId }: { sessionId: string }) {
           onChange={(e) => setLabel(e.target.value)}
           disabled={busy}
         />
-        <button
-          className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-          disabled={busy}
-          onClick={() => { void post({ action: 'checkpoint', label: label.trim() || undefined }); setLabel(''); }}
-        >
+        <Button size="sm" disabled={busy} onClick={() => { void post({ action: 'checkpoint', label: label.trim() || undefined }); setLabel(''); }}>
           + checkpoint (ветка от активной)
-        </button>
+        </Button>
       </div>
       {error && <p className="text-xs text-err">{error}</p>}
     </div>

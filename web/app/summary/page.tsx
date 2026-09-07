@@ -1,46 +1,53 @@
-// /summary — сводка ожидающих задач + кнопка «отправить в TG» (день 28, web P5).
-// 'use client': GET /api/summary (текст + publishable). Кнопка publish с confirm + gate
-// (показывается только при publishable). НИКАКИХ импортов core/.
-//
-// Редизайн C (день 30): read-only архетип — <Card> типографика, параграфы text-ink.
+// /summary — сводка ожидающих задач + кнопка «отправить в TG» (день 28, web P5;
+// ТЗ §8.6: confirm через ConfirmDialog с target-каналом, результат через toast).
+// 'use client': GET /api/summary (текст + publishable). Публикация — реальный
+// внешний эффект, серверная логика — publishToTelegram('summary'). НИКАКИХ core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { SectionHead } from '../components/ui/SectionHead';
+import { Badge } from '../components/ui/Badge';
+import { Skeleton } from '../components/ui/Skeleton';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { useToast } from '../components/ui/Toast';
+import { IconSend } from '../components/ui/icons';
 
 export default function SummaryPage() {
+  const { toast } = useToast();
   const [summary, setSummary] = useState<string | null>(null);
   const [publishable, setPublishable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [publishedId, setPublishedId] = useState<number | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [channelLabel, setChannelLabel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
-    setPublishedId(null);
     try {
       const r = await fetch('/api/summary');
       const data = (await r.json()) as { summary?: string; publishable?: boolean };
       setSummary(data.summary ?? '');
       setPublishable(Boolean(data.publishable));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'load failed');
+      toast('err', e instanceof Error ? e.message : 'Не удалось загрузить сводку');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((j: { botChannelLabel?: string | null }) => setChannelLabel(j.botChannelLabel ?? null))
+      .catch(() => setChannelLabel(null));
+  }, [load]);
 
   const publish = useCallback(async () => {
     if (publishing || !publishable) return;
-    if (!window.confirm('Отправить сводку в Telegram-канал?')) return;
     setPublishing(true);
-    setError(null);
-    setPublishedId(null);
     try {
       const r = await fetch('/api/summary', {
         method: 'POST',
@@ -49,59 +56,77 @@ export default function SummaryPage() {
       });
       const data = (await r.json()) as { ok?: boolean; messageId?: number; error?: string };
       if (!r.ok || !data.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
-      setPublishedId(data.messageId ?? null);
+      toast('ok', `Сводка отправлена (message_id=${data.messageId ?? '?'})`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'publish failed');
+      toast('err', e instanceof Error ? e.message : 'Ошибка публикации');
+      throw e;
     } finally {
       setPublishing(false);
     }
-  }, [publishing, publishable]);
+  }, [publishing, publishable, toast]);
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="text-xl font-semibold text-ink">Сводка задач</h1>
-        <p className="mt-1 text-sm text-dim">
-          Ожидающие задачи из <code className="rounded bg-surface-2 px-1 font-mono text-xs text-dim">TodoDb</code>.
-          Можно отправить сводку в Telegram-канал (если настроен Bot API).
-        </p>
-      </section>
-
-      <div className="flex items-center gap-3">
-        <Button variant="primary" onClick={load} disabled={loading}>
-          обновить
-        </Button>
-        {publishable && (
-          <Button variant="ghost" onClick={publish} disabled={publishing || loading}>
-            {publishing ? 'Отправка…' : 'Отправить в TG'}
+      <SectionHead
+        code="summary · todos"
+        title="Сводка задач"
+        description="Ожидающие задачи из TodoDb. Сводку можно отправить в Telegram-канал (если настроен Bot API)."
+        actions={
+          <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'загрузка…' : 'обновить'}
           </Button>
-        )}
-        {!publishable && (
-          <span className="text-xs text-dim">TG Bot API не настроен — публикация недоступна</span>
-        )}
-      </div>
+        }
+      />
 
-      {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-        </p>
+      {!publishable && (
+        <p className="text-xs text-dim">TG Bot API не настроен — публикация недоступна</p>
       )}
 
-      {publishedId !== null && (
-        <p className="rounded-md border border-ok/40 bg-ok/10 p-2 text-sm text-ok">
-          Отправлено (message_id: {publishedId}).
-        </p>
-      )}
-
-      <Card label="сводка">
+      <Card
+        label="сводка"
+        actions={
+          publishable ? (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<IconSend />}
+              onClick={() => setConfirmOpen(true)}
+              disabled={publishing || loading}
+            >
+              Отправить в TG
+            </Button>
+          ) : null
+        }
+      >
         {summary === null ? (
-          <p className="text-sm text-dim">{loading ? 'Загрузка…' : 'Нет данных.'}</p>
+          <div className="space-y-2">
+            <Skeleton variant="line" />
+            <Skeleton variant="line" />
+          </div>
+        ) : summary === '' ? (
+          <p className="text-sm text-dim">Ожидающих задач нет.</p>
         ) : (
-          <p className="whitespace-pre-wrap font-sans text-sm text-ink">
-            {summary}
-          </p>
+          <p className="whitespace-pre-wrap font-sans text-sm text-ink">{summary}</p>
         )}
       </Card>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        onConfirm={publish}
+        title="Отправить сводку в канал?"
+        confirmLabel="Опубликовать"
+        body={
+          <div className="space-y-3">
+            <p className="flex items-center gap-2">
+              Канал: <Badge tone="accent">{channelLabel ?? 'TG_CHAT_ID'}</Badge>
+            </p>
+            <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
+              Реальная отправка — сводка ожидающих задач уйдёт подписчикам канала.
+            </p>
+          </div>
+        }
+      />
     </div>
   );
 }

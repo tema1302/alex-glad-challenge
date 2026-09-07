@@ -268,7 +268,7 @@ export default function RagChatSessionPage() {
     <div className="space-y-4">
       <section className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-ink">{title || 'RAG-чат'}</h1>
+          <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">{title || 'RAG-чат'}</h1>
           <p className="mt-1 font-mono text-xs text-dim">{dialogChatId}</p>
         </div>
         <Link href="/rag/chat" className="text-sm text-accent hover:underline">чаты</Link>
@@ -310,13 +310,9 @@ export default function RagChatSessionPage() {
               disabled={running}
             />
           </label>
-          <button
-            className="ml-auto rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-            onClick={onRename}
-            disabled={running}
-          >
+          <Button size="sm" className="ml-auto" onClick={onRename} disabled={running}>
             переименовать
-          </button>
+          </Button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span

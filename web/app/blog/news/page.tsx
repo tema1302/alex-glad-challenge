@@ -122,7 +122,7 @@ export default function BlogNewsPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">Блог-pipeline</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Блог-pipeline</h1>
         <p className="mt-1 text-sm text-dim">
           RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг). Пост сохраняется в{' '}
           <code className="rounded bg-surface-2 px-1 text-xs text-dim">blog.sqlite</code>.

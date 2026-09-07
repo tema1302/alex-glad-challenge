@@ -149,7 +149,7 @@ export default function RagPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">RAG-запрос</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">RAG-запрос</h1>
         <p className="mt-1 text-sm text-dim">
           Вопрос по базе знаний с потоковым ответом и live-стадиями пайплайна.
         </p>
