@@ -4,7 +4,7 @@
 // (warn-цвет с warnAt). Используется в TG-компоузере и редакторе постов.
 // Контролируемый: value + onValueChange (id/aria пробрасывает Field).
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type RefObject } from 'react';
 
 const CAP_PX = 280; // ≈12 рядов text-xs
 
@@ -16,6 +16,7 @@ export function Textarea({
   rows = 4,
   placeholder,
   disabled,
+  inputRef,
   className = '',
 }: {
   value: string;
@@ -25,9 +26,12 @@ export function Textarea({
   rows?: number;
   placeholder?: string;
   disabled?: boolean;
+  /** Наружный ref на textarea — для выделений/курсора (markup-помощник компоузера). */
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
   className?: string;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const innerRef = useRef<HTMLTextAreaElement>(null);
+  const ref = inputRef ?? innerRef;
 
   // Autosize: высота = scrollHeight, но не выше CAP (дальше — внутренний скролл).
   useEffect(() => {

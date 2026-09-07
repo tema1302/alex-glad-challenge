@@ -29,7 +29,7 @@ export async function getBotInfo(): Promise<Record<string, unknown> | null> {
   }
 }
 
-export async function publishPost(text: string): Promise<PublishResult> {
+export async function publishPost(text: string, parseMode: 'HTML' | 'none' = 'HTML'): Promise<PublishResult> {
   const token = process.env['TG_BOT_TOKEN'];
   const chatId = process.env['TG_CHAT_ID'];
 
@@ -41,7 +41,7 @@ export async function publishPost(text: string): Promise<PublishResult> {
   const body = JSON.stringify({
     chat_id: Number(chatId),
     text,
-    parse_mode: 'HTML',
+    parse_mode: parseMode === 'HTML' ? 'HTML' : undefined,
     disable_web_page_preview: true,
   });
 

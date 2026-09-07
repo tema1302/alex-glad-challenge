@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { postUpdateSchema } from '../../../../../lib/shared/forms';
 import { getBlogDb, withDb } from '../../../../../lib/server/db';
+import { getOutboxDb } from '../../../../../lib/server/outbox';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,7 +25,18 @@ export async function GET(
   if (id === null) return NextResponse.json({ error: 'bad id' }, { status: 400 });
   const post = await withDb(() => getBlogDb().getPost(id));
   if (!post) return NextResponse.json({ error: 'not found' }, { status: 404 });
-  return NextResponse.json({ post });
+  const tg = await withDb(() => getOutboxDb().latestForPost(id));
+  return NextResponse.json({
+    post,
+    tg: tg
+      ? {
+          status: tg.status,
+          messageId: tg.message_id,
+          createdAt: tg.created_at,
+          error: tg.error,
+        }
+      : null,
+  });
 }
 
 export async function PATCH(

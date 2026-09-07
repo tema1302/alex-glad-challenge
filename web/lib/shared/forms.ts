@@ -276,8 +276,10 @@ export const ragIndexTgSchema = z.object({
 export type RagIndexTgInput = z.infer<typeof ragIndexTgSchema>;
 
 // POST /api/telegram/publish — отправка текста в TG-канал (Bot API). Реальный внешний эффект.
+// parseMode: 'HTML' (дефолт) | 'none' — без разметки; sanitize — на сервере (tg-html.ts).
 export const tgPublishSchema = z.object({
-  text: z.string().trim().min(1, 'Текст обязателен').max(4000, 'TG: до 4096 символов'),
+  text: z.string().trim().min(1, 'Текст обязателен').max(4096, 'TG: до 4096 символов'),
+  parseMode: z.enum(['HTML', 'none']).optional(),
 });
 export type TgPublishInput = z.infer<typeof tgPublishSchema>;
 

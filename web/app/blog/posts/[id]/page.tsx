@@ -1,15 +1,24 @@
-// /blog/posts/[id] — детально: контент (editable → PATCH save), delete (confirm),
-// publish в Telegram (confirm — реальная отправка в канал). День 28, web P4a.
-// Редизайн C (день 30): Card-формы + verdict-pre. Логика fetch/confirm без изменений.
-// 'use client': useParams для id. НИКАКИХ импортов core/.
+// /blog/posts/[id] — детально (ТЗ §7.3/§8.5): toolbar (Сохранить / Опубликовать в
+// Telegram / Удалить), статус публикации из outbox (badge + message_id + время),
+// textarea со счётчиком 4096. Реальные внешние действия — через ConfirmDialog
+// с указанием target (замена window.confirm, D1). 'use client': useParams для id.
+// НИКАКИХ импортов core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { SectionLabel } from '../../../components/ui/SectionLabel';
+import { SectionHead } from '../../../components/ui/SectionHead';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
+import { Field } from '../../../components/ui/Field';
+import { Textarea } from '../../../components/ui/Textarea';
+import { Badge, statusBadge } from '../../../components/ui/Badge';
+import { Skeleton } from '../../../components/ui/Skeleton';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { useToast } from '../../../components/ui/Toast';
+import { IconSend, IconTrash } from '../../../components/ui/icons';
+import { tgHtmlToPlain } from '../../../../lib/shared/tg-html';
 
 interface PostData {
   id: number;
@@ -19,49 +28,62 @@ interface PostData {
   created_at: string;
 }
 
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
+interface TgStatus {
+  status: 'ok' | 'error';
+  messageId: number | null;
+  createdAt: string;
+  error: string | null;
+}
 
 export default function BlogPostDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { toast } = useToast();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
 
   const [post, setPost] = useState<PostData | null>(null);
+  const [tg, setTg] = useState<TgStatus | null>(null);
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [channelLabel, setChannelLabel] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const resp = await fetch(`/api/blog/posts/${id}`, { method: 'GET' });
       if (!resp.ok) {
         const j = (await resp.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? `HTTP ${resp.status}`);
       }
-      const data = (await resp.json()) as { post: PostData };
+      const data = (await resp.json()) as { post: PostData; tg: TgStatus | null };
       setPost(data.post);
+      setTg(data.tg);
       setDraft(data.post.content);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'load failed');
+      toast('err', e instanceof Error ? e.message : 'Не удалось загрузить пост');
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, toast]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  // Маска канала для confirm-диалога — из settings-API (server → public-мета).
+  useEffect(() => {
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((j: { botChannelLabel?: string | null }) => setChannelLabel(j.botChannelLabel ?? null))
+      .catch(() => setChannelLabel(null));
+  }, []);
+
   const save = useCallback(async () => {
     if (!post || saving) return;
     setSaving(true);
-    setError(null);
-    setInfo(null);
     try {
       const resp = await fetch(`/api/blog/posts/${id}`, {
         method: 'PATCH',
@@ -75,104 +97,135 @@ export default function BlogPostDetailPage() {
       const data = (await resp.json()) as { post: PostData };
       setPost(data.post);
       setDraft(data.post.content);
-      setInfo('Сохранено');
+      toast('ok', 'Пост сохранён');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'save failed');
+      toast('err', e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setSaving(false);
     }
-  }, [post, saving, draft, id]);
+  }, [post, saving, draft, id, toast]);
+
+  const publish = useCallback(async () => {
+    try {
+      const resp = await fetch(`/api/blog/posts/${id}/publish`, { method: 'POST' });
+      const j = (await resp.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        messageId?: number;
+      };
+      if (!resp.ok || !j.ok) throw new Error(j.error ?? `HTTP ${resp.status}`);
+      toast('ok', `Опубликовано в Telegram (message_id=${j.messageId ?? '?'})`);
+      void load();
+    } catch (e) {
+      toast('err', e instanceof Error ? e.message : 'Ошибка публикации');
+      throw e;
+    }
+  }, [id, toast, load]);
 
   const del = useCallback(async () => {
-    if (!post) return;
-    if (!window.confirm(`Удалить пост #${post.id}?`)) return;
-    setError(null);
-    setInfo(null);
     try {
       const resp = await fetch(`/api/blog/posts/${id}`, { method: 'DELETE' });
       if (!resp.ok) {
         const j = (await resp.json().catch(() => ({}))) as { error?: string };
         throw new Error(j.error ?? `HTTP ${resp.status}`);
       }
+      toast('ok', `Пост #${id} удалён`);
       router.push('/blog/posts');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'delete failed');
+      toast('err', e instanceof Error ? e.message : 'Не удалось удалить');
+      throw e;
     }
-  }, [post, id, router]);
-
-  const publish = useCallback(async () => {
-    if (!post) return;
-    if (!window.confirm('Опубликовать пост в Telegram-канал? Это реальная отправка.')) return;
-    setError(null);
-    setInfo(null);
-    try {
-      const resp = await fetch(`/api/blog/posts/${id}/publish`, { method: 'POST' });
-      const j = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string; messageId?: number };
-      if (!resp.ok || !j.ok) {
-        throw new Error(j.error ?? `HTTP ${resp.status}`);
-      }
-      setInfo(`Опубликовано в Telegram (message_id=${j.messageId ?? '?'})`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'publish failed');
-    }
-  }, [post, id]);
+  }, [id, router, toast]);
 
   const dirty = post !== null && draft !== post.content;
+  const overLimit = draft.length > 4096;
 
   return (
-    <div className="space-y-8">
-      <section>
-        <SectionLabel>posts · detail</SectionLabel>
-        <Link href="/blog/posts" className="text-xs text-accent hover:underline">
-          ← к списку постов
-        </Link>
-        <h1 className="mt-1 font-mono text-2xl font-semibold uppercase tracking-tight text-ink">
-          {post ? `Пост #${post.id}` : loading ? 'Загрузка…' : 'Пост не найден'}
-        </h1>
-        {post && (
-          <p className="mt-2 font-mono text-xs text-dim">
-            news_id: {post.news_id ?? '—'} · {post.created_at}
-            {post.verdict ? ' · verdict в JSON (см. ниже)' : ''}
-          </p>
-        )}
-      </section>
+    <div className="space-y-6">
+      <SectionHead
+        code={`posts · #${id}`}
+        title={post ? `Пост #${post.id}` : loading ? 'Загрузка…' : 'Не найден'}
+        description={
+          post ? (
+            <span className="font-mono text-xs">
+              news_id: {post.news_id ?? '—'} · {post.created_at}
+            </span>
+          ) : undefined
+        }
+        actions={
+          <Link
+            href="/blog/posts"
+            className="inline-flex min-h-[36px] items-center rounded-md px-2 text-sm text-dim transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+          >
+            ← к списку
+          </Link>
+        }
+      />
 
-      {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
-      )}
-      {info && (
-        <p className="rounded-md border border-ok/40 bg-ok/10 p-2 text-sm text-ok">{info}</p>
-      )}
-
-      {post && (
+      {loading && !post ? (
+        <div className="space-y-3">
+          <Skeleton variant="line" />
+          <Skeleton />
+        </div>
+      ) : post ? (
         <>
-          <Card>
-            <label className="block font-mono text-xs uppercase tracking-wider text-dim">Контент</label>
-            <textarea
-              className={`mt-1 w-full resize-y ${INPUT}`}
-              rows={10}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              disabled={saving}
-            />
-            <div className="mt-3 flex flex-wrap gap-2">
+          {/* Статус публикации (join outbox, ТЗ §7.3) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs uppercase tracking-wider text-dim">telegram:</span>
+            {tg ? (
+              <>
+                {statusBadge(tg.status === 'ok' ? 'published' : 'error')}
+                {tg.messageId !== null && (
+                  <span className="font-mono text-xs tabular-nums text-dim">msg {tg.messageId}</span>
+                )}
+                <span className="font-mono text-xs tabular-nums text-dim">{tg.createdAt}</span>
+                {tg.status === 'ok' ? <Badge tone="dim">повторная отправка создаст новую запись</Badge> : null}
+              </>
+            ) : (
+              statusBadge('draft')
+            )}
+            {tg?.error && <span className="text-xs text-err">{tg.error}</span>}
+          </div>
+
+          <Card label="контент">
+            <Field
+              id="post-content"
+              label="Текст поста"
+              hint="Публикация в TG — до 4096 символов; сохранение в блоге допускает до 8000."
+              error={overLimit ? 'Для публикации в Telegram текст длиннее 4096 символов' : undefined}
+            >
+              <Textarea
+                value={draft}
+                onValueChange={setDraft}
+                max={4096}
+                warnAt={3800}
+                rows={12}
+                inputRef={undefined}
+                disabled={saving}
+              />
+            </Field>
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <Button variant="primary" onClick={save} disabled={saving || !dirty}>
                 Сохранить
               </Button>
-              {dirty && (
-                <Button variant="ghost" onClick={() => setDraft(post.content)} disabled={saving}>
-                  Откатить
-                </Button>
-              )}
               <Button
-                variant="ghost"
-                className="ml-auto"
-                onClick={publish}
-                title="Реальная отправка в Telegram-канал"
+                variant="primary"
+                icon={<IconSend />}
+                onClick={() => setPublishOpen(true)}
+                disabled={!draft.trim() || overLimit}
+                title={overLimit ? 'Сократите текст до 4096 символов' : 'Реальная отправка в Telegram-канал'}
               >
                 Опубликовать в Telegram
               </Button>
-              <Button variant="danger" onClick={del}>
+              <Button
+                variant="ghost"
+                onClick={() => setDraft(post.content)}
+                disabled={saving || !dirty}
+              >
+                Откатить
+              </Button>
+              <Button variant="danger" icon={<IconTrash />} className="ml-auto" onClick={() => setDeleteOpen(true)}>
                 Удалить
               </Button>
             </div>
@@ -180,13 +233,47 @@ export default function BlogPostDetailPage() {
 
           {post.verdict && (
             <Card label="verdict">
-              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-bg p-2 font-mono text-xs text-dim">
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-bg p-2 font-mono text-xs text-dim">
                 {post.verdict}
               </pre>
             </Card>
           )}
         </>
+      ) : (
+        <p className="text-sm text-dim">Пост не найден.</p>
       )}
+
+      <ConfirmDialog
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        onConfirm={publish}
+        title="Опубликовать в Telegram?"
+        confirmLabel="Опубликовать"
+        body={
+          <div className="space-y-3">
+            <p className="flex items-center gap-2">
+              Канал: <Badge tone="accent">{channelLabel ?? 'TG_CHAT_ID'}</Badge>
+            </p>
+            <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
+              Реальная отправка — сообщение уйдёт подписчикам канала.
+            </p>
+            <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-words rounded-md border border-line bg-bg p-2 font-mono text-xs leading-relaxed text-dim">
+              {tgHtmlToPlain(draft).split('\n').slice(0, 6).join('\n')}
+              {tgHtmlToPlain(draft).split('\n').length > 6 ? '\n…' : ''}
+            </pre>
+          </div>
+        }
+      />
+
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onConfirm={del}
+        title={`Удалить пост #${id}?`}
+        confirmLabel="Удалить безвозвратно"
+        tone="danger"
+        body={<p>Пост будет удалён из blog.sqlite вместе с содержимым. Действие безвозвратно.</p>}
+      />
     </div>
   );
 }
