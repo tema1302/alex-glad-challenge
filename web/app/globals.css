@@ -63,20 +63,85 @@
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  /* Dialog/Toast (ТЗ §5.6): 120ms fade + 4px slide, единый easing. */
+  .anim-pop {
+    animation: popIn var(--duration-fast, 120ms) cubic-bezier(.2, .8, .2, 1) both;
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 }
 
-/* landing-v2: scroll-reveal, CSS-only, 0 JS. Фолбэк: контент просто виден. */
+/* Превью Telegram-сообщения (компоузер /telegram/publish): имитация тёмного
+   пузыря Telegram. Стили descendants поверх sanitize-HTML из lib/shared/tg-html
+   (whitelist: b i u s a code pre blockquote tg-spoiler — других тегов там нет). */
+.tg-msg {
+  font-size: 14px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+.tg-msg a {
+  color: rgb(136 199 255);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tg-msg code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.86em;
+  background-color: rgb(0 0 0 / 0.35);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+.tg-msg pre {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.86em;
+  background-color: rgb(0 0 0 / 0.35);
+  border-radius: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tg-msg blockquote {
+  border-left: 3px solid rgb(var(--accent) / 0.6);
+  padding-left: 10px;
+  margin: 4px 0;
+  color: rgb(var(--text));
+}
+.tg-msg tg-spoiler {
+  background-color: rgb(0 0 0 / 0.4);
+  border-radius: 4px;
+  color: transparent;
+}
+.tg-msg tg-spoiler:active {
+  color: rgb(var(--text));
+  background-color: rgb(0 0 0 / 0.15);
+}
+
+/* landing-v2: scroll-reveal, CSS-only, 0 JS. Reveal только на transform (opacity
+   никогда не ниже 1) — контент виден в print/fullPage-скриншотах и без гидратации
+   (fix D3, ТЗ §8.1). Фолбэк: контент просто виден. */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
     .l-reveal {
-      animation: lFadeUp 0.5s ease-out both;
+      animation: lSlideUp 0.5s cubic-bezier(.2, .8, .2, 1) both;
       animation-timeline: view();
-      animation-range: entry 0% entry 45%;
+      animation-range: entry 0% entry 100%;
     }
-    @keyframes lFadeUp {
-      from { opacity: 0; transform: translateY(12px); }
-      to   { opacity: 1; transform: translateY(0); }
+    @keyframes lSlideUp {
+      from { transform: translateY(14px); }
+      to   { transform: translateY(0); }
     }
+  }
+}
+
+@media print {
+  .l-reveal,
+  .bento-enter {
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
 

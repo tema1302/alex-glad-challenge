@@ -9,6 +9,7 @@ import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
 import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
 import { ThemeProvider } from './components/ThemeProvider';
+import { ToastProvider } from './components/ui/Toast';
 import { PerfProbe } from './components/perf-probe';
 import Nav from './components/Nav';
 import { Sidebar } from './components/Sidebar';
@@ -49,22 +50,24 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="ru" suppressHydrationWarning className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="min-h-screen bg-bg font-sans text-ink antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" disableTransitionOnChange nonce={nonce}>
-          <div className="flex min-h-screen flex-col">
-            <Nav isAdmin={isAdmin} />
-            {isAdmin ? (
-              <>
-                <div className="flex flex-1">
-                  <Sidebar />
-                  <main className="flex-1 px-5 py-6">
-                    <div className="mx-auto max-w-6xl">{children}</div>
-                  </main>
-                </div>
-                <Footer />
-              </>
-            ) : (
-              <main className="flex-1">{children}</main>
-            )}
-          </div>
+          <ToastProvider>
+            <div className="flex min-h-screen flex-col">
+              <Nav isAdmin={isAdmin} />
+              {isAdmin ? (
+                <>
+                  <div className="flex flex-1">
+                    <Sidebar />
+                    <main className="flex-1 px-5 py-6">
+                      <div className="mx-auto max-w-6xl">{children}</div>
+                    </main>
+                  </div>
+                  <Footer />
+                </>
+              ) : (
+                <main className="flex-1">{children}</main>
+              )}
+            </div>
+          </ToastProvider>
         </ThemeProvider>
         <PerfProbe />
       </body>
