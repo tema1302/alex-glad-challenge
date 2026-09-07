@@ -12,8 +12,11 @@ const SANS = 'var(--font-sans), system-ui, sans-serif';
 
 /* ─────────────────────────── Hero ─────────────────────────── */
 
-/** Центральная композиция hero: aurora-ядро, орбиты, стеклянные чипы систем. */
-export function HeroArt({ className }: ArtProps) {
+/**
+ * Hero-орбиты: точечная сетка, кольца, aurora-дуга, искры. Слой ВРАЩАЕТСЯ от
+ * скролла (ScrollSpin в page.tsx) — поэтому без текстовых элементов.
+ */
+export function HeroRings({ className }: ArtProps) {
   return (
     <svg viewBox="0 0 560 560" fill="none" aria-hidden="true" className={className} {...SVG_RESET}>
       <defs>
@@ -22,48 +25,18 @@ export function HeroArt({ className }: ArtProps) {
           <stop offset="0.5" stopColor="#9333EA" />
           <stop offset="1" stopColor="#14B8A6" />
         </linearGradient>
-        <radialGradient id="ha-glow" cx="0.5" cy="0.5" r="0.5">
-          <stop offset="0" stopColor="#6C5CFF" stopOpacity="0.3" />
-          <stop offset="1" stopColor="#6C5CFF" stopOpacity="0" />
-        </radialGradient>
         <pattern id="ha-dots" width="28" height="28" patternUnits="userSpaceOnUse">
-          <circle cx="1.5" cy="1.5" r="1.5" fill="#0C1116" opacity="0.06" />
+          <circle cx="1.5" cy="1.5" r="1.5" fill="#888888" opacity="0.35" />
         </pattern>
       </defs>
 
-      <rect x="30" y="30" width="500" height="500" rx="28" fill="url(#ha-dots)" />
+      <rect x="30" y="30" width="500" height="500" rx="28" fill="url(#ha-dots)" opacity="0.25" />
 
       {/* орбиты */}
-      <circle cx="280" cy="280" r="120" stroke="#C9C2FF" strokeWidth="1.5" strokeDasharray="3 8" />
-      <circle cx="280" cy="280" r="175" stroke="#E6E2D8" strokeWidth="1.5" />
-      <circle cx="280" cy="280" r="232" stroke="#E6E2D8" strokeWidth="1.5" strokeDasharray="1 7" />
+      <circle cx="280" cy="280" r="120" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 8" opacity="0.35" />
+      <circle cx="280" cy="280" r="175" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />
+      <circle cx="280" cy="280" r="232" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1 7" opacity="0.45" />
       <path d="M 280 105 A 175 175 0 0 1 452 245" stroke="url(#ha-aurora)" strokeWidth="3" strokeLinecap="round" />
-
-      {/* ядро */}
-      <circle cx="280" cy="280" r="150" fill="url(#ha-glow)" />
-      <circle cx="280" cy="280" r="64" fill="url(#ha-aurora)" />
-      <circle cx="280" cy="280" r="64" stroke="#FFFFFF" strokeOpacity="0.6" strokeWidth="2" />
-      <ellipse cx="259" cy="259" rx="24" ry="12" fill="#FFFFFF" opacity="0.4" transform="rotate(-30 259 259)" />
-      <text x="280" y="277" textAnchor="middle" fontSize="13" fontWeight="700" fill="#FFFFFF" fontFamily={SANS}>
-        AI-стэк
-      </text>
-      <text x="280" y="295" textAnchor="middle" fontSize="9.5" fill="#FFFFFF" opacity="0.85" fontFamily={MONO}>
-        1 repo · 6 систем
-      </text>
-
-      {/* коннекторы */}
-      <g stroke="#A99EFF" strokeWidth="1.5" strokeDasharray="2 5">
-        <line x1="280" y1="216" x2="280" y2="128" />
-        <line x1="341" y1="317" x2="400" y2="352" />
-        <line x1="219" y1="317" x2="160" y2="352" />
-        <line x1="332" y1="230" x2="392" y2="190" />
-      </g>
-
-      {/* чипы систем (стекло) */}
-      <Chip x={216} y={88} label="RAG-поиск" />
-      <Chip x={386} y={172} label="MCP-серверы" />
-      <Chip x={96} y={352} label="TG-юзербот" />
-      <Chip x={348} y={352} label="Память" accent />
 
       {/* искры */}
       <g stroke="#9333EA" strokeWidth="2" strokeLinecap="round" opacity="0.5">
@@ -75,16 +48,34 @@ export function HeroArt({ className }: ArtProps) {
   );
 }
 
-function Chip({ x, y, label, accent = false }: { x: number; y: number; label: string; accent?: boolean }) {
+/** Ядро hero: aurora-сфера с лёгким пульсом (статичный слой поверх орбит). */
+export function HeroCore({ className }: ArtProps) {
   return (
-    <g>
-      <rect x={x} y={y} width="128" height="40" rx="20" fill="#FFFFFF" stroke="#E6E2D8" />
-      <rect x={x} y={y} width="128" height="40" rx="20" fill="none" stroke="#FFFFFF" strokeOpacity="0" />
-      <circle cx={x + 20} cy={y + 20} r="5" fill={accent ? '#14B8A6' : '#5A4BFF'} />
-      <text x={x + 34} y={y + 24.5} fontSize="11.5" fontWeight="600" fill="#0C1116" fontFamily={SANS}>
-        {label}
+    <svg viewBox="0 0 560 560" fill="none" aria-hidden="true" className={className} {...SVG_RESET}>
+      <defs>
+        <linearGradient id="hc-aurora" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#5A4BFF" />
+          <stop offset="0.5" stopColor="#9333EA" />
+          <stop offset="1" stopColor="#14B8A6" />
+        </linearGradient>
+        <radialGradient id="hc-glow" cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#6C5CFF" stopOpacity="0.3" />
+          <stop offset="1" stopColor="#6C5CFF" stopOpacity="0" />
+        </radialGradient>
+      </defs>
+      <circle cx="280" cy="280" r="150" fill="url(#hc-glow)" />
+      <g className="lp-pulse">
+        <circle cx="280" cy="280" r="64" fill="url(#hc-aurora)" />
+        <circle cx="280" cy="280" r="64" stroke="#FFFFFF" strokeOpacity="0.6" strokeWidth="2" />
+        <ellipse cx="259" cy="259" rx="24" ry="12" fill="#FFFFFF" opacity="0.4" transform="rotate(-30 259 259)" />
+      </g>
+      <text x="280" y="277" textAnchor="middle" fontSize="13" fontWeight="700" fill="#FFFFFF" fontFamily={SANS}>
+        AI-стэк
       </text>
-    </g>
+      <text x="280" y="295" textAnchor="middle" fontSize="9.5" fill="#FFFFFF" opacity="0.85" fontFamily={MONO}>
+        1 repo · 6 систем
+      </text>
+    </svg>
   );
 }
 
@@ -114,7 +105,7 @@ export function ArtRag({ className }: ArtProps) {
         <rect x="60" y="122" width="42" height="14" rx="7" fill="#E4E0FF" />
       </g>
       {/* векторное созвездие */}
-      <g stroke="#C9C2FF" strokeWidth="1.5" strokeDasharray="3 5">
+      <g stroke="#C9C2FF" strokeWidth="1.5" strokeDasharray="3 5" className="lp-flow">
         <path d="M196 64 L232 44 L268 72 L222 104 L262 136 L196 118 Z" />
       </g>
       <g>
@@ -142,7 +133,7 @@ export function ArtMcp({ className }: ArtProps) {
           <stop offset="1" stopColor="#14B8A6" />
         </linearGradient>
       </defs>
-      <g stroke="#C9C2FF" strokeWidth="1.5">
+      <g stroke="#C9C2FF" strokeWidth="1.5" className="lp-flow">
         <line x1="160" y1="100" x2="62" y2="48" />
         <line x1="160" y1="100" x2="62" y2="152" />
         <line x1="160" y1="100" x2="160" y2="34" />

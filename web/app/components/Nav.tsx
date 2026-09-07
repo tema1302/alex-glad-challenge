@@ -8,6 +8,7 @@ import { getKeysStatus } from '../../lib/server/env';
 import { MobileNav } from './MobileNav';
 import { NavCoreLinks } from './NavLinks';
 import { LogoutButton } from './LogoutButton';
+import { ThemeToggle } from './ThemeToggle';
 
 export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const keys = isAdmin ? getKeysStatus() : null;
@@ -43,11 +44,13 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
                   </span>
                 )}
               </div>
+              <ThemeToggle />
               <LogoutButton />
             </div>
           </>
         ) : (
-          <nav>
+          <nav className="flex items-center gap-1">
+            <ThemeToggle />
             <Link
               href="/login"
               className="rounded-md px-2 py-1 text-sm text-dim transition-colors duration-150 hover:text-ink"

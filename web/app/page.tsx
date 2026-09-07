@@ -11,6 +11,8 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 import { type ComponentType } from 'react';
 import { SubscribeButton } from './components/landing/SubscribeButton';
+import { CountUp } from './components/CountUp';
+import { ScrollSpin } from './components/ScrollSpin';
 import {
   ArtDash,
   ArtGateway,
@@ -20,7 +22,8 @@ import {
   ArtPipeline,
   ArtRag,
   ArtTg,
-  HeroArt,
+  HeroCore,
+  HeroRings,
 } from './components/landing/art';
 import {
   IconCheck,
@@ -79,6 +82,16 @@ const FEATURE_ART: Record<string, ComponentType> = {
 };
 
 const CHANNEL_URL_TEXT = channel.url.replace(/^https?:\/\//, '');
+
+// Орбитальные чипы hero: живые ссылки на соответствующие разделы.
+// Для гостя защищённые маршруты отдаёт middleware (302 → /login?next=…),
+// после входа человек попадает именно туда, куда тыкнул.
+const ORBIT_LINKS = [
+  { label: 'RAG-поиск', href: '/rag/chat', dot: 'bg-brand-600', pos: 'left-1/2 top-[13%] -translate-x-1/2', float: '' },
+  { label: 'MCP-серверы', href: '/mcp/tools', dot: 'bg-brand-600', pos: 'right-[1%] top-[30%]', float: 'lp-float' },
+  { label: 'TG-юзербот', href: '/tg/top', dot: 'bg-brand-600', pos: 'left-[1%] bottom-[26%]', float: 'lp-float-2 lp-float' },
+  { label: 'Память', href: '/chat', dot: 'bg-brand-mint', pos: 'right-[7%] bottom-[23%]', float: 'lp-float-3 lp-float' },
+] as const;
 
 const FOCUS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-paper';
@@ -155,8 +168,23 @@ export default async function HomePage() {
             </dl>
           </div>
 
-          <div className="relative mx-auto w-full max-w-[560px]">
-            <HeroArt className="w-full" />
+          <div className="relative mx-auto aspect-square w-full max-w-[560px]">
+            {/* Орбиты — вращаются от скролла; чипы-ссылки и ядро — статичны. */}
+            <ScrollSpin className="absolute inset-0 text-p-ink" speed={0.05}>
+              <HeroRings className="h-full w-full" />
+            </ScrollSpin>
+            <HeroCore className="absolute inset-0" />
+            {ORBIT_LINKS.map((l) => (
+              <Link
+                key={l.label}
+                href={l.href}
+                title={`${l.label} — открыть раздел`}
+                className={`z-10 absolute inline-flex items-center gap-2 rounded-full border border-p-line bg-paper-2 px-4 py-2 text-sm font-semibold text-p-ink shadow-card transition-all duration-base ease-system hover:-translate-y-0.5 hover:border-brand-300 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${l.pos} ${l.float}`}
+              >
+                <span aria-hidden="true" className={`h-2 w-2 rounded-full ${l.dot}`} />
+                {l.label}
+              </Link>
+            ))}
           </div>
         </div>
 
@@ -200,7 +228,7 @@ export default async function HomePage() {
             </div>
 
             {/* мы */}
-            <div className="relative rounded-[20px] border border-brand-200 bg-paper-2 p-7 shadow-card">
+            <div className="lp-card relative border-brand-200 p-7">
               <div className="lp-blob lp-blob-indigo -right-10 -top-10 h-40 w-40" aria-hidden="true" />
               <div className="relative flex items-center gap-3">
                 <span className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-brand-600 to-brand-violet text-white">
@@ -276,7 +304,7 @@ export default async function HomePage() {
             })}
 
             {/* мини-CTA заполняет сетку */}
-            <div className="relative flex flex-col justify-between overflow-hidden rounded-[20px] bg-p-ink p-6 text-white">
+            <div className="relative flex flex-col justify-between overflow-hidden rounded-[20px] bg-panel p-6 text-white">
               <div className="lp-blob lp-blob-violet -right-8 -top-8 h-36 w-36 opacity-70" aria-hidden="true" />
               <div className="lp-blob lp-blob-mint -bottom-10 -left-6 h-32 w-32 opacity-50" aria-hidden="true" />
               <p className="relative font-display text-lg font-semibold leading-snug">
@@ -315,35 +343,37 @@ export default async function HomePage() {
       {/* ═══ S5. ТЁМНЫЙ PROOF-БЕНД — цифры в контрастной вставке ═══ */}
       <section className="l-reveal">
         <div className="mx-auto w-full max-w-6xl px-5 py-20 md:py-24">
-          <div className="relative overflow-hidden rounded-[28px] bg-p-ink px-6 py-14 text-white md:px-14 md:py-20">
+          <div className="relative overflow-hidden rounded-[28px] bg-panel px-6 py-14 text-white md:px-14 md:py-20">
             <div className="lp-blob lp-blob-violet -left-16 -top-16 h-80 w-80" aria-hidden="true" />
             <div className="lp-blob lp-blob-mint -bottom-20 -right-10 h-80 w-80" aria-hidden="true" />
-            <div className="relative">
-              <div className="font-mono text-xs uppercase tracking-[0.22em] text-brand-300">
-                {'// proof · в цифрах'}
-              </div>
-              <div className="mt-8 grid items-end gap-10 lg:grid-cols-[auto_1fr] lg:gap-16">
-                <div>
-                  <div className="font-display text-[clamp(4.5rem,9vw,8rem)] font-bold leading-none">
-                    {proofMetrics.dominant.value}
-                  </div>
-                  <div className="mt-3 font-mono text-xs uppercase tracking-[0.2em] text-white/60">
-                    {proofMetrics.dominant.label}
-                  </div>
+              <div className="relative">
+                <div className="font-mono text-xs uppercase tracking-[0.22em] text-brand-300">
+                  {'// proof · в цифрах'}
                 </div>
-                <p className="max-w-xl text-base leading-relaxed text-white/70 md:text-lg">
-                  {challengeNarrative}
-                </p>
-              </div>
-              <div className="mt-12 grid grid-cols-3 gap-6 border-t border-white/10 pt-8">
-                {proofMetrics.rest.map((m) => (
-                  <div key={m.label}>
-                    <div className="font-display text-2xl font-bold md:text-4xl">{m.value}</div>
-                    <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-white/50">{m.label}</div>
+                <div className="mt-8 grid items-end gap-10 lg:grid-cols-[auto_1fr] lg:gap-16">
+                  <div>
+                    <div className="font-display text-[clamp(4.5rem,9vw,8rem)] font-bold leading-none">
+                      <CountUp value={proofMetrics.dominant.value} />
+                    </div>
+                    <div className="mt-3 font-mono text-xs uppercase tracking-[0.2em] text-white/60">
+                      {proofMetrics.dominant.label}
+                    </div>
                   </div>
-                ))}
+                  <p className="max-w-xl text-base leading-relaxed text-white/70 md:text-lg">
+                    {challengeNarrative}
+                  </p>
+                </div>
+                <div className="mt-12 grid grid-cols-3 gap-6 border-t border-white/10 pt-8">
+                  {proofMetrics.rest.map((m) => (
+                    <div key={m.label}>
+                      <div className="font-display text-2xl font-bold md:text-4xl">
+                        <CountUp value={m.value} />
+                      </div>
+                      <div className="mt-1 font-mono text-[11px] uppercase tracking-wider text-white/50">{m.label}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
           </div>
         </div>
       </section>
@@ -410,7 +440,7 @@ export default async function HomePage() {
           <h2 className="mt-4 font-display text-[clamp(1.5rem,3vw,2.25rem)] font-bold leading-tight tracking-tight text-p-ink">
             Частые вопросы
           </h2>
-          <div className="lp-faq mt-8 rounded-[20px] border border-p-line bg-paper-2 px-6 py-2 shadow-card">
+          <div className="lp-faq lp-card mt-8 px-6 py-2">
             {faq.map((f) => (
               <details key={f.q} className="group">
                 <summary className="text-[15px] md:text-base">{f.q}</summary>
@@ -424,7 +454,7 @@ export default async function HomePage() {
       {/* ═══ S9. ФИНАЛЬНЫЙ CTA — градиентная панель ═══ */}
       <section className="l-reveal">
         <div className="mx-auto w-full max-w-6xl px-5 pb-20 md:pb-28">
-          <div className="relative overflow-hidden rounded-[32px] bg-p-ink px-6 py-16 text-center text-white md:px-14 md:py-24">
+          <div className="relative overflow-hidden rounded-[32px] bg-panel px-6 py-16 text-center text-white md:px-14 md:py-24">
             <div className="lp-blob lp-blob-violet left-1/2 -top-24 h-96 w-[42rem] -translate-x-1/2" aria-hidden="true" />
             <div className="lp-blob lp-blob-mint bottom-[-6rem] right-[-4rem] h-72 w-72" aria-hidden="true" />
             <div className="relative mx-auto max-w-2xl">

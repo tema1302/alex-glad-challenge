@@ -27,12 +27,13 @@ export default {
         ok: 'rgb(var(--ok) / <alpha-value>)',
         warn: 'rgb(var(--warn) / <alpha-value>)',
         err: 'rgb(var(--err) / <alpha-value>)',
-        // --- Лендинг (свет) ---
-        paper: '#F7F5F0',
-        'paper-2': '#FFFFFF',
-        'p-ink': '#0C1116',
-        'p-dim': '#575F67',
-        'p-line': '#E6E2D8',
+        // --- Лендинг: палитра на CSS-переменных, следует за темой (html.dark/light) ---
+        paper: 'rgb(var(--lp-bg) / <alpha-value>)',
+        'paper-2': 'rgb(var(--lp-card) / <alpha-value>)',
+        'p-ink': 'rgb(var(--lp-ink) / <alpha-value>)',
+        'p-dim': 'rgb(var(--lp-dim) / <alpha-value>)',
+        'p-line': 'rgb(var(--lp-line) / <alpha-value>)',
+        panel: 'rgb(var(--lp-panel) / <alpha-value>)',
         brand: {
           50: '#F1EFFF',
           100: '#E4E0FF',

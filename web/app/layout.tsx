@@ -57,7 +57,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="ru" suppressHydrationWarning className={`${manrope.variable} ${plexMono.variable} ${unbounded.variable}`}>
       <body className="min-h-screen bg-bg font-sans text-ink antialiased">
-        <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" disableTransitionOnChange nonce={nonce}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          themes={['dark', 'light']}
+          enableSystem={false}
+          disableTransitionOnChange
+          nonce={nonce}
+        >
           <ToastProvider>
             <div className="flex min-h-screen flex-col">
               <Nav isAdmin={isAdmin} />
