@@ -145,6 +145,121 @@
   }
 }
 
+/* ============================================================================
+   ЛЕНДИНГ «Paper × Aurora» (v3) — световой мир, изолирован классом .lp.
+   Админка живёт в тёмных токенах выше; здесь — своя палитра/типографика.
+   ========================================================================== */
+
+.lp {
+  color-scheme: light;
+  background-color: #f7f5f0;
+  color: #0c1116;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* Aurora-блобы: мягкие градиентные пятна фона (единственный «декор» системы). */
+.lp-blob {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(72px);
+  pointer-events: none;
+}
+.lp-blob-violet {
+  background: radial-gradient(closest-side, rgb(147 51 234 / 0.22), transparent 70%);
+}
+.lp-blob-indigo {
+  background: radial-gradient(closest-side, rgb(90 75 255 / 0.2), transparent 70%);
+}
+.lp-blob-mint {
+  background: radial-gradient(closest-side, rgb(20 184 166 / 0.16), transparent 70%);
+}
+
+/* Градиентный текст заголовков. */
+.lp-gradient-text {
+  background: linear-gradient(100deg, #5a4bff 0%, #9333ea 48%, #14b8a6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Тонкая инженерная сетка фона hero. */
+.lp-grid-bg {
+  background-image:
+    linear-gradient(to right, rgb(12 17 22 / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(12 17 22 / 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 30%, transparent 78%);
+}
+
+/* Карточка светового мира. */
+.lp-card {
+  background: #ffffff;
+  border: 1px solid #e6e2d8;
+  border-radius: 20px;
+  box-shadow:
+    0 1px 2px rgb(12 17 22 / 0.04),
+    0 12px 40px -16px rgb(12 17 22 / 0.14);
+  transition:
+    transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.lp-card:hover {
+  transform: translateY(-3px);
+  border-color: rgb(90 75 255 / 0.35);
+  box-shadow:
+    0 2px 4px rgb(12 17 22 / 0.05),
+    0 24px 64px -20px rgb(90 75 255 / 0.3);
+}
+
+/* Чип стека. */
+.lp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #e6e2d8;
+  background: #ffffff;
+  border-radius: 9999px;
+  padding: 0.375rem 0.875rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 12px;
+  color: #575f67;
+}
+
+/* FAQ-аккордеон: details/summary, CSS-only. */
+.lp-faq summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  cursor: pointer;
+  list-style: none;
+  min-height: 56px;
+  font-weight: 600;
+  color: #0c1116;
+}
+.lp-faq summary::-webkit-details-marker {
+  display: none;
+}
+.lp-faq summary::after {
+  content: '+';
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 20px;
+  line-height: 1;
+  color: #5a4bff;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  flex-shrink: 0;
+}
+.lp-faq details[open] summary::after {
+  transform: rotate(45deg);
+}
+.lp-faq details {
+  border-bottom: 1px solid #e6e2d8;
+}
+.lp-faq details:last-child {
+  border-bottom: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -7,7 +7,7 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { headers } from 'next/headers';
-import { IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google';
+import { Manrope, IBM_Plex_Mono, Unbounded } from 'next/font/google';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ToastProvider } from './components/ui/Toast';
 import { PerfProbe } from './components/perf-probe';
@@ -17,9 +17,10 @@ import Footer from './components/Footer';
 import { isAdminAuthed } from '../lib/server/session';
 import './globals.css';
 
-const plexSans = IBM_Plex_Sans({
+// Manrope — текстовый шрифт (variable, cyrillic); Unbounded — дисплейный для
+// лендинга (--font-display); IBM Plex Mono остаётся моно-голосом данных/админки.
+const manrope = Manrope({
   subsets: ['cyrillic', 'latin'],
-  weight: ['400', '500', '600'],
   variable: '--font-sans',
   display: 'swap',
 });
@@ -28,6 +29,12 @@ const plexMono = IBM_Plex_Mono({
   subsets: ['cyrillic', 'latin'],
   weight: ['400', '500', '600'],
   variable: '--font-mono',
+  display: 'swap',
+});
+
+const unbounded = Unbounded({
+  subsets: ['cyrillic', 'latin'],
+  variable: '--font-display',
   display: 'swap',
 });
 
@@ -48,7 +55,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const nonce = (await headers()).get('x-nonce') ?? undefined;
   const isAdmin = await isAdminAuthed();
   return (
-    <html lang="ru" suppressHydrationWarning className={`${plexSans.variable} ${plexMono.variable}`}>
+    <html lang="ru" suppressHydrationWarning className={`${manrope.variable} ${plexMono.variable} ${unbounded.variable}`}>
       <body className="min-h-screen bg-bg font-sans text-ink antialiased">
         <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" disableTransitionOnChange nonce={nonce}>
           <ToastProvider>
