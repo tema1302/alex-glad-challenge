@@ -36,7 +36,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
     items: [
       { href: '/tg/top', label: 'топ' },
       { href: '/tg/collect', label: 'collect' },
-      { href: '/telegram/publish', label: 'publish' },
+      { href: '/telegram/publish', label: 'TG-постинг' },
     ],
   },
   {

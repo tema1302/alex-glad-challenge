@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { Button } from './components/ui/Button';
+import { IconWarning } from './components/ui/icons';
 
 export default function Error({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   useEffect(() => {
@@ -10,16 +12,24 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
 
   return (
     <div className="mx-auto max-w-xl py-16">
-      <div className="font-mono text-xs uppercase tracking-wider text-err">// error</div>
-      <h1 className="mt-2 font-mono text-2xl uppercase tracking-tight text-ink">Что-то сломалось</h1>
-      <p className="mt-2 text-sm text-dim">{error.message || 'Необработанная ошибка сегмента.'}</p>
-      {error.digest ? <p className="mt-1 font-mono text-xs text-dim">digest: {error.digest}</p> : null}
-      <button
-        onClick={reset}
-        className="mt-6 inline-flex min-h-[36px] items-center rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink"
-      >
-        Повторить
-      </button>
+      <div className="rounded-lg border border-err/40 bg-surface p-6 shadow-panel">
+        <div className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-err">
+          <IconWarning />
+          {'// error'}
+        </div>
+        <h1 className="mt-3 font-mono text-2xl font-semibold uppercase tracking-tight text-ink">
+          Что-то сломалось
+        </h1>
+        <p className="mt-2 break-words text-sm leading-relaxed text-dim">
+          {error.message || 'Необработанная ошибка сегмента.'}
+        </p>
+        {error.digest ? <p className="mt-1 font-mono text-xs text-dim">digest: {error.digest}</p> : null}
+        <div className="mt-5">
+          <Button variant="primary" onClick={reset}>
+            Повторить
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

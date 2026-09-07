@@ -25,7 +25,8 @@ export function Sidebar() {
                   <Link
                     key={it.href}
                     href={it.href}
-                    className={`rounded-md px-2 py-1 text-sm transition-colors duration-150 ${
+                    aria-current={active ? 'page' : undefined}
+                    className={`rounded-md px-2 py-1 text-sm transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
                       active
                         ? 'active-link'
                         : 'text-dim hover:bg-surface-2 hover:text-ink'

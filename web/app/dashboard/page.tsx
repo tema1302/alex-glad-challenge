@@ -1,21 +1,19 @@
-// Dashboard (/dashboard) — server component, force-dynamic (читает live-БД каждый запрос).
-//
-// Редизайн C (день 30): stat-grid через <Tile>, статус ключей через <StatusDot>
-// (только Boolean configured + имя провайдера; значения ключей NEVER), активная
-// модель — отдельным <StatusDot> (provider · model — public-мета, не секрет).
-//
-// Все обращения к БД — через server-only singletons (web/lib/server/db.ts), пути —
-// dataPath(). Ключи — через getKeysStatus (web/lib/server/env.ts): наружу идут только
-// configured-флаги и public-мета модели; сами значения/TG_SESSION не покидают env.ts.
+// Dashboard (/dashboard) — server component (ТЗ §8.3): хаб админки.
+// (а) Быстрые действия: «Новый пост в TG» (J1), «Черновики блога» (J2),
+//     «История публикаций» (J3); (б) статус-строка ключей + tg configured
+//     (getKeysStatus — только флаги/мета, значения секретов NEVER); (в) тайлы
+//     статистики (live-БД). Все обращения к БД — server-only singletons +
+//     withDb(). force-dynamic: читает live-данные каждый запрос.
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import type { ComponentType, ReactNode } from 'react';
 import { getBlogDb, getDialogDb, getRagStore, getTgStore, withDb } from '../../lib/server/db';
 import { getKeysStatus } from '../../lib/server/env';
-import { capabilitySections } from '../../data/showcase';
-import { Tile } from '../components/ui/Tile';
-import { Card } from '../components/ui/Card';
+import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
+import { Tile } from '../components/ui/Tile';
 import { StatusDot } from '../components/ui/StatusDot';
+import { IconEdit, IconHistory, IconSend } from '../components/ui/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,22 +57,103 @@ async function readStats(): Promise<DashboardStats> {
   });
 }
 
+// Быстрое действие — крупная карточка-ссылка (путь ≤ 1 клика от /dashboard, ТЗ G1).
+function QuickAction({
+  href,
+  icon: Icon,
+  title,
+  desc,
+}: {
+  href: string;
+  icon: ComponentType;
+  title: string;
+  desc: string;
+}) {
+  const FOCUS =
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
+  return (
+    <Link
+      href={href}
+      className={`group flex flex-col gap-2 rounded-lg border border-line bg-surface p-4 shadow-panel transition-all duration-base ease-system hover:-translate-y-0.5 hover:border-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${FOCUS}`}
+    >
+      <span className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
+        <Icon />
+        {title}
+      </span>
+      <span className="text-sm leading-relaxed text-dim group-hover:text-ink">{desc}</span>
+    </Link>
+  );
+}
+
 export default async function DashboardPage() {
   const [stats, keys] = await Promise.all([readStats(), Promise.resolve(getKeysStatus())]);
   const ragTotal = stats.ragFixed + stats.ragStructure + stats.ragTelegram;
   const deepseekOn = keys.cloud.configured && keys.cloud.provider === 'DeepSeek';
   const openrouterOn = keys.cloud.configured && keys.cloud.provider === 'OpenRouter';
 
+  const statusLine: Array<{ status: 'ok' | 'off'; label: ReactNode }> = [
+    { status: deepseekOn ? 'ok' : 'off', label: 'DeepSeek' },
+    { status: openrouterOn ? 'ok' : 'off', label: 'OpenRouter' },
+    { status: keys.local.configured ? 'ok' : 'off', label: 'Local LLM · Ollama' },
+    { status: keys.embed.configured ? 'ok' : 'off', label: 'Embeddings' },
+    { status: keys.mtproto.configured ? 'ok' : 'off', label: 'MTProto · userbot' },
+    {
+      status: keys.botApi.configured ? 'ok' : 'off',
+      label: keys.botApi.channelLabel ? `Bot API · ${keys.botApi.channelLabel}` : 'Bot API',
+    },
+  ];
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <SectionHead
+        code="dashboard · live"
+        title="Dashboard"
+        description="Состояние системы в реальном времени: локальный SQLite (вне git), ключи — только факт настройки."
+      />
+
+      {/* ── Быстрые действия (J1/J2/J3) ── */}
       <section>
-        <SectionLabel>dashboard · live</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Dashboard</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Состояние системы в реальном времени. Данные из локального{' '}
-          <code className="font-mono text-[12px] text-ink">SQLite</code>-хранилища (вне git); ключи —
-          только факт настройки, значения не светятся.
-        </p>
+        <SectionLabel>быстрые действия</SectionLabel>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <QuickAction
+            href="/telegram/publish"
+            icon={IconSend}
+            title="Новый пост в TG"
+            desc="Компоузер: разметка, превью, подтверждение, отправка"
+          />
+          <QuickAction
+            href="/blog/posts"
+            icon={IconEdit}
+            title="Черновики блога"
+            desc="Правка постов и публикация в канал из карточки"
+          />
+          <QuickAction
+            href="/telegram/publish"
+            icon={IconHistory}
+            title="История публикаций"
+            desc="Outbox: что ушло, message_id, ошибки"
+          />
+        </div>
+      </section>
+
+      {/* ── Статус: ключи + tg configured (Boolean only, values NEVER) ── */}
+      <section>
+        <SectionLabel>keys · values hidden</SectionLabel>
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {statusLine.map((s) => (
+            <StatusDot key={String(s.label)} status={s.status} label={s.label} />
+          ))}
+        </div>
+      </section>
+
+      {/* ── Active model (public-мета, не секрет) ── */}
+      <section>
+        <SectionLabel>active model</SectionLabel>
+        {keys.activeModel ? (
+          <StatusDot status="ok" label={`${keys.activeProvider ?? 'model'} · ${keys.activeModel}`} />
+        ) : (
+          <StatusDot status="warn" label="LLM не настроен — задайте ключи в .env" />
+        )}
       </section>
 
       {/* ── DB stats ── */}
@@ -92,48 +171,6 @@ export default async function DashboardPage() {
           <Tile label="tg msg" value={stats.tgMessages} hint={`${stats.tgChats} chats · ${stats.tgTopics} topics`} />
           <Tile label="dialog" value={stats.dialogChats} hint={`${stats.dialogMessages} msg`} />
         </div>
-      </section>
-
-      {/* ── Keys — Boolean only, values NEVER ── */}
-      <section>
-        <SectionLabel>keys · values hidden</SectionLabel>
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          <StatusDot status={deepseekOn ? 'ok' : 'off'} label="DeepSeek" />
-          <StatusDot status={openrouterOn ? 'ok' : 'off'} label="OpenRouter" />
-          <StatusDot status={keys.local.configured ? 'ok' : 'off'} label="Local LLM · Ollama" />
-          <StatusDot status={keys.embed.configured ? 'ok' : 'off'} label="Embeddings" />
-          <StatusDot status={keys.mtproto.configured ? 'ok' : 'off'} label="MTProto · userbot" />
-          <StatusDot status={keys.botApi.configured ? 'ok' : 'off'} label="Bot API" />
-        </div>
-      </section>
-
-      {/* ── Active model (public-мета, не секрет) ── */}
-      <section>
-        <SectionLabel>active model</SectionLabel>
-        {keys.activeModel ? (
-          <StatusDot status="ok" label={`${keys.activeProvider ?? 'model'} · ${keys.activeModel}`} />
-        ) : (
-          <StatusDot status="warn" label="LLM не настроен — задайте ключи в .env" />
-        )}
-      </section>
-
-      {/* ── Разделы — навигация на витрину ── */}
-      <section>
-        <Card label="разделы">
-          <ul className="space-y-2 font-mono text-sm">
-            <li>
-              <Link href="/showcase" className="text-accent hover:underline">
-                Витрина возможностей →
-              </Link>
-              <span className="ml-2 text-xs text-dim">что умеет система по модулям</span>
-            </li>
-            {capabilitySections.slice(0, 4).map((s) => (
-              <li key={s.id} className="text-dim">
-                {s.title} <span className="text-xs">(P1+, скоро)</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
       </section>
     </div>
   );
