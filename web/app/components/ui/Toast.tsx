@@ -4,7 +4,7 @@
 // Очередь, variants ok/err/info, auto-hide 4s, ручной dismiss, портал в body
 // (z-toast). Провайдер монтируется в root layout; потребители — useToast().
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { IconCheck, IconX, IconWarning } from './icons';
 
@@ -54,8 +54,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     [dismiss],
   );
 
+  // Стабильный context-value: без useMemo новый объект на каждый рендер провайдера
+  // перерендеривал всех consumers (и пересоздавал их useCallback-эффекты).
+  const api = useMemo<ToastApi>(() => ({ toast }), [toast]);
+
   return (
-    <ToastCtx.Provider value={{ toast }}>
+    <ToastCtx.Provider value={api}>
       {children}
       {mounted &&
         createPortal(

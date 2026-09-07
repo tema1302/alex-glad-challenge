@@ -19,8 +19,11 @@ export function Field({
   children: ReactElement;
   className?: string;
 }) {
-  const describedBy =
-    [hint ? `${id}-hint` : null, error ? `${id}-error` : null].filter(Boolean).join(' ') || undefined;
+  // При ошибке hint не рендерится — в aria-describedby уходит только error-id
+  // (ссылка на несуществующий элемент недопустима для скринридеров).
+  const describedBy = error
+    ? `${id}-error`
+    : ([hint ? `${id}-hint` : null].filter(Boolean).join(' ') || undefined);
 
   const control = isValidElement(children)
     ? cloneElement(children as ReactElement<{ id?: string; 'aria-describedby'?: string; 'aria-invalid'?: boolean }>, {

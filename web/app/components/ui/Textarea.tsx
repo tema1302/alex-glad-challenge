@@ -4,10 +4,12 @@
 // (warn-цвет с warnAt). Используется в TG-компоузере и редакторе постов.
 // Контролируемый: value + onValueChange (id/aria пробрасывает Field).
 
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useRef, type RefObject, type TextareaHTMLAttributes } from 'react';
 
 const CAP_PX = 280; // ≈12 рядов text-xs
 
+// Прочие нативные атрибуты (id, aria-*, name) пробрасываются как есть —
+// Field инжектит id/aria-describedby/aria-invalid через cloneElement.
 export function Textarea({
   value,
   onValueChange,
@@ -18,6 +20,7 @@ export function Textarea({
   disabled,
   inputRef,
   className = '',
+  ...rest
 }: {
   value: string;
   onValueChange: (v: string) => void;
@@ -29,7 +32,7 @@ export function Textarea({
   /** Наружный ref на textarea — для выделений/курсора (markup-помощник компоузера). */
   inputRef?: RefObject<HTMLTextAreaElement | null>;
   className?: string;
-}) {
+} & TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const innerRef = useRef<HTMLTextAreaElement>(null);
   const ref = inputRef ?? innerRef;
 
@@ -48,6 +51,7 @@ export function Textarea({
   return (
     <div className="space-y-1">
       <textarea
+        {...rest}
         ref={ref}
         rows={rows}
         value={value}

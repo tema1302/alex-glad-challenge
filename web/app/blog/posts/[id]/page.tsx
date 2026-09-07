@@ -69,9 +69,12 @@ export default function BlogPostDetailPage() {
     }
   }, [id, toast]);
 
+  // deps [id]: перезагрузка поста не должна пере-запускаться на каждую перерисовку
+  // (иначе несохранённый черновик затирается — e2e это поймал).
   useEffect(() => {
     void load();
-  }, [load]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // Маска канала для confirm-диалога — из settings-API (server → public-мета).
   useEffect(() => {
