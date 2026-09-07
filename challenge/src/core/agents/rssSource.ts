@@ -2,7 +2,7 @@
 // Парсит RSS-ленты, отдаёт последние новости.
 // Адаптирован под интерфейс SourceAgent для параллельной работы.
 
-import { fetchAllFeeds, filterRecent, toNewsRow } from './rss.js';
+import { fetchAllFeedsDetailed, filterRecent, toNewsRow } from './rss.js';
 import type { BlogDb } from '../db.js';
 import type { SourceAgent, SourceAgentResult, TrendingTopic } from './sourceAgent.js';
 
@@ -17,7 +17,8 @@ export class RssSourceAgent implements SourceAgent {
 
   async fetch(): Promise<SourceAgentResult> {
     try {
-      const items = filterRecent(await fetchAllFeeds(), this.maxAgeHours);
+      const { items: fresh, errors } = await fetchAllFeedsDetailed();
+      const items = filterRecent(fresh, this.maxAgeHours);
       let added = 0;
       for (const item of items) {
         if (this.db.insertNews(toNewsRow(item))) added++;
@@ -37,7 +38,14 @@ export class RssSourceAgent implements SourceAgent {
         rawContent: news.summary,
       }));
 
-      return { agent: this.name, topics };
+      // Честный отчёт: темы есть, но часть фидов ответила ошибкой — тоже покажем.
+      const error =
+        topics.length === 0 && errors.length > 0
+          ? errors.join('; ')
+          : topics.length > 0 && errors.length > 0
+            ? `частично: ${errors.join('; ')}`
+            : undefined;
+      return { agent: this.name, topics, error };
     } catch (err) {
       return { agent: this.name, topics: [], error: (err as Error).message };
     }

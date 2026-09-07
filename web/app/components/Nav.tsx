@@ -4,12 +4,11 @@
 // странице; getKeysStatus в гостевой ветке не вызывается). Сервер-сайд: getKeysStatus
 // отдаёт public-мету (provider/model), значения ключей NEVER не покидают lib/server/env.
 import Link from 'next/link';
-import { navGroups } from '../../data/nav';
 import { getKeysStatus } from '../../lib/server/env';
 import { MobileNav } from './MobileNav';
+import { NavCoreLinks } from './NavLinks';
 import { LogoutButton } from './LogoutButton';
-
-const core = navGroups.find((g) => g.tag === 'core') ?? navGroups[0];
+import { ThemeToggle } from './ThemeToggle';
 
 export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const keys = isAdmin ? getKeysStatus() : null;
@@ -18,7 +17,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
       ? { provider: keys.activeProvider, model: keys.activeModel }
       : null;
   return (
-    <header className="sticky top-0 z-20 border-b border-line bg-bg/95 backdrop-blur">
+    <header className="sticky top-0 z-nav border-b border-line bg-bg/95 backdrop-blur">
       <div className="flex h-12 items-center justify-between px-5">
         <div className="flex items-center gap-1">
           {isAdmin && <MobileNav />}
@@ -30,17 +29,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
         </div>
         {isAdmin ? (
           <>
-            <nav className="hidden items-center gap-1 sm:flex">
-              {core.items.map((it) => (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  className="rounded-md px-2 py-1 text-sm text-dim transition-colors duration-150 hover:text-ink"
-                >
-                  {it.label}
-                </Link>
-              ))}
-            </nav>
+            <NavCoreLinks />
             <div className="flex items-center gap-3">
               <div className="hidden font-mono text-xs text-dim sm:block">
                 {model ? (
@@ -55,11 +44,13 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
                   </span>
                 )}
               </div>
+              <ThemeToggle />
               <LogoutButton />
             </div>
           </>
         ) : (
-          <nav>
+          <nav className="flex items-center gap-1">
+            <ThemeToggle />
             <Link
               href="/login"
               className="rounded-md px-2 py-1 text-sm text-dim transition-colors duration-150 hover:text-ink"

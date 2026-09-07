@@ -40,6 +40,8 @@ export async function GET(req: NextRequest): Promise<Response> {
     mcpUrl: { configured: mcp.configured, host: mcpHost },
     cloud: keys.cloud,
     localLlm: { configured: keys.local.configured, model: keys.local.model },
+    // Маска канала для confirm-диалогов публикации (не секрет-значение).
+    botChannelLabel: keys.botApi.channelLabel,
     modelPref,
   });
 }

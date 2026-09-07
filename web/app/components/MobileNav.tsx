@@ -25,7 +25,7 @@ export function MobileNav() {
         aria-label="Меню"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex min-h-[40px] w-10 items-center justify-center rounded-md text-dim transition-colors hover:text-ink"
+        className="inline-flex min-h-[40px] w-10 items-center justify-center rounded-md text-dim transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
       >
         <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
           <line x1="2.5" y1="5" x2="15.5" y2="5" />
@@ -58,7 +58,8 @@ export function MobileNav() {
                         <Link
                           key={it.href}
                           href={it.href}
-                          className={`rounded-md px-2 py-1 text-sm transition-colors duration-150 ${
+                          aria-current={active ? 'page' : undefined}
+                          className={`rounded-md px-2 py-1 text-sm transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
                             active
                               ? 'active-link'
                               : 'text-dim hover:bg-surface-2 hover:text-ink'

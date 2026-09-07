@@ -66,7 +66,7 @@ export default function TgTopPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">TG-топ сообщений</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">TG-топ сообщений</h1>
         <p className="mt-1 text-sm text-dim">
           Топ сообщений forum-топика по реакциям или дате. Только чтение из tg.sqlite.
         </p>

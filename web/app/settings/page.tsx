@@ -62,7 +62,7 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">Настройки</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Настройки</h1>
         <p className="mt-1 text-sm text-dim">
           Конфигурация сервера (только чтение) и preference. Ключи не отображаются.
         </p>

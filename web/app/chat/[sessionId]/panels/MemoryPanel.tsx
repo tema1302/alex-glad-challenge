@@ -3,6 +3,7 @@
 'use client';
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
+import { Button } from '../../../components/ui/Button';
 
 interface LongTermEntry { key: string; value: string; updatedAt: string; }
 interface MemoryView {
@@ -44,22 +45,16 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
           {view.longTerm.map((e) => (
             <li key={e.key} className="flex items-center justify-between gap-2 text-sm">
               <span className="truncate"><span className="font-mono text-dim">{e.key}</span>: {e.value}</span>
-              <button
-                className="text-xs text-err hover:underline disabled:opacity-50"
-                disabled={busy}
-                onClick={() => void post({ action: 'forget', key: e.key })}
-              >forget</button>
+              <Button size="sm" variant="danger" disabled={busy} onClick={() => void post({ action: 'forget', key: e.key })}>
+                forget
+              </Button>
             </li>
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
           <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={ltKey} onChange={(e) => setLtKey(e.target.value)} disabled={busy} />
           <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={ltVal} onChange={(e) => setLtVal(e.target.value)} disabled={busy} />
-          <button
-            className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-            disabled={busy || !ltKey.trim()}
-            onClick={() => { void post({ action: 'remember', key: ltKey.trim(), value: ltVal }); setLtKey(''); setLtVal(''); }}
-          >remember</button>
+          <Button size="sm" disabled={busy || !ltKey.trim()} onClick={() => { void post({ action: 'remember', key: ltKey.trim(), value: ltVal }); setLtKey(''); setLtVal(''); }}>remember</Button>
         </div>
       </section>
 
@@ -69,7 +64,7 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
         <p className="mt-1 text-sm">{view.task ?? <span className="text-dim">нет</span>}</p>
         <div className="mt-1 flex gap-1">
           <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание задачи" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} disabled={busy} />
-          <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !taskDraft.trim()} onClick={() => { void post({ action: 'task', description: taskDraft.trim() }); setTaskDraft(''); }}>set</button>
+          <Button size="sm" disabled={busy || !taskDraft.trim()} onClick={() => { void post({ action: 'task', description: taskDraft.trim() }); setTaskDraft(''); }}>set</Button>
         </div>
       </section>
 
@@ -77,21 +72,21 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
       <section>
         <div className="flex items-center justify-between">
           <h4 className="text-xs uppercase tracking-wide text-dim">Working facts (контекст задачи)</h4>
-          <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy || workingEntries.length === 0} onClick={() => void post({ action: 'task-clear' })}>clear all</button>
+          <Button size="sm" variant="danger" disabled={busy || workingEntries.length === 0} onClick={() => void post({ action: 'task-clear' })}>clear all</Button>
         </div>
         <ul className="mt-1 space-y-1">
           {workingEntries.length === 0 && <li className="text-xs text-dim">пусто</li>}
           {workingEntries.map(([k, v]) => (
             <li key={k} className="flex items-center justify-between gap-2 text-sm">
               <span className="truncate"><span className="font-mono text-dim">{k}</span>: {v}</span>
-              <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'fact-rm', key: k })}>rm</button>
+              <Button size="sm" variant="danger" disabled={busy} onClick={() => void post({ action: 'fact-rm', key: k })}>rm</Button>
             </li>
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
           <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={wfKey} onChange={(e) => setWfKey(e.target.value)} disabled={busy} />
           <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={wfVal} onChange={(e) => setWfVal(e.target.value)} disabled={busy} />
-          <button className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50" disabled={busy || !wfKey.trim()} onClick={() => { void post({ action: 'task-add', key: wfKey.trim(), value: wfVal }); setWfKey(''); setWfVal(''); }}>add</button>
+          <Button size="sm" disabled={busy || !wfKey.trim()} onClick={() => { void post({ action: 'task-add', key: wfKey.trim(), value: wfVal }); setWfKey(''); setWfVal(''); }}>add</Button>
         </div>
       </section>
 

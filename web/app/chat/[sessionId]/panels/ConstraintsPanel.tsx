@@ -2,6 +2,7 @@
 'use client';
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
+import { Button } from '../../../components/ui/Button';
 
 interface ConstraintItem { id: string; type: string; title: string; description: string; createdAt: string; }
 interface ConstraintsView { items: ConstraintItem[]; }
@@ -41,7 +42,7 @@ export function ConstraintsPanel({ sessionId }: { sessionId: string }) {
                   {c.description && <span className="text-dim">: {c.description}</span>}
                   <span className="ml-1 font-mono text-xs text-dim">{c.id}</span>
                 </span>
-                <button className="text-xs text-err hover:underline disabled:opacity-50" disabled={busy} onClick={() => void post({ action: 'rm', id: c.id })}>rm</button>
+                <Button size="sm" variant="danger" disabled={busy} onClick={() => void post({ action: 'rm', id: c.id })}>rm</Button>
               </li>
             ))}
           </ul>
@@ -55,11 +56,7 @@ export function ConstraintsPanel({ sessionId }: { sessionId: string }) {
         </select>
         <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="название" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
         <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={busy} />
-        <button
-          className="rounded border border-line-strong px-2 py-1 text-xs text-dim transition-colors hover:text-ink disabled:opacity-50"
-          disabled={busy || !title.trim()}
-          onClick={() => { void post({ action: 'add', type, title: title.trim(), description: desc.trim() }); setTitle(''); setDesc(''); }}
-        >+ add</button>
+        <Button size="sm" disabled={busy || !title.trim()} onClick={() => { void post({ action: 'add', type, title: title.trim(), description: desc.trim() }); setTitle(''); setDesc(''); }}>+ add</Button>
       </section>
 
       {error && <p className="text-xs text-err">{error}</p>}

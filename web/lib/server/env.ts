@@ -40,11 +40,19 @@ export interface KeysStatus {
   embed: EmbedStatus;
   /** MTProto userbot: apiId/apiHash/session — только configured yes/no. */
   mtproto: { configured: boolean };
-  /** Bot API (публикация/уведомления): только configured yes/no. */
-  botApi: { configured: boolean };
+  /** Bot API (публикация/уведомления): configured + маскированная метка канала
+   *  для confirm-диалогов (-100…7890). Полные значения NEVER. */
+  botApi: { configured: boolean; channelLabel: string | null };
   /** Активная модель для dashboard: cloud приоритет, иначе local. null если ничего. */
   activeModel: string | null;
   activeProvider: string | null;
+}
+
+// Маска цели публикации: первые 4 и последние 4 символа chat_id. Не секрет-значение,
+// но достаточно для «куда уйдёт пост» в ConfirmDialog (ТЗ §7.1 п.5).
+function maskChannelId(id: string): string {
+  const s = id.trim();
+  return s.length > 8 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s;
 }
 
 export function getKeysStatus(): KeysStatus {
@@ -78,7 +86,11 @@ export function getKeysStatus(): KeysStatus {
   }
 
   const mtproto = { configured: getTgScanConfig() !== null };
-  const botApi = { configured: getTgBotConfig() !== null };
+  const botCfg = getTgBotConfig();
+  const botApi = {
+    configured: botCfg !== null,
+    channelLabel: botCfg ? maskChannelId(botCfg.chatId) : null,
+  };
 
   return {
     cloud,

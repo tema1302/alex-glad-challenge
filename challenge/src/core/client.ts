@@ -2,8 +2,8 @@
 // Работает с любым провайдером: DeepSeek, OpenRouter, OpenAI, локальные сервера.
 
 import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, LlmTimings, Usage } from './types.js';
-import { ProxyAgent } from 'undici';
-import { loadEnvUpward, getLlmProviderConfig, getHttpsProxy } from './env.js';
+import { loadEnvUpward, getLlmProviderConfig } from './env.js';
+import { netFetch } from './net.js';
 
 loadEnvUpward();
 
@@ -29,19 +29,20 @@ export class LlmClient {
   }
 
   // Низкоуровневый POST к /chat/completions. Все демо используют его.
+  // netFetch: прокси-first с фолбэком на прямое подключение (раньше жёсткая
+  // привязка к HTTPS_PROXY роняла pipeline с «fetch failed», если прокси лежал).
   async chatRaw(req: LlmRequest): Promise<LlmResponse> {
     const url = `${this.config.baseUrl}/chat/completions`;
-    const proxy = getHttpsProxy();
-    const fetchOptions: Record<string, unknown> = {
+    const resp = await netFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify(req),
-    };
-    if (proxy) fetchOptions['dispatcher'] = new ProxyAgent(proxy);
-    const resp = await fetch(url, fetchOptions as RequestInit);
+      label: 'LLM-провайдер',
+      timeoutMs: 120_000, // генерация длинных постов бывает дольше дефолтных 15с
+    });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
       throw new Error(`LLM API error ${resp.status}: ${body}`);
@@ -89,13 +90,16 @@ export class LlmClient {
   // тело/URL/ключ — это секрет, он не должен утекать в error. [DONE] завершает поток.
   // signal (follow-up P5 В3): прокидывается в fetch — при abort клиентского SSE
   // (disconnect) LLM-запрос обрывается чисто (AbortError), без orphan-дожигания токенов.
+  // Фикс резильентности: раньше здесь не было ни прокси, ни netFetch — «fetch failed»
+  // при лежащем прокси/блоках; теперь общий путь netFetch (timeoutMs:null — стрим
+  // ограничен только клиентским signal).
   async *chatStream(
     messages: ChatMessage[],
     params: ChatParams = {},
     signal?: AbortSignal,
   ): AsyncGenerator<string> {
     const url = `${this.config.baseUrl}/chat/completions`;
-    const resp = await fetch(url, {
+    const resp = await netFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -110,6 +114,8 @@ export class LlmClient {
         stream: true,
       }),
       signal,
+      label: 'LLM-провайдер (stream)',
+      timeoutMs: null,
     });
     if (!resp.ok) {
       const s = resp.status;

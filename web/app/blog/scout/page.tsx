@@ -132,7 +132,7 @@ export default function BlogScoutPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">Scout (3 source-агента)</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Scout (3 source-агента)</h1>
         <p className="mt-1 text-sm text-dim">
           RSS + Forum (+ TG по выбору) собирают темы параллельно, оркестратор (LLM) выбирает
           финальный топ. Это этап&nbsp;1 пайплайна — без написания поста.

@@ -71,7 +71,7 @@ export default function BriefingPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">Сводка</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Сводка</h1>
         <p className="mt-1 text-sm text-dim">
           Текущее состояние: ожидающие задачи, счётчики баз, топ-TG (по chatKey). Только чтение.
         </p>

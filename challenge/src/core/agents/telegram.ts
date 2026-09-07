@@ -3,7 +3,7 @@
 // Токен и chat_id берутся из .env: TG_BOT_TOKEN, TG_CHAT_ID.
 // Прокси через HTTPS_PROXY (HTTP/HTTPS прокси, например gost → socks5).
 
-import { ProxyAgent } from 'undici';
+import { netFetch } from '../net.js';
 
 export interface PublishResult {
   ok: boolean;
@@ -19,17 +19,17 @@ export async function getBotInfo(): Promise<Record<string, unknown> | null> {
   const token = process.env['TG_BOT_TOKEN'];
   if (!token) return null;
   try {
-    const proxy = process.env['HTTPS_PROXY'] || process.env['https_proxy'];
-    const opts: Record<string, unknown> = { signal: AbortSignal.timeout(10_000) };
-    if (proxy) opts['dispatcher'] = new ProxyAgent(proxy);
-    const res = await fetch(`https://api.telegram.org/bot${token}/getMe`, opts as RequestInit);
+    const res = await netFetch(`https://api.telegram.org/bot${token}/getMe`, {
+      timeoutMs: 10_000,
+      label: 'Telegram Bot API',
+    });
     return await res.json() as Record<string, unknown>;
   } catch {
     return null;
   }
 }
 
-export async function publishPost(text: string): Promise<PublishResult> {
+export async function publishPost(text: string, parseMode: 'HTML' | 'none' = 'HTML'): Promise<PublishResult> {
   const token = process.env['TG_BOT_TOKEN'];
   const chatId = process.env['TG_CHAT_ID'];
 
@@ -41,22 +41,18 @@ export async function publishPost(text: string): Promise<PublishResult> {
   const body = JSON.stringify({
     chat_id: Number(chatId),
     text,
-    parse_mode: 'HTML',
+    parse_mode: parseMode === 'HTML' ? 'HTML' : undefined,
     disable_web_page_preview: true,
   });
 
-  const proxy = process.env['HTTPS_PROXY'] || process.env['https_proxy'];
-
   try {
-    const fetchOptions: Record<string, unknown> = {
+    const res = await netFetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body,
-      signal: AbortSignal.timeout(15_000),
-    };
-    if (proxy) fetchOptions['dispatcher'] = new ProxyAgent(proxy);
-
-    const res = await fetch(url, fetchOptions as RequestInit);
+      timeoutMs: 15_000,
+      label: 'Telegram Bot API',
+    });
     const data = await res.json() as Record<string, unknown>;
     if (!data['ok']) {
       return { ok: false, error: String(data['description'] ?? ' неизвестная ошибка Telegram API') };

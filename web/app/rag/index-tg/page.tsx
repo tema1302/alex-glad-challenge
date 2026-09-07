@@ -151,7 +151,7 @@ export default function RagIndexTgPage() {
   return (
     <div className="space-y-6">
       <section>
-        <h1 className="text-xl font-semibold text-ink">RAG index-tg — telegram</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">RAG index-tg — telegram</h1>
         <p className="mt-1 text-sm text-dim">
           Индексация собранного TG-контента в <code className="font-mono text-ink">rag.sqlite</code>. Зеркало CLI{' '}
           <code className="font-mono text-ink">rag index-tg</code>. Перед этим —{' '}

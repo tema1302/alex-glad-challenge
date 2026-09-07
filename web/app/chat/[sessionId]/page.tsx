@@ -15,6 +15,8 @@ import { ProfilePanel } from './panels/ProfilePanel';
 import { ConstraintsPanel } from './panels/ConstraintsPanel';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { Tabs } from '../../components/ui/Tabs';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FactLoader } from '../../components/FactLoader';
 
 type PanelTab = 'memory' | 'branches' | 'profile' | 'constraints';
@@ -195,10 +197,10 @@ export default function ChatSessionPage() {
   }, [input, running, sessionId, llm]);
 
   const cancel = (): void => { abortRef.current?.abort(); };
+  const [resetOpen, setResetOpen] = useState(false);
 
   const onReset = async (): Promise<void> => {
     if (running) return;
-    if (!confirm('Сбросить историю и usage этой сессии? (system/long-term сохранятся)')) return;
     try {
       const resp = await fetch(`/api/chat/${sessionId}`, {
         method: 'PATCH',
@@ -226,15 +228,11 @@ export default function ChatSessionPage() {
     return <p className="text-sm text-dim">Загрузка сессии…</p>;
   }
 
-  const tabBtn = (active: boolean): string =>
-    'rounded px-2 py-1 text-xs transition-colors ' +
-    (active ? 'bg-accent text-accent-ink' : 'border border-line-strong text-dim hover:text-ink');
-
   return (
     <div className="space-y-4">
       <section className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-ink">Chat-агент</h1>
+          <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Chat-агент</h1>
           <p className="mt-1 font-mono text-xs text-dim">{config.id}</p>
         </div>
         <Link href="/chat" className="text-sm text-accent hover:underline">сессии</Link>
@@ -284,7 +282,7 @@ export default function ChatSessionPage() {
                 Σ {usage.total_tokens} (↑{usage.prompt_tokens}/↓{usage.completion_tokens})
               </span>
             )}
-            <Button variant="ghost" onClick={onReset} disabled={running}>
+            <Button variant="ghost" onClick={() => setResetOpen(true)} disabled={running}>
               reset
             </Button>
           </div>
@@ -318,24 +316,16 @@ export default function ChatSessionPage() {
 
       {/* Панели P2b: memory / branches / profile / constraints. Опциональные, не блокируют чат. */}
       <section className="rounded-md border border-line bg-surface">
-        <div className="flex flex-wrap gap-1 border-b border-line p-2">
-          {(['memory', 'profile', 'constraints'] as PanelTab[]).map((t) => (
-            <button
-              key={t}
-              className={tabBtn(panel === t)}
-              onClick={() => setPanel((p) => (p === t ? null : t))}
-            >
-              {t}
-            </button>
-          ))}
-          {config.strategy === 'branching' && (
-            <button
-              className={tabBtn(panel === 'branches')}
-              onClick={() => setPanel((p) => (p === 'branches' ? null : 'branches'))}
-            >
-              branches
-            </button>
-          )}
+        <div className="border-b border-line p-2">
+          <Tabs
+            label="Панели агента"
+            tabs={(config.strategy === 'branching'
+              ? (['memory', 'profile', 'constraints', 'branches'] as PanelTab[])
+              : (['memory', 'profile', 'constraints'] as PanelTab[])
+            ).map((t) => ({ id: t, label: t }))}
+            active={panel ?? ''}
+            onChange={(id) => setPanel((p) => (p === id ? null : (id as PanelTab)))}
+          />
         </div>
         {panel === 'memory' && <div className="p-3"><MemoryPanel sessionId={sessionId} /></div>}
         {panel === 'branches' && config.strategy === 'branching' && <div className="p-3"><BranchesPanel sessionId={sessionId} /></div>}
@@ -387,6 +377,14 @@ export default function ChatSessionPage() {
           </Button>
         </div>
       </section>
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        onConfirm={onReset}
+        title="Сбросить сессию?"
+        confirmLabel="Сбросить"
+        body={<p>История и usage этой сессии будут очищены. System-промпт и long-term память сохранятся.</p>}
+      />
     </div>
   );
 }

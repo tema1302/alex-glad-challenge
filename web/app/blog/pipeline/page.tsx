@@ -14,6 +14,7 @@ import {
 } from '../../../lib/shared/pipeline-explainer';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 // Полный конвейер (feat): одна кнопка — scout SSE → news SSE → фаза 3 «ready to publish»
 // (клиентский чейнінг существующих роутов, новых endpoint'ов нет).
 import { FullPipelineRun } from './FullPipelineRun';
@@ -50,6 +51,7 @@ export default function PipelinePage() {
   const [view, setView] = useState<PipelineView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
   // Гостевой sandbox: сервер возвращает только последний шаг — полную историю
   // клиент копит сам; на каждой загрузке/reset начинаем с пустой.
   const [localHistory, setLocalHistory] = useState<HistoryEntry[]>([]);
@@ -105,7 +107,6 @@ export default function PipelinePage() {
   );
 
   const reset = useCallback(async () => {
-    if (!window.confirm('Сбросить pipeline в idle? История переходов сохранится в логе.')) return;
     setBusy(true);
     setError(null);
     try {
@@ -120,6 +121,7 @@ export default function PipelinePage() {
       setView(next);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'reset failed');
+      throw e;
     } finally {
       setBusy(false);
     }
@@ -135,7 +137,7 @@ export default function PipelinePage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-xl font-semibold text-ink">{PIPELINE_INTRO.headline}</h1>
+        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">{PIPELINE_INTRO.headline}</h1>
         <p className="mt-1 text-sm text-dim">{PIPELINE_INTRO.text}</p>
       </header>
 
@@ -218,11 +220,20 @@ export default function PipelinePage() {
           </div>
         )}
         <div className="mt-3">
-          <Button variant="ghost" disabled={busy || view.stage === 'idle'} onClick={reset}>
+          <Button variant="ghost" disabled={busy || view.stage === 'idle'} onClick={() => setResetOpen(true)}>
             Сбросить в idle
           </Button>
         </div>
       </section>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        onConfirm={reset}
+        title="Сбросить pipeline в idle?"
+        confirmLabel="Сбросить"
+        body={<p>Текущая стадия и прогресс будут сброшены. История переходов сохранится в логе.</p>}
+      />
 
       {error && (
         <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">

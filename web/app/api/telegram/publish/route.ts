@@ -1,23 +1,40 @@
-// Route Handler: /api/telegram/publish — отправка текста в TG-канал (Bot API, день 28, web P3b).
-// POST → реальная отправка. Гейт: publishPost ТОЛЬКО при isTelegramConfigured().
-// Реальный внешний эффект — UI требует confirm. error → safeMessage (без TG_BOT_TOKEN;
-// токен в URL path — redact https?:// → <url> в safeMessage). server-only.
+// Route Handler: /api/telegram/publish — отправка текста в TG-канал (Bot API, ТЗ §7.1).
+// POST → реальная отправка. Путь: requireAuth (второй слой) → rate-limit (10/мин на
+// сессию) → tgPublishToTelegram('manual') [гейт TG-env → chokepoint publishPost →
+// outbox → карта ошибок §7.4]. server-only.
 import 'server-only';
 import { NextRequest } from 'next/server';
+import { createHash } from 'node:crypto';
 
 import { tgPublishSchema } from '../../../../lib/shared/forms';
-import { publishPost, isTelegramConfigured } from '../../../../lib/server/challenge';
-import { safeMessage } from '../../../../lib/server/safe-message';
-import { requireAuth } from '../../../../lib/auth';
+import { requireAuth, SESSION_COOKIE } from '../../../../lib/auth';
+import { publishToTelegram, tgPublishResponse, tgRateLimit } from '../../../../lib/server/tg-publish';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<Response> {
-  // Второй auth-слой (день 36): реальный внешний эффект — ошибка в middleware-matcher
+  // Второй auth-слой: реальный внешний эффект — ошибка в middleware-matcher
   // не должна открывать отправку в TG-канал.
   const denied = requireAuth(req);
   if (denied) return denied;
+
+  const sessionKey = createHash('sha256')
+    .update(req.cookies.get(SESSION_COOKIE)?.value ?? '')
+    .digest('hex')
+    .slice(0, 16);
+  const rl = tgRateLimit(sessionKey);
+  if (!rl.ok) {
+    return Response.json(
+      {
+        ok: false,
+        error: `Слишком много отправок. Подождите ${rl.retryAfterSec ?? '?'} с`,
+        errorKind: 'rate-limit',
+        ...(rl.retryAfterSec !== undefined ? { retryAfter: rl.retryAfterSec } : {}),
+      },
+      { status: 429 },
+    );
+  }
 
   const parsed = tgPublishSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
@@ -27,20 +44,11 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  // Гейт: публикуем только если TG-бот настроен (TG_BOT_TOKEN + TG_CHAT_ID в .env).
-  if (!isTelegramConfigured()) {
-    return Response.json(
-      { ok: false, error: 'Telegram не настроен (TG_BOT_TOKEN/TG_CHAT_ID не заданы)' },
-      { status: 400 },
-    );
-  }
-
-  const result = await publishPost(parsed.data.text);
-  if (!result.ok) {
-    return Response.json(
-      { ok: false, error: safeMessage(result.error ?? 'publish failed') },
-      { status: 502 },
-    );
-  }
-  return Response.json({ ok: true, messageId: result.messageId });
+  const outcome = await publishToTelegram(
+    parsed.data.text,
+    'manual',
+    undefined,
+    parsed.data.parseMode ?? 'HTML',
+  );
+  return tgPublishResponse(outcome);
 }

@@ -1,13 +1,21 @@
-// /blog/posts — список постов (день 28, web P4a).
-// 'use client': GET /api/blog/posts → список (id, snippet, newsId, verdict, created_at).
-// Редизайн C (день 30): data-list table hairline + SectionLabel. Логика fetch без изменений.
-// Тип PostItem инлайн (сервер отдаёт тот же JSON). НИКАКИХ импортов core/.
+// /blog/posts — список постов (ТЗ §8.4): таблица на desktop, карточки на mobile.
+// Колонки: # · превью · verdict · created · статус TG (join outbox) · действия
+// (открыть / удалить через ConfirmDialog — инлайн-publish из списка сознательно
+// не делается, опасные кнопки только в карточке поста). Пустое состояние —
+// EmptyState с путём создания постов. 'use client'. НИКАКИХ импортов core/.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { SectionLabel } from '../../components/ui/SectionLabel';
+import { SectionHead } from '../../components/ui/SectionHead';
 import { Button } from '../../components/ui/Button';
+import { Badge, statusBadge } from '../../components/ui/Badge';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { Tooltip } from '../../components/ui/Tooltip';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { useToast } from '../../components/ui/Toast';
+import { IconExternal, IconTrash } from '../../components/ui/icons';
 
 interface PostItem {
   id: number;
@@ -15,6 +23,12 @@ interface PostItem {
   content: string;
   verdict: string | null;
   created_at: string;
+  tg: {
+    status: 'ok' | 'error';
+    messageId: number | null;
+    createdAt: string;
+    error: string | null;
+  } | null;
 }
 
 function snippet(s: string, n = 140): string {
@@ -22,106 +36,203 @@ function snippet(s: string, n = 140): string {
   return t.length > n ? `${t.slice(0, n)}…` : t;
 }
 
-function verdictLabel(v: string | null): { text: string; cls: string } | null {
+function verdictLabel(v: string | null): { text: string; tone: 'ok' | 'warn' | 'err' | 'dim' } | null {
   if (!v) return null;
   try {
     const parsed = JSON.parse(v) as { verdict?: string };
     const verdict = parsed.verdict;
-    if (verdict === 'ok') return { text: 'ok', cls: 'bg-ok/15 text-ok' };
-    if (verdict === 'revise') return { text: 'revise', cls: 'bg-warn/15 text-warn' };
-    if (verdict === 'reject') return { text: 'reject', cls: 'bg-err/15 text-err' };
-    return { text: verdict ?? '?', cls: 'bg-surface-2 text-dim' };
+    if (verdict === 'ok') return { text: 'ok', tone: 'ok' };
+    if (verdict === 'revise') return { text: 'revise', tone: 'warn' };
+    if (verdict === 'reject') return { text: 'reject', tone: 'err' };
+    return { text: verdict ?? '?', tone: 'dim' };
   } catch {
-    return { text: '?', cls: 'bg-surface-2 text-dim' };
+    return { text: '?', tone: 'dim' };
   }
 }
 
+const TH = 'px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-dim';
+
 export default function BlogPostsPage() {
+  const { toast } = useToast();
   const [posts, setPosts] = useState<PostItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<PostItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setError(null);
     try {
       const resp = await fetch('/api/blog/posts?limit=50', { method: 'GET' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = (await resp.json()) as { posts: PostItem[] };
       setPosts(data.posts ?? []);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'load failed');
+      toast('err', e instanceof Error ? e.message : 'Не удалось загрузить посты');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
+  const del = useCallback(async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    try {
+      const resp = await fetch(`/api/blog/posts/${target.id}`, { method: 'DELETE' });
+      if (!resp.ok) {
+        const j = (await resp.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${resp.status}`);
+      }
+      toast('ok', `Пост #${target.id} удалён`);
+      void load();
+    } catch (e) {
+      toast('err', e instanceof Error ? e.message : 'Не удалось удалить');
+      throw e;
+    }
+  }, [deleteTarget, load, toast]);
+
   return (
-    <div className="space-y-8">
-      <section>
-        <SectionLabel>posts · blog.sqlite</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Посты блога</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Сохранённые посты из{' '}
-          <code className="font-mono text-[12px] text-ink">blog.sqlite</code>. Откройте пост для правки,
-          удаления или публикации в Telegram.
-        </p>
-      </section>
-
-      {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
-      )}
-
-      <section>
-        <div className="mb-3 flex items-center justify-between">
-          <SectionLabel>{`посты · ${posts.length}`}</SectionLabel>
-          <Button variant="ghost" onClick={load} disabled={loading}>
+    <div className="space-y-6">
+      <SectionHead
+        code="posts · blog.sqlite"
+        title="Посты блога"
+        description="Сохранённые посты: откройте карточку для правки и публикации в Telegram. Публикация — только из карточки поста."
+        actions={
+          <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
             {loading ? 'загрузка…' : 'обновить'}
           </Button>
-        </div>
+        }
+      />
 
-        {posts.length === 0 ? (
-          <p className="text-sm text-dim">{loading ? 'Загрузка…' : 'Нет постов. Запустите /blog/news.'}</p>
-        ) : (
-          <div className="overflow-x-auto rounded-md border border-line">
+      {loading && posts.length === 0 ? (
+        <div className="space-y-2">
+          <Skeleton variant="line" />
+          <Skeleton variant="line" />
+          <Skeleton variant="line" />
+        </div>
+      ) : posts.length === 0 ? (
+        <EmptyState
+          title="Постов пока нет"
+          hint="Посты создаются конвейером блог-агентов (/blog/pipeline) или генератором новостей (/blog/news). Затем их можно править и публиковать в Telegram."
+          action={
+            <Link href="/blog/pipeline">
+              <Button variant="primary">Открыть pipeline</Button>
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          {/* Desktop: таблица */}
+          <div className="hidden overflow-x-auto rounded-lg border border-line bg-surface shadow-panel sm:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">#</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">verdict</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">content</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">created</th>
+                  <th className={TH}>#</th>
+                  <th className={TH}>превью</th>
+                  <th className={TH}>verdict</th>
+                  <th className={TH}>created</th>
+                  <th className={TH}>telegram</th>
+                  <th className={TH}>действия</th>
                 </tr>
               </thead>
               <tbody>
                 {posts.map((p) => {
                   const v = verdictLabel(p.verdict);
                   return (
-                    <tr key={p.id} className="border-b border-line transition-colors duration-150 hover:bg-surface-2">
-                      <td className="px-3 py-2 font-mono text-xs text-dim">
-                        <Link href={`/blog/posts/${p.id}`} className="focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent">#{p.id}</Link>
+                    <tr key={p.id} className="border-b border-line transition-colors duration-fast last:border-0 hover:bg-surface-2">
+                      <td className="px-3 py-2 font-mono text-xs tabular-nums text-dim">
+                        <Link href={`/blog/posts/${p.id}`} className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                          #{p.id}
+                        </Link>
                       </td>
-                      <td className="px-3 py-2">
-                        {v ? (
-                          <span className={`rounded px-1.5 py-0.5 font-mono text-[11px] ${v.cls}`}>{v.text}</span>
+                      <td className="max-w-0 px-3 py-2 text-ink">
+                        <Link href={`/blog/posts/${p.id}`} className="block truncate hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                          {snippet(p.content)}
+                        </Link>
+                      </td>
+                      <td className="px-3 py-2">{v ? <Badge tone={v.tone}>{v.text}</Badge> : <span className="text-dim">—</span>}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs tabular-nums text-dim">{p.created_at}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        {p.tg ? (
+                          <span className="inline-flex items-center gap-1.5" title={p.tg.error ?? undefined}>
+                            {statusBadge(p.tg.status === 'ok' ? 'published' : 'error')}
+                            {p.tg.messageId !== null && (
+                              <span className="font-mono text-[11px] tabular-nums text-dim">msg {p.tg.messageId}</span>
+                            )}
+                          </span>
                         ) : (
-                          <span className="text-dim">—</span>
+                          statusBadge('draft')
                         )}
                       </td>
-                      <td className="px-3 py-2 text-ink">{snippet(p.content)}</td>
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-xs text-dim">{p.created_at}</td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <div className="flex items-center gap-1">
+                          <Tooltip label="Открыть пост">
+                            <Link
+                              href={`/blog/posts/${p.id}`}
+                              aria-label={`Открыть пост #${p.id}`}
+                              className="inline-flex min-h-[32px] w-8 items-center justify-center rounded-md border border-line-strong text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+                            >
+                              <IconExternal />
+                            </Link>
+                          </Tooltip>
+                          <Tooltip label="Удалить">
+                            <Button variant="danger" size="sm" square aria-label={`Удалить пост #${p.id}`} onClick={() => setDeleteTarget(p)}>
+                              <IconTrash />
+                            </Button>
+                          </Tooltip>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-        )}
-      </section>
+
+          {/* Mobile: карточки */}
+          <div className="space-y-3 sm:hidden">
+            {posts.map((p) => {
+              const v = verdictLabel(p.verdict);
+              return (
+                <div key={p.id} className="rounded-lg border border-line bg-surface p-3 shadow-panel">
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={`/blog/posts/${p.id}`} className="font-mono text-xs tabular-nums text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                      #{p.id}
+                    </Link>
+                    <span className="flex items-center gap-1.5">{v ? <Badge tone={v.tone}>{v.text}</Badge> : null}
+                      {p.tg ? statusBadge(p.tg.status === 'ok' ? 'published' : 'error') : statusBadge('draft')}
+                    </span>
+                  </div>
+                  <Link href={`/blog/posts/${p.id}`} className="mt-2 block text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                    {snippet(p.content, 180)}
+                  </Link>
+                  <div className="mt-2 flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] tabular-nums text-dim">
+                      {p.created_at}
+                      {p.tg?.messageId !== null && p.tg ? ` · msg ${p.tg.messageId}` : ''}
+                    </span>
+                    <Button variant="danger" size="sm" icon={<IconTrash />} onClick={() => setDeleteTarget(p)}>
+                      Удалить
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={del}
+        title={deleteTarget ? `Удалить пост #${deleteTarget.id}?` : 'Удалить пост?'}
+        confirmLabel="Удалить безвозвратно"
+        tone="danger"
+        body={<p>Пост будет удалён из blog.sqlite вместе с содержимым. Действие безвозвратно.</p>}
+      />
     </div>
   );
 }
