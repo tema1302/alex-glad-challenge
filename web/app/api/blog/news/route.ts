@@ -78,6 +78,10 @@ export async function POST(req: NextRequest): Promise<Response> {
             why: r.why,
           })),
           verdict: result.factCheck?.verdict ?? null,
+          // Поста нет и RSS фиды ответили ошибкой → честное объяснение вместо тишины.
+          ...(result.post === null && result.rssErrors.length > 0
+            ? { notice: `RSS-источники недоступны: ${result.rssErrors.join('; ')}` }
+            : {}),
         });
       } catch (e) {
         const message = e instanceof Error ? safeMessage(e.message) : 'internal error';

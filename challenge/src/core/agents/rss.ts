@@ -5,6 +5,7 @@ import { XMLParser } from 'fast-xml-parser';
 
 import type { NewsRow } from '../db.js';
 import { clean } from '../sanitize.js';
+import { netFetch } from '../net.js';
 
 export interface RssItem {
   title: string;
@@ -56,40 +57,52 @@ function snippetFrom(item: Record<string, unknown>): string {
   return text.length > 400 ? text.slice(0, 397) + '...' : text;
 }
 
+// Один фид: бросает при сетевой/HTTP/парсинг-ошибке — collect на уровне
+// fetchAllFeedsDetailed (чтобы scout/news могли честно показать «RSS недоступен»).
 async function fetchFeed(feed: { source: string; url: string }): Promise<RssItem[]> {
-  try {
-    const resp = await fetch(feed.url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; llm-challenge-bot/0.1)' },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!resp.ok) {
-      console.error(`[rss] ${feed.source}: HTTP ${resp.status}`);
-      return [];
-    }
-    const xml = await resp.text();
-    const parsed = xmlParser.parse(xml) as {
-      rss?: { channel?: { item?: Record<string, unknown>[] } };
-      feed?: { entry?: Record<string, unknown>[] };
-    };
-
-    const items =
-      parsed.rss?.channel?.item ?? parsed.feed?.entry ?? [];
-    return items.map((it) => ({
-      title: String(it['title'] ?? '').trim(),
-      link: String(it['link'] ?? it['@_link'] ?? '').trim(),
-      pubDate: String(it['pubDate'] ?? it['published'] ?? it['updated'] ?? '').trim(),
-      contentSnippet: snippetFrom(it),
-      source: feed.source,
-    }));
-  } catch (err) {
-    console.error(`[rss] ${feed.source}: ${(err as Error).message}`);
-    return [];
+  const resp = await netFetch(feed.url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (compatible; llm-challenge-bot/0.1)' },
+    timeoutMs: 10_000,
+    label: `RSS ${feed.source}`,
+  });
+  if (!resp.ok) {
+    throw new Error(`HTTP ${resp.status}`);
   }
+  const xml = await resp.text();
+  const parsed = xmlParser.parse(xml) as {
+    rss?: { channel?: { item?: Record<string, unknown>[] } };
+    feed?: { entry?: Record<string, unknown>[] };
+  };
+
+  const items = parsed.rss?.channel?.item ?? parsed.feed?.entry ?? [];
+  return items.map((it) => ({
+    title: String(it['title'] ?? '').trim(),
+    link: String(it['link'] ?? it['@_link'] ?? '').trim(),
+    pubDate: String(it['pubDate'] ?? it['published'] ?? it['updated'] ?? '').trim(),
+    contentSnippet: snippetFrom(it),
+    source: feed.source,
+  }));
+}
+
+export async function fetchAllFeedsDetailed(): Promise<{ items: RssItem[]; errors: string[] }> {
+  const settled = await Promise.all(
+    FEEDS.map(async (feed) => {
+      try {
+        return { items: await fetchFeed(feed), error: null as string | null };
+      } catch (err) {
+        // fetchFeed уже ловит сам; страховка на случай изменений внутри.
+        return { items: [] as RssItem[], error: `${feed.source}: ${(err as Error).message}` };
+      }
+    }),
+  );
+  return {
+    items: settled.flatMap((s) => s.items),
+    errors: settled.map((s) => s.error).filter((e): e is string => e !== null),
+  };
 }
 
 export async function fetchAllFeeds(): Promise<RssItem[]> {
-  const results = await Promise.all(FEEDS.map(fetchFeed));
-  return results.flat();
+  return (await fetchAllFeedsDetailed()).items;
 }
 
 // Отфильтровать по давности (по умолчанию — последние 24 часа).

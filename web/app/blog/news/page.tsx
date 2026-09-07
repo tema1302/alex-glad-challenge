@@ -35,6 +35,7 @@ export default function BlogNewsPage() {
   const [topNews, setTopNews] = useState<TopNewsItem[]>([]);
   const [verdict, setVerdict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -43,6 +44,7 @@ export default function BlogNewsPage() {
     setTopNews([]);
     setVerdict(null);
     setError(null);
+    setNotice(null);
   };
 
   const run = useCallback(async () => {
@@ -61,6 +63,7 @@ export default function BlogNewsPage() {
           setPost(ev.post);
           setTopNews(ev.topNews);
           setVerdict(ev.verdict);
+          setNotice(ev.notice ?? null);
           break;
         case 'error':
           setError(ev.message);
@@ -211,6 +214,12 @@ export default function BlogNewsPage() {
       {error && (
         <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
           {error}
+        </section>
+      )}
+
+      {notice && !error && (
+        <section className="rounded-md border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
+          {notice}
         </section>
       )}
 

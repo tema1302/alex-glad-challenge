@@ -4,6 +4,7 @@
 
 import type { SourceAgent, SourceAgentResult, TrendingTopic } from './sourceAgent.js';
 import { clean } from '../sanitize.js';
+import { netFetch } from '../net.js';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 football-bot/1.0';
 
@@ -37,9 +38,10 @@ export class ForumScannerAgent implements SourceAgent {
   // Reddit r/soccer — горячие посты через JSON API.
   private async fetchReddit(): Promise<TrendingTopic[]> {
     const url = 'https://www.reddit.com/r/soccer/hot.json?limit=15';
-    const resp = await fetch(url, {
+    const resp = await netFetch(url, {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(10_000),
+      timeoutMs: 10_000,
+      label: 'reddit r/soccer',
     });
     if (!resp.ok) throw new Error(`reddit HTTP ${resp.status}`);
 
@@ -82,9 +84,10 @@ export class ForumScannerAgent implements SourceAgent {
   // RSS умер, парсим главную футбола через HTML.
   private async fetchSportsRu(): Promise<TrendingTopic[]> {
     const url = 'https://www.sports.ru/football/';
-    const resp = await fetch(url, {
+    const resp = await netFetch(url, {
       headers: { 'User-Agent': USER_AGENT },
-      signal: AbortSignal.timeout(10_000),
+      timeoutMs: 10_000,
+      label: 'sports.ru',
     });
     if (!resp.ok) throw new Error(`sports.ru HTTP ${resp.status}`);
 

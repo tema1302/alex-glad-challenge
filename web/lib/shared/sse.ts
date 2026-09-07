@@ -76,6 +76,8 @@ export interface SseBlogNewsDone {
   post: { id: number; content: string } | null;
   topNews: Array<{ title: string; score: number; why: string }>;
   verdict: string | null;
+  /** Человеческое пояснение при частичном успехе (напр. «RSS-фиды недоступны»). */
+  notice?: string;
 }
 export interface SseBlogNewsError {
   type: 'error';
