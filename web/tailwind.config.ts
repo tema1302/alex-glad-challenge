@@ -1,8 +1,8 @@
 import type { Config } from 'tailwindcss';
 
 // Дизайн-система 2.0 (ТЗ §5.2): цвета RGB-переменными с alpha (тёмная админка),
-// шкала радиусов 4/6/10/full, тени panel/pop, motion-токены 120/200/320ms
-// с единым easing, z-шкала nav(20)/dialog(50)/toast(60).
+// шкала радиусов 4/6/10/14/full, тени panel/pop/lift на CSS-переменных темы,
+// motion-токены 120/200/320ms с единым easing, z-шкала nav(20)/dialog(50)/toast(60).
 // Палитра `paper`/`brand` — световый мир лендинга (Paper × Aurora), изолирован
 // классом .lp на корне страницы и не смешивается с админ-токенами.
 export default {
@@ -57,14 +57,17 @@ export default {
         DEFAULT: '6px',
         md: '6px',
         lg: '10px',
+        xl: '14px',
         full: '9999px',
       },
       boxShadow: {
-        panel: '0 1px 0 rgb(0 0 0 / 0.4)',
-        pop: '0 8px 32px rgb(0 0 0 / 0.5)',
-        // Световые тени лендинга.
+        // Админ-тени следуют теме через CSS-переменные (globals.css):
+        // dark — чёрная кромка, light — мягкие как .lp-card (lift — с акцентом).
+        panel: 'var(--shadow-panel)',
+        pop: 'var(--shadow-pop)',
+        lift: 'var(--shadow-lift)',
+        // Статическая световая тень лендинга.
         card: '0 1px 2px rgb(12 17 22 / 0.04), 0 12px 40px -16px rgb(12 17 22 / 0.18)',
-        lift: '0 2px 4px rgb(12 17 22 / 0.05), 0 24px 64px -20px rgb(90 75 255 / 0.35)',
       },
       transitionDuration: {
         fast: '120ms',

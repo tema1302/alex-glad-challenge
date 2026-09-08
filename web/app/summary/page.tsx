@@ -70,7 +70,7 @@ export default function SummaryPage() {
       <SectionHead
         code="summary · todos"
         title="Сводка задач"
-        description="Ожидающие задачи из TodoDb. Сводку можно отправить в Telegram-канал (если настроен Bot API)."
+        description="Ожидающие задачи; сводку можно отправить в Telegram-канал (если настроен Bot API)."
         actions={
           <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
             {loading ? 'загрузка…' : 'обновить'}
@@ -79,7 +79,9 @@ export default function SummaryPage() {
       />
 
       {!publishable && (
-        <p className="text-xs text-dim">TG Bot API не настроен — публикация недоступна</p>
+        <Card tone="warn">
+          <p className="text-sm text-warn">TG Bot API не настроен — публикация недоступна</p>
+        </Card>
       )}
 
       <Card

@@ -15,7 +15,7 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
       {wrapped}
       <span
         role="tooltip"
-        className="pointer-events-none absolute bottom-full left-1/2 z-nav mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm border border-line-strong bg-bg px-2 py-1 font-mono text-[11px] text-ink opacity-0 shadow-pop transition-opacity duration-fast ease-system delay-300 group-hover/tt:opacity-100 group-focus-within/tt:opacity-100"
+        className="pointer-events-none absolute bottom-full left-1/2 z-nav mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-sm border border-line-strong bg-surface px-2 py-1 font-mono text-[11px] text-ink opacity-0 shadow-pop transition-opacity duration-fast ease-system delay-300 group-hover/tt:opacity-100 group-focus-within/tt:opacity-100"
       >
         {label}
       </span>

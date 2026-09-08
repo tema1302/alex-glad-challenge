@@ -1,4 +1,5 @@
-// Корневой layout. forcedTheme="dark" — тема всегда тёмная (нет light-режима).
+// Корневой layout. next-themes: defaultTheme="light" (enableSystem=false) — светлая
+// админка по умолчанию, переключатель ThemeToggle меняет класс на <html> (dark/light).
 // Editorial-каркас: Header (Nav) сверху, main flex-1, Footer снизу (flex-col min-h-screen).
 // Admin-auth (день 36): гость — урезанный хром (Nav без core-ссылок/статуса модели,
 // БЕЗ Sidebar/Footer — те светят все защищённые маршруты); админ — полный каркас.
@@ -59,7 +60,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="min-h-screen bg-bg font-sans text-ink antialiased">
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           themes={['dark', 'light']}
           enableSystem={false}
           disableTransitionOnChange

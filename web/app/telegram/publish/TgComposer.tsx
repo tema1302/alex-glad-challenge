@@ -339,7 +339,8 @@ export function TgComposer({
         </Card>
       )}
 
-      {/* История публикаций (outbox) */}
+      {/* История публикаций (outbox); якорь #history — цель плитки J3 с /dashboard */}
+      <div id="history" className="scroll-mt-20">
       <Card
         label="история публикаций"
         actions={
@@ -399,6 +400,7 @@ export function TgComposer({
           </ul>
         )}
       </Card>
+      </div>
 
       {/* Confirm: цель + свернутое превью + пометка о реальной отправке */}
       <ConfirmDialog

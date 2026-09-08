@@ -9,6 +9,10 @@ import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusDot } from '../../components/ui/StatusDot';
+import { Skeleton } from '../../components/ui/Skeleton';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Field, INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 import { IconCheck, IconTrash, IconX } from '../../components/ui/icons';
 
 type Recurring = 'daily' | 'weekly' | 'hourly';
@@ -34,10 +38,6 @@ function recurringBadge(t: TodoItem): string | null {
   if (t.scheduled_at) return `на ${t.scheduled_at}`;
   return null;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
-const LABEL_TAG = 'block font-mono text-xs uppercase tracking-wider text-dim';
 
 export default function TodosPage() {
   const [text, setText] = useState('');
@@ -120,31 +120,27 @@ export default function TodosPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>todos · todos.sqlite</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Задачи</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Повторяющиеся напоминания и разовые задачи. Хранятся в{' '}
-          <code className="font-mono text-[12px] text-ink">.data/todos.sqlite</code>.
-        </p>
-      </section>
+      <SectionHead
+        code="mcp · todos"
+        title="Задачи"
+        description="Повторяющиеся напоминания и разовые задачи."
+      />
 
       <Card label="new task">
-        <label className="block text-sm">
-          <span className={LABEL_TAG}>Текст задачи</span>
+        <Field id="todo-text" label="Текст задачи">
           <input
-            className={`mt-1 w-full ${INPUT}`}
+            className={`w-full ${INPUT_CLASS}`}
             type="text"
             placeholder="Текст задачи…"
             value={text}
             onChange={(e) => setText(e.target.value)}
             disabled={submitting}
           />
-        </label>
+        </Field>
 
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <fieldset className="text-sm">
-            <span className={LABEL_TAG}>Повтор</span>
+            <span className="block text-xs font-medium text-dim">Повтор</span>
             <div className="mt-1 flex gap-3">
               {(['none', 'daily', 'weekly', 'hourly'] as FormRecurring[]).map((r) => (
                 <label key={r} className="flex items-center gap-1 text-dim">
@@ -154,6 +150,7 @@ export default function TodosPage() {
                     checked={recurring === r}
                     onChange={() => setRecurring(r)}
                     disabled={submitting}
+                    className="accent-accent"
                   />
                   {r === 'none' ? 'разово' : r === 'daily' ? 'день' : r === 'weekly' ? 'неделя' : 'час'}
                 </label>
@@ -163,9 +160,9 @@ export default function TodosPage() {
 
           {recurring === 'hourly' && (
             <label className="text-sm">
-              <span className={LABEL_TAG}>каждые N ч</span>
+              <span className="block text-xs font-medium text-dim">каждые N ч</span>
               <input
-                className={`mt-1 w-16 ${INPUT}`}
+                className={`mt-1 w-16 ${INPUT_CLASS}`}
                 type="number"
                 min={1}
                 max={168}
@@ -188,7 +185,9 @@ export default function TodosPage() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       <section>
@@ -199,10 +198,13 @@ export default function TodosPage() {
           </Button>
         </div>
 
-        {todos.length === 0 ? (
-          <p className="text-sm text-dim">
-            {loading ? 'Загрузка…' : 'Нет задач. Добавьте первую выше.'}
-          </p>
+        {loading ? (
+          <div className="space-y-2">
+            <Skeleton variant="line" />
+            <Skeleton variant="line" />
+          </div>
+        ) : todos.length === 0 ? (
+          <EmptyState title="Нет задач." hint="Добавьте первую выше." />
         ) : (
           <ul className="space-y-2">
             {todos.map((t) => {

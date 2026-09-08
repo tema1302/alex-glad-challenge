@@ -11,6 +11,7 @@ import { getBlogDb, getDialogDb, getRagStore, getTgStore, withDb } from '../../l
 import { getKeysStatus } from '../../lib/server/env';
 import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
+import { Card } from '../components/ui/Card';
 import { Tile } from '../components/ui/Tile';
 import { StatusDot } from '../components/ui/StatusDot';
 import { IconEdit, IconHistory, IconSend } from '../components/ui/icons';
@@ -57,7 +58,8 @@ async function readStats(): Promise<DashboardStats> {
   });
 }
 
-// Быстрое действие — крупная карточка-ссылка (путь ≤ 1 клика от /dashboard, ТЗ G1).
+// Быстрое действие — интерактивная карточка-ссылка (путь ≤ 1 клика от /dashboard, ТЗ G1).
+// Контракт «интерактив vs инфо»: тень+hover+стрелка = можно нажать (Card variant="interactive").
 function QuickAction({
   href,
   icon: Icon,
@@ -69,18 +71,20 @@ function QuickAction({
   title: string;
   desc: string;
 }) {
-  const FOCUS =
-    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
   return (
     <Link
       href={href}
-      className={`group flex flex-col gap-2 rounded-lg border border-line bg-surface p-4 shadow-panel transition-all duration-base ease-system hover:-translate-y-0.5 hover:border-accent-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${FOCUS}`}
+      className="group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
     >
-      <span className="flex items-center gap-2 font-mono text-xs uppercase tracking-wider text-accent">
-        <Icon />
-        {title}
-      </span>
-      <span className="text-sm leading-relaxed text-dim group-hover:text-ink">{desc}</span>
+      <Card variant="interactive" arrow className="h-full">
+        <span className="flex items-center gap-2 font-sans text-sm font-semibold text-ink">
+          <span aria-hidden="true" className="text-accent">
+            <Icon />
+          </span>
+          {title}
+        </span>
+        <span className="mt-1 block text-sm leading-snug text-dim group-hover:text-ink">{desc}</span>
+      </Card>
     </Link>
   );
 }
@@ -108,7 +112,7 @@ export default async function DashboardPage() {
       <SectionHead
         code="dashboard · live"
         title="Dashboard"
-        description="Состояние системы в реальном времени: локальный SQLite (вне git), ключи — только факт настройки."
+        description="Ключи показаны только как факт настройки — значения секретов не отображаются."
       />
 
       {/* ── Быстрые действия (J1/J2/J3) ── */}
@@ -128,7 +132,7 @@ export default async function DashboardPage() {
             desc="Правка постов и публикация в канал из карточки"
           />
           <QuickAction
-            href="/telegram/publish"
+            href="/telegram/publish#history"
             icon={IconHistory}
             title="История публикаций"
             desc="Outbox: что ушло, message_id, ошибки"
@@ -138,7 +142,7 @@ export default async function DashboardPage() {
 
       {/* ── Статус: ключи + tg configured (Boolean only, values NEVER) ── */}
       <section>
-        <SectionLabel>keys · values hidden</SectionLabel>
+        <SectionLabel>Ключи и сервисы</SectionLabel>
         <div className="flex flex-wrap gap-x-5 gap-y-2">
           {statusLine.map((s) => (
             <StatusDot key={String(s.label)} status={s.status} label={s.label} />
@@ -148,7 +152,7 @@ export default async function DashboardPage() {
 
       {/* ── Active model (public-мета, не секрет) ── */}
       <section>
-        <SectionLabel>active model</SectionLabel>
+        <SectionLabel>Модель</SectionLabel>
         {keys.activeModel ? (
           <StatusDot status="ok" label={`${keys.activeProvider ?? 'model'} · ${keys.activeModel}`} />
         ) : (
@@ -158,18 +162,18 @@ export default async function DashboardPage() {
 
       {/* ── DB stats ── */}
       <section>
-        <SectionLabel>db stats</SectionLabel>
+        <SectionLabel>Базы данных</SectionLabel>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Tile label="news" value={stats.news} />
-          <Tile label="posts" value={stats.posts} />
-          <Tile label="style" value={stats.styleSamples} />
+          <Tile label="новости" value={stats.news} />
+          <Tile label="посты" value={stats.posts} />
+          <Tile label="стиль" value={stats.styleSamples} />
           <Tile
             label="rag"
             value={ragTotal}
             hint={`f ${stats.ragFixed} · s ${stats.ragStructure} · tg ${stats.ragTelegram}`}
           />
-          <Tile label="tg msg" value={stats.tgMessages} hint={`${stats.tgChats} chats · ${stats.tgTopics} topics`} />
-          <Tile label="dialog" value={stats.dialogChats} hint={`${stats.dialogMessages} msg`} />
+          <Tile label="tg сообщения" value={stats.tgMessages} hint={`${stats.tgChats} chats · ${stats.tgTopics} topics`} />
+          <Tile label="диалоги" value={stats.dialogChats} hint={`${stats.dialogMessages} msg`} />
         </div>
       </section>
     </div>

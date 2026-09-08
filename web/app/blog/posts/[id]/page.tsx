@@ -174,7 +174,7 @@ export default function BlogPostDetailPage() {
         <>
           {/* Статус публикации (join outbox, ТЗ §7.3) */}
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs uppercase tracking-wider text-dim">telegram:</span>
+            <span className="text-xs font-medium text-dim">telegram:</span>
             {tg ? (
               <>
                 {statusBadge(tg.status === 'ok' ? 'published' : 'error')}

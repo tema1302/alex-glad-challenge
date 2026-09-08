@@ -6,9 +6,8 @@ import { useCallback, useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { SectionLabel } from '../components/ui/SectionLabel';
-
-const INPUT =
-  'w-full rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
+import { INPUT_CLASS } from '../components/ui/Field';
+import { SectionHead } from '../components/ui/SectionHead';
 
 export default function AgentPage() {
   const [prompt, setPrompt] = useState('');
@@ -40,18 +39,15 @@ export default function AgentPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Агент (LLM)</h1>
-        <p className="mt-1 text-sm text-dim">
-          Single-shot вопрос к LLM через{' '}
-          <code className="rounded bg-surface-2 px-1 font-mono text-xs text-ink">core/Agent</code>. Без истории хода
-          (для диалога — <a href="/chat" className="text-accent hover:underline">/chat</a>).
-        </p>
-      </section>
+      <SectionHead
+        code="sys · agent"
+        title="Агент (LLM)"
+        description={<>Одиночный вопрос к LLM без истории хода (для диалога — <a href="/chat" className="text-accent hover:underline">/chat</a>).</>}
+      />
 
       <Card label="Вопрос">
         <textarea
-          className={`h-32 resize-y ${INPUT}`}
+          className={`h-32 w-full resize-y ${INPUT_CLASS}`}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="Спросите что-нибудь…"
@@ -59,7 +55,7 @@ export default function AgentPage() {
         />
 
         <fieldset className="mt-3 text-sm">
-          <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+          <span className="block text-xs font-medium text-dim">LLM</span>
           <div className="mt-1 flex gap-3">
             {(['cloud', 'local'] as const).map((v) => (
               <label key={v} className="flex items-center gap-1.5 text-ink">
@@ -83,7 +79,11 @@ export default function AgentPage() {
         </div>
       </Card>
 
-      {error && <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>}
+      {error && (
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
+      )}
 
       {answer !== null && (
         <section>

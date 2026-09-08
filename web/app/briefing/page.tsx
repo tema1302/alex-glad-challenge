@@ -10,6 +10,10 @@ import { Card } from '../components/ui/Card';
 import { Tile } from '../components/ui/Tile';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { Button } from '../components/ui/Button';
+import { Badge } from '../components/ui/Badge';
+import { EmptyState } from '../components/ui/EmptyState';
+import { INPUT_CLASS } from '../components/ui/Field';
+import { SectionHead } from '../components/ui/SectionHead';
 
 interface BriefingStats {
   news: number;
@@ -37,9 +41,6 @@ interface Briefing {
   chatKey?: string;
   topicId: number;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function BriefingPage() {
   const [data, setData] = useState<Briefing | null>(null);
@@ -70,28 +71,27 @@ export default function BriefingPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Сводка</h1>
-        <p className="mt-1 text-sm text-dim">
-          Текущее состояние: ожидающие задачи, счётчики баз, топ-TG (по chatKey). Только чтение.
-        </p>
-      </section>
+      <SectionHead
+        code="sys · briefing"
+        title="Сводка"
+        description="Текущее состояние: задачи, счётчики баз, топ-TG (только чтение)."
+      />
 
       {/* Топ-TG по chatKey (опц.) */}
       <Card label="топ-TG по чату">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">chatKey</span>
+            <span className="block text-xs font-medium text-dim">chatKey</span>
             <input
-              className={`mt-1 w-full font-mono text-xs ${INPUT}`}
+              className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
               value={chatKey} onChange={(e) => setChatKey(e.target.value)}
               placeholder="-1001234567890 (пусто — без топ-TG)"
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">topicId</span>
+            <span className="block text-xs font-medium text-dim">topicId</span>
             <input
-              className={`mt-1 w-24 ${INPUT}`}
+              className={`mt-1 w-24 ${INPUT_CLASS}`}
               value={topicId} onChange={(e) => setTopicId(e.target.value)}
             />
           </label>
@@ -102,9 +102,9 @@ export default function BriefingPage() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-        </p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {!data ? (
@@ -147,28 +147,23 @@ export default function BriefingPage() {
             <section>
               <SectionLabel>{`топ-TG: ${data.chatKey ?? '—'}/${data.topicId}`}</SectionLabel>
               {data.topTg.length === 0 ? (
-                <p className="text-sm text-dim">
-                  Нет данных по этому chatKey/topicId (collect — P3b, либо topicId неверен).
-                </p>
+                <EmptyState
+                  title="Нет данных по этому чату/топику."
+                  hint="Чат/топик не собран (см. TG collect) или topicId неверен."
+                />
               ) : (
-                <ul className="space-y-2">
+                <ul className="divide-y divide-line">
                   {data.topTg.map((m) => (
-                    <li key={m.msg_id}>
-                      <Card>
-                        <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-dim">
-                          <span>#{m.msg_id}</span>
-                          <span>{m.from_name}</span>
-                          <span>{m.date_iso}</span>
-                          {m.reaction_total > 0 && (
-                            <span className="rounded-full border border-warn/40 px-2 py-0.5 text-warn">
-                              ♥ {m.reaction_total}
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 line-clamp-3 whitespace-pre-wrap font-sans text-sm text-ink">
-                          {m.text || '(без текста)'}
-                        </p>
-                      </Card>
+                    <li key={m.msg_id} className="py-3">
+                      <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-dim">
+                        <span>#{m.msg_id}</span>
+                        <span>{m.from_name}</span>
+                        <span>{m.date_iso}</span>
+                        {m.reaction_total > 0 && <Badge tone="accent">♥ {m.reaction_total}</Badge>}
+                      </div>
+                      <p className="mt-1 line-clamp-3 whitespace-pre-wrap font-sans text-sm text-ink">
+                        {m.text || '(без текста)'}
+                      </p>
                     </li>
                   ))}
                 </ul>

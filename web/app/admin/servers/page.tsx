@@ -8,6 +8,7 @@ import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusDot } from '../../components/ui/StatusDot';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface ServerStatuses {
   mcp: { configured: boolean; host: string | null; authConfigured: boolean };
@@ -39,25 +40,25 @@ export default function ServersPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>admin · servers</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Сервисы</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Статусы конфигурации. Только индикаторы (spawn серверов из UI не предусмотрен).
-        </p>
-      </section>
+      <SectionHead
+        code="sys · servers"
+        title="Сервисы"
+        description="Статусы конфигурации сервисов (только индикаторы)."
+      />
 
       <Button variant="ghost" onClick={load}>обновить</Button>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {!data ? (
         <p className="text-sm text-dim">Загрузка…</p>
       ) : (
         <section>
-          <SectionLabel>configuration · values hidden</SectionLabel>
+          <SectionLabel>Конфигурация</SectionLabel>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Card label="MCP-сервер">
               <StatusDot status={data.mcp.configured ? 'ok' : 'off'} />

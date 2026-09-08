@@ -8,6 +8,8 @@ import Link from 'next/link';
 import type { SseTgCollectEvent } from '../../../lib/shared/sse';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface ProgressLine {
   fetched: number;
@@ -25,9 +27,6 @@ interface CollectResult {
   topicId: number;
   chatTitle: string;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function TgCollectPage() {
   const [chatRef, setChatRef] = useState('');
@@ -141,22 +140,22 @@ export default function TgCollectPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">TG collect — сбор топика</h1>
-        <p className="mt-1 text-sm text-dim">
-          MTProto-сбор сообщений forum-топика в <code className="font-mono text-dim">tg.sqlite</code>.
-          Зеркало CLI <code className="font-mono text-dim">tg-collect</code>. Прогресс стримится по SSE.
-          См. также <Link href="/tg/top" className="text-accent hover:underline">TG-топ</Link> и{' '}
-          <Link href="/rag/index-tg" className="text-accent hover:underline">RAG index-tg</Link>.
-        </p>
-      </section>
+      <SectionHead
+        code="tg · collect"
+        title="TG collect — сбор топика"
+        description={
+          <>MTProto-сбор сообщений forum-топика (см. также{' '}
+            <Link href="/tg/top" className="text-accent hover:underline">TG-топ</Link> и{' '}
+            <Link href="/rag/index-tg" className="text-accent hover:underline">RAG index-tg</Link>).</>
+        }
+      />
 
       <Card label="Параметры сбора">
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex-1 text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">chatRef</span>
+            <span className="block text-xs font-medium text-dim">chatRef</span>
             <input
-              className={`mt-1 w-full font-mono text-xs ${INPUT}`}
+              className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
               value={chatRef}
               onChange={(e) => setChatRef(e.target.value)}
               disabled={running}
@@ -164,9 +163,9 @@ export default function TgCollectPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">topicId</span>
+            <span className="block text-xs font-medium text-dim">topicId</span>
             <input
-              className={`mt-1 w-24 ${INPUT}`}
+              className={`mt-1 w-24 ${INPUT_CLASS}`}
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={running}
@@ -174,9 +173,9 @@ export default function TgCollectPage() {
             />
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">лимит</span>
+            <span className="block text-xs font-medium text-dim">лимит</span>
             <input
-              className={`mt-1 w-24 ${INPUT}`}
+              className={`mt-1 w-24 ${INPUT_CLASS}`}
               type="number" min={1} max={5000}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
@@ -207,9 +206,9 @@ export default function TgCollectPage() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-        </p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {start && (
@@ -226,7 +225,7 @@ export default function TgCollectPage() {
       {(progress.length > 0 || running) && (
         <Card>
           <div className="flex items-center justify-between">
-            <span className="font-mono text-xs uppercase tracking-wider text-dim">// Прогресс сбора</span>
+            <span className="text-xs font-medium text-dim">Прогресс сбора</span>
             {last && (
               <span className="font-mono text-xs text-dim">
                 fetched={last.fetched} · new={last.newlyInserted} · last_id={last.lastId ?? '-'}
@@ -247,8 +246,8 @@ export default function TgCollectPage() {
 
       {result && (
         <section className="rounded-md border border-ok/40 bg-ok/10 p-4 text-sm">
-          <h2 className="font-mono text-xs uppercase tracking-wider text-ok">
-            // Готово (mode={result.mode})
+          <h2 className="text-xs font-medium text-ok">
+            Готово (mode={result.mode})
           </h2>
           <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-3">
             <dt className="text-dim">fetched</dt>

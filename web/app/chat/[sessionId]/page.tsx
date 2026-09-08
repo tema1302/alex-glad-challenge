@@ -17,6 +17,8 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Tabs } from '../../components/ui/Tabs';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 import { FactLoader } from '../../components/FactLoader';
 
 type PanelTab = 'memory' | 'branches' | 'profile' | 'constraints';
@@ -43,9 +45,6 @@ const STRATEGY_OPTIONS: Array<{ value: StrategyName; label: string }> = [
   { value: 'sticky', label: 'sticky (факты + окно)' },
   { value: 'branching', label: 'branching (ветки)' },
 ];
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function ChatSessionPage() {
   const params = useParams<{ sessionId: string }>();
@@ -230,21 +229,20 @@ export default function ChatSessionPage() {
 
   return (
     <div className="space-y-4">
-      <section className="flex items-center justify-between">
-        <div>
-          <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Chat-агент</h1>
-          <p className="mt-1 font-mono text-xs text-dim">{config.id}</p>
-        </div>
-        <Link href="/chat" className="text-sm text-accent hover:underline">сессии</Link>
-      </section>
+      <SectionHead
+        code="chat · session"
+        title="Chat-агент"
+        description={<span className="font-mono text-xs">{config.id}</span>}
+        actions={<Link href="/chat" className="text-sm text-accent hover:underline">сессии</Link>}
+      />
 
       {/* Панель управления */}
       <Card label="Параметры">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Стратегия</span>
+            <span className="block text-xs font-medium text-dim">Стратегия</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={config.strategy}
               onChange={(e) => patchConfig({ strategy: e.target.value as StrategyName }).catch((e) => setError(e instanceof Error ? e.message : 'fail'))}
               disabled={running}
@@ -254,9 +252,9 @@ export default function ChatSessionPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as 'local' | 'cloud')}
               disabled={running}
@@ -289,9 +287,9 @@ export default function ChatSessionPage() {
         </div>
 
         <label className="mt-3 block text-sm">
-          <span className="block text-xs uppercase tracking-wide text-dim">System-промпт</span>
+          <span className="block text-xs font-medium text-dim">System-промпт</span>
           <textarea
-            className={`mt-1 w-full resize-y ${INPUT}`}
+            className={`mt-1 w-full resize-y ${INPUT_CLASS}`}
             rows={2}
             value={systemDraft}
             onChange={(e) => setSystemDraft(e.target.value)}
@@ -352,13 +350,15 @@ export default function ChatSessionPage() {
       </section>
 
       {error && (
-        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {/* Ввод */}
       <section className="flex gap-2">
         <textarea
-          className={`flex-1 resize-none ${INPUT}`}
+          className={`flex-1 resize-none ${INPUT_CLASS}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           value={input}

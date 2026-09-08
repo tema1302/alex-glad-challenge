@@ -7,6 +7,7 @@ import { useCallback, useRef, useState } from 'react';
 import type { SseRagIndexEvent, SseRagIndexStrategyStat } from '../../../lib/shared/sse';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 type Strategy = 'fixed' | 'structure';
 
@@ -93,23 +94,20 @@ export default function RagIndexPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">RAG index — документы</h1>
-        <p className="mt-1 text-sm text-dim">
-          Переиндексация встроенного набора документов в{' '}
-          <code className="font-mono text-ink">rag.sqlite</code>. Зеркало CLI{' '}
-          <code className="font-mono text-ink">rag index</code>.
-        </p>
-      </section>
+      <SectionHead
+        code="rag · index"
+        title="RAG index — документы"
+        description="Переиндексация встроенного набора документов."
+      />
 
-      <section className="rounded-md border border-warn/40 bg-warn/10 p-3 text-sm">
+      <Card tone="warn">
         <p className="font-medium text-warn">⚠️ Переиндексация</p>
         <p className="mt-1 text-warn">
           Каждая выбранная стратегия будет очищена (<code className="font-mono">clearStrategy</code>) и
           пересобрана заново. Это затрёт существующие чанки по этим стратегиям. Операция длительная
           (эмбеддинги), стримится в console сервера.
         </p>
-      </section>
+      </Card>
 
       <Card label="Стратегии">
         <div className="space-y-2">
@@ -145,7 +143,9 @@ export default function RagIndexPage() {
       </Card>
 
       {error && (
-        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {running && (

@@ -7,7 +7,7 @@
 //   фаза 3: локальный результат песочницы «ready to publish» (реальная отправка в TG
 //           полным прогоном не вызывается никогда — только страница поста).
 // Оба роута отдают только start → done/error (onProgress внутри агентов нет), поэтому
-// шаги внутри фазы резолвятся одним событием done — подписи стадий из shared/explainer.
+// шаги внутри фазы резолвятся одним событием done.
 // Без импортов core/ и server-only (client component); секреты не нужны.
 import { useCallback, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -19,7 +19,8 @@ import type {
   SseBlogScoutError,
   SseBlogScoutEvent,
 } from '../../../lib/shared/sse';
-import { PIPELINE_STAGE_EXPLAINER } from '../../../lib/shared/pipeline-explainer';
+import { INPUT_CLASS } from '../../components/ui/Field';
+import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 
@@ -32,9 +33,6 @@ const RUN_DEFAULTS = {
   // MTProto (TG_SESSION) credential-тяжёлый путь — выкл по умолчанию, как в /blog/scout.
   enableTelegram: false,
 };
-
-const RUN_INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 type RunPhase = 'idle' | 'scout' | 'news' | 'done';
 type Llm = 'local' | 'cloud';
@@ -173,18 +171,15 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
   return (
     <>
       <Card label="Полный конвейер — один прогон">
-        <p className="text-sm text-dim">
-          Одна кнопка проходит конвейер агент за агентом: разведка источников (RSS · Forum) →
-          LLM-оркестратор → сбор новостей → агент-автор → агент-фактчекер → финальный пост.
-          Реальная отправка в Telegram не выполняется.
-        </p>
+        {/* Единственная постоянная строка описания (кнопки и стадии говорят сами). */}
+        <p className="text-xs text-dim">RSS → оркестратор → автор → фактчекер · в TG не отправляет</p>
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <label className="flex-1 min-w-[220px] text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">
+            <span className="block text-xs font-medium text-dim">
               Запрос для разведки
             </span>
             <input
-              className={`mt-1 w-full ${RUN_INPUT}`}
+              className={`mt-1 w-full ${INPUT_CLASS}`}
               type="text"
               placeholder="самые горячие футбольные новости"
               value={query}
@@ -197,9 +192,9 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
             </span>
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${RUN_INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -250,9 +245,6 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-dim">
-                  {PIPELINE_STAGE_EXPLAINER.planning.what}
-                </p>
               </div>
               {scout && (
                 <ul className="w-full space-y-1 pl-7 text-sm">
@@ -302,10 +294,6 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-dim">
-                  {PIPELINE_STAGE_EXPLAINER.execution.what}{' '}
-                  {PIPELINE_STAGE_EXPLAINER.validation.what}
-                </p>
               </div>
             </li>
 
@@ -329,9 +317,6 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
                     <span className="font-mono text-xs text-accent">готово</span>
                   )}
                 </div>
-                <p className="mt-0.5 text-xs text-dim">
-                  {PIPELINE_STAGE_EXPLAINER.done.outputExample}
-                </p>
               </div>
               {news && (
                 <ul className="w-full space-y-2 pl-7 text-sm">
@@ -358,10 +343,13 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
                       Пост не создан: свежих новостей не нашлось.
                     </li>
                   )}
-                  <li className="rounded-md border border-line bg-surface-2 p-2 text-xs text-dim">
-                    {sandbox
-                      ? 'Состояние «ready to publish»: черновик сохранён в blog.sqlite, отправка в канал здесь не выполняется.'
-                      : 'Состояние «ready to publish»: публикация отдельно через страницу поста.'}
+                  <li className="flex flex-wrap items-center gap-2 text-xs text-dim">
+                    <Badge tone="accent">ready to publish</Badge>
+                    <span>
+                      {sandbox
+                        ? 'черновик сохранён в blog.sqlite, отправка в канал здесь не выполняется'
+                        : 'публикация — отдельно через страницу поста'}
+                    </span>
                   </li>
                 </ul>
               )}

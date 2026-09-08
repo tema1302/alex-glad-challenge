@@ -11,6 +11,9 @@ import type { StrategyName } from '../../lib/shared/forms';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { EmptyState } from '../components/ui/EmptyState';
+import { INPUT_CLASS } from '../components/ui/Field';
+import { SectionHead } from '../components/ui/SectionHead';
 
 interface SessionItem {
   id: string;
@@ -23,10 +26,6 @@ interface SessionItem {
 }
 
 const STRATEGY_OPTIONS: StrategyName[] = ['full', 'sliding', 'sticky', 'branching'];
-
-const labelTagCls = 'block font-mono text-xs uppercase tracking-wider text-dim';
-const inputCls =
-  'mt-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
 
 export default function ChatPickerPage() {
   const router = useRouter();
@@ -72,21 +71,19 @@ export default function ChatPickerPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>chat agent</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Chat-агент</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Диалог с LLM: стратегии контекста, system-промпт, memory-режим. Сессия переживает reload.
-        </p>
-      </section>
+      <SectionHead
+        code="chat · agent"
+        title="Chat-агент"
+        description="Диалог с LLM: стратегии контекста, system-промпт, memory-режим."
+      />
 
       {/* Создание */}
       <Card label="new session">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className={labelTagCls}>Стратегия</span>
+            <span className="block text-xs font-medium text-dim">Стратегия</span>
             <select
-              className={inputCls}
+              className={`${INPUT_CLASS} mt-1`}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as StrategyName)}
               disabled={creating}
@@ -103,9 +100,9 @@ export default function ChatPickerPage() {
           </Button>
         </div>
         <label className="mt-3 block text-sm">
-          <span className={labelTagCls}>System-промпт (опц.)</span>
+          <span className="block text-xs font-medium text-dim">System-промпт (опц.)</span>
           <textarea
-            className={`${inputCls} w-full resize-y p-2`}
+            className={`${INPUT_CLASS} mt-1 w-full resize-y p-2`}
             rows={2}
             placeholder="Например: Ты — ревьюер кода."
             value={system}
@@ -116,7 +113,9 @@ export default function ChatPickerPage() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {/* Список */}
@@ -125,17 +124,17 @@ export default function ChatPickerPage() {
         {sessions === null ? (
           <p className="text-sm text-dim">Загрузка…</p>
         ) : sessions.length === 0 ? (
-          <p className="text-sm text-dim">Нет сессий. Создайте первую выше.</p>
+          <EmptyState title="Нет сессий." hint="Создайте первую выше." />
         ) : (
           <div className="overflow-x-auto rounded-md border border-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">id</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">strategy</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">memory</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">msg</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">system</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">id</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">strategy</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">memory</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">msg</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">system</th>
                 </tr>
               </thead>
               <tbody>

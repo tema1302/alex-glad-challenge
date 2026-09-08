@@ -12,11 +12,17 @@
   --border-strong: 48 60 66;
   --text: 220 227 232;
   --dim: 138 151 158;
-  --accent: 63 184 175;
-  --accent-ink: 10 16 18;
+  /* Accent = бренд (brand-400 #8B7CFF); ok остаётся teal — семантика статусов. */
+  --accent: 139 124 255;
+  --accent-ink: 11 15 20;
   --ok: 63 184 175;
   --warn: 224 162 60;
   --err: 224 86 86;
+  /* Тени админки (tailwind boxShadow panel/pop/lift читают эти переменные):
+     dark — чёрная кромка как раньше, light — мягкие как .lp-card (lift с акцентом). */
+  --shadow-panel: 0 1px 0 rgb(0 0 0 / 0.4);
+  --shadow-pop: 0 8px 32px rgb(0 0 0 / 0.5);
+  --shadow-lift: 0 1px 0 rgb(0 0 0 / 0.3), 0 24px 64px -20px rgb(139 124 255 / 0.45);
 
   background-color: rgb(var(--bg));
 }
@@ -27,20 +33,23 @@
     background-color: rgb(var(--bg));
   }
   /* Светлая тема админки (переключатель next-themes): те же роли цветов,
-     светлые значения. accent/ok/warn/err приглушены под светлый фон. */
+     светлые значения. accent = brand-600 #5A4BFF; тени — мягкие как .lp-card. */
   html.light {
-    --bg: 244 243 239;
+    --bg: 247 245 240;
     --surface: 255 255 255;
     --surface-2: 246 245 240;
-    --border: 229 225 216;
+    --border: 230 226 216;
     --border-strong: 205 200 188;
     --text: 18 22 27;
     --dim: 98 106 114;
-    --accent: 5 150 105;
+    --accent: 90 75 255;
     --accent-ink: 255 255 255;
     --ok: 5 150 105;
     --warn: 178 116 10;
     --err: 202 54 54;
+    --shadow-panel: 0 1px 2px rgb(12 17 22 / 0.05), 0 12px 40px -16px rgb(12 17 22 / 0.14);
+    --shadow-pop: 0 24px 64px -20px rgb(12 17 22 / 0.25);
+    --shadow-lift: 0 2px 4px rgb(12 17 22 / 0.05), 0 24px 64px -20px rgb(90 75 255 / 0.3);
     color-scheme: light;
   }
   html.light body {
@@ -57,10 +66,11 @@
 }
 
 @layer utilities {
+  /* Активный пункт навигации — пилюля (accent/10 фон + accent-текст), без кромки. */
   .active-link {
-    background-color: rgb(var(--surface-2));
+    background-color: rgb(var(--accent) / 0.1);
     color: rgb(var(--accent));
-    border-left: 2px solid rgb(var(--accent));
+    font-weight: 500;
   }
   .spin {
     animation: spin 0.8s linear infinite;

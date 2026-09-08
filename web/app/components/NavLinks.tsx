@@ -20,8 +20,8 @@ export function NavCoreLinks() {
             key={it.href}
             href={it.href}
             aria-current={active ? 'page' : undefined}
-            className={`rounded-md px-2 py-1 text-sm transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
-              active ? 'bg-surface-2 text-accent' : 'text-dim hover:text-ink'
+            className={`rounded-full px-3 py-1 text-sm transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
+              active ? 'active-link' : 'text-dim hover:bg-surface-2 hover:text-ink'
             }`}
           >
             {it.label}

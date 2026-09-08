@@ -7,14 +7,16 @@ import { navGroups } from '../../data/nav';
 export function Sidebar() {
   const pathname = usePathname();
   return (
-    <aside className="sticky top-12 hidden h-[calc(100vh-3rem)] w-56 shrink-0 overflow-y-auto border-r border-line px-3 py-4 lg:block">
+    <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-56 shrink-0 overflow-y-auto border-r border-line px-3 py-4 lg:block">
       {navGroups.map((g) => {
         const hasActive = g.items.some(
           (it) => pathname === it.href || pathname.startsWith(it.href + '/'),
         );
+        const Icon = g.icon;
         return (
           <details key={g.tag} open={hasActive} className="group mb-3">
-            <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-wider text-dim hover:text-ink">
+            <summary className="flex cursor-pointer select-none items-center gap-2 font-sans text-xs font-semibold text-dim hover:text-ink">
+              {Icon ? <Icon className="shrink-0" /> : null}
               {g.tag}
             </summary>
             <div className="mt-1 flex flex-col">

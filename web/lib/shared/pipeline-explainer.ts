@@ -15,14 +15,9 @@ export interface PipelineStageExplainer {
   outputExample: string;
 }
 
-/** Человеческое интро страницы /blog/pipeline (замена разработческому абзацу). */
+/** Человеческий заголовок страницы /blog/pipeline (описание = прогресс-лента стадий). */
 export const PIPELINE_INTRO = {
   headline: 'Конвейер блог-агентов',
-  text:
-    'Четыре агента превращают RSS-новость в готовый пост для Telegram-канала: ' +
-    'агент-разведчик выбирает тему → агент-автор пишет черновик → агент-фактчекер проверяет цифры → ' +
-    'агент-редактор доводит текст. Ниже — живой автомат этого конвейера: нажимайте разрешённые ' +
-    'переходы и смотрите, что происходит на каждом шаге.',
 };
 
 export const PIPELINE_STAGE_EXPLAINER: Record<PipelineStageInput, PipelineStageExplainer> = {
