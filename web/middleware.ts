@@ -34,6 +34,12 @@ const PUBLIC_PATHS = new Set([
   '/api/blog/pipeline',
   '/api/auth/login',
   '/api/auth/logout',
+  // Metadata-роуты (sitemap/robots/opengraph-image) публичны:
+  // их читают краулеры и TG/OG-клиенты без cookie-сессии. Set — точное совпадение
+  // pathname (query не входит), поэтому '/opengraph-image' покрывает и '/opengraph-image?<query>'.
+  '/robots.txt',
+  '/sitemap.xml',
+  '/opengraph-image',
 ]);
 
 export function middleware(request: NextRequest) {
