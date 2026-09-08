@@ -10,6 +10,9 @@ import Link from 'next/link';
 import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { Field, INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface DialogChatItem {
   id: string;
@@ -18,10 +21,6 @@ interface DialogChatItem {
   updated_at: string;
   msg_count: number;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
-const LABEL_TAG = 'block font-mono text-xs uppercase tracking-wider text-dim';
 
 export default function RagChatPickerPage() {
   const router = useRouter();
@@ -64,27 +63,23 @@ export default function RagChatPickerPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>rag · dialog</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">RAG-чат</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Многоходовый диалог по базе знаний. История и «память задачи» персистятся в{' '}
-          <code className="font-mono text-[12px] text-ink">dialog.sqlite</code>.
-        </p>
-      </section>
+      <SectionHead
+        code="rag · dialog"
+        title="RAG-чат"
+        description="Многоходовый диалог по базе знаний: история и «память задачи» переживают перезагрузку."
+      />
 
       <Card label="new chat">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 text-sm">
-            <span className={LABEL_TAG}>Заголовок (опц.)</span>
+          <Field id="rag-chat-title" label="Заголовок (опц.)" className="min-w-0 flex-1">
             <input
-              className={`mt-1 w-full ${INPUT}`}
+              className={`w-full ${INPUT_CLASS}`}
               placeholder="untitled"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={creating}
             />
-          </label>
+          </Field>
           <Button variant="primary" onClick={() => void create()} disabled={creating}>
             {creating ? 'создаю…' : 'Создать и открыть'}
           </Button>
@@ -92,7 +87,9 @@ export default function RagChatPickerPage() {
       </Card>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       <section>
@@ -100,21 +97,23 @@ export default function RagChatPickerPage() {
         {chats === null ? (
           <p className="text-sm text-dim">Загрузка…</p>
         ) : chats.length === 0 ? (
-          <p className="text-sm text-dim">Нет чатов. Создайте первый выше.</p>
+          <EmptyState title="Нет чатов." hint="Создайте первый выше." />
         ) : (
           <ul className="space-y-2">
             {chats.map((c) => (
               <li key={c.id}>
                 <Link
                   href={`/rag/chat/${c.id}`}
-                  className="block rounded-md border border-line bg-surface p-3 text-sm transition-colors duration-150 hover:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                  className="block rounded-xl focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 >
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-xs text-dim">{c.id.slice(0, 8)}</span>
-                    <span className="font-mono text-xs text-dim">{c.msg_count} сообщений</span>
-                    <span className="font-mono text-xs text-dim">{c.updated_at}</span>
-                  </div>
-                  <div className="mt-1 truncate text-ink">{c.title}</div>
+                  <Card variant="interactive" arrow>
+                    <div className="flex flex-wrap items-center gap-2 font-mono text-xs text-dim">
+                      <span>{c.id.slice(0, 8)}</span>
+                      <span>{c.msg_count} сообщений</span>
+                      <span>{c.updated_at}</span>
+                    </div>
+                    <div className="mt-1 truncate font-medium text-ink">{c.title}</div>
+                  </Card>
                 </Link>
               </li>
             ))}

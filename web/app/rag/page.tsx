@@ -14,6 +14,9 @@ import type {
 import { useModelPrefDefault } from '../../lib/shared/use-model-pref';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
+import { EmptyState } from '../components/ui/EmptyState';
+import { INPUT_CLASS } from '../components/ui/Field';
+import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
 
 // P1 ограничивает стратегии fixed/structure (документация). 'telegram' добавим в P3
@@ -35,9 +38,6 @@ const STAGE_LABEL: Record<RagStageStep, string> = {
   guard: 'guard',
   llm: 'генерация',
 };
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function RagPage() {
   const [query, setQuery] = useState('');
@@ -148,16 +148,15 @@ export default function RagPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">RAG-запрос</h1>
-        <p className="mt-1 text-sm text-dim">
-          Вопрос по базе знаний с потоковым ответом и live-стадиями пайплайна.
-        </p>
-      </section>
+      <SectionHead
+        code="rag · query"
+        title="RAG-запрос"
+        description="Вопрос по базе знаний с потоковым ответом и live-стадиями пайплайна."
+      />
 
       <Card label="Вопрос">
         <textarea
-          className={`mt-1 w-full resize-y ${INPUT}`}
+          className={`mt-1 w-full resize-y ${INPUT_CLASS}`}
           rows={3}
           placeholder="Например: что такое RAG?"
           value={query}
@@ -167,9 +166,9 @@ export default function RagPage() {
 
         <div className="mt-3 flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Стратегия</span>
+            <span className="block text-xs font-medium text-dim">Стратегия</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as Strategy)}
               disabled={running}
@@ -180,9 +179,9 @@ export default function RagPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -193,9 +192,9 @@ export default function RagPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Чанков (k)</span>
+            <span className="block text-xs font-medium text-dim">Чанков (k)</span>
             <input
-              className={`mt-1 w-16 ${INPUT}`}
+              className={`mt-1 w-16 ${INPUT_CLASS}`}
               type="number"
               min={1}
               max={20}
@@ -258,9 +257,9 @@ export default function RagPage() {
       )}
 
       {error && (
-        <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
-          {error}
-        </section>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {answer && (
@@ -302,8 +301,9 @@ export default function RagPage() {
           )}
 
           {debug && (
-            <Card label="Отладка">
-              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <details className="rounded-md border border-line bg-surface p-3">
+              <summary className="cursor-pointer text-xs font-medium text-dim">Отладка</summary>
+              <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <dt className="text-dim">pool / filtered</dt>
                 <dd className="tabular-nums text-ink">
                   {debug.poolSize} / {debug.filteredSize}
@@ -321,13 +321,13 @@ export default function RagPage() {
                 <dt className="text-dim">guard</dt>
                 <dd className="text-ink">{debug.gaveUp ? 'сработал (не знаю)' : 'нет'}</dd>
               </dl>
-            </Card>
+            </details>
           )}
         </section>
       )}
 
       {!running && !answer && !error && stages.length === 0 && (
-        <p className="text-sm text-dim">Задайте вопрос и нажмите «Спросить».</p>
+        <EmptyState title="Задайте вопрос и нажмите «Спросить»." />
       )}
     </div>
   );

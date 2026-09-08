@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import { SectionLabel } from './SectionLabel';
 
 // SectionHead (ТЗ §5.3): единый паттерн заголовка страницы админки —
-// «// NN · label» (SectionLabel) + mono-h1 + description + actions slot.
+// eyebrow-лейбл (SectionLabel) + sans-h1 (человеческий голос, без caps) +
+// description + actions slot. mono остаётся только для данных.
 
 export function SectionHead({
   code,
@@ -19,7 +20,7 @@ export function SectionHead({
     <section className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         <SectionLabel>{code}</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">{title}</h1>
+        <h1 className="font-sans text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         {description ? (
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">{description}</p>
         ) : null}

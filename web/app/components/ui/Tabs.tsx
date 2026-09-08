@@ -34,7 +34,7 @@ export function Tabs({
             role="tab"
             aria-selected={selected}
             onClick={() => onChange(t.id)}
-            className={`rounded-sm px-3 py-1 font-mono text-xs uppercase tracking-wide transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
+            className={`rounded-sm px-3 py-1 font-sans text-xs font-medium transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
               selected ? 'bg-surface-2 text-accent' : 'text-dim hover:text-ink'
             }`}
           >

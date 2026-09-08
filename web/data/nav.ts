@@ -1,13 +1,30 @@
 // Группы навигации — единый источник для Header (app/components/Nav.tsx) и Footer
 // (app/components/Footer.tsx). 23 роута → 7 групп. Public-данные, без сервер-импортов.
+import type { ComponentType } from 'react';
+import {
+  IconCpu,
+  IconDatabase,
+  IconMessages,
+  IconPlug,
+  IconRss,
+  IconSparkles,
+  IconTelegram,
+} from '../app/components/ui/icons';
+
 export interface NavItem {
   href: string;
   label: string;
 }
 
-export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
+// icon — глиф группы для Sidebar/MobileNav (опционален; href/label/tag — контракт).
+export const navGroups: Array<{
+  tag: string;
+  icon?: ComponentType<{ className?: string }>;
+  items: NavItem[];
+}> = [
   {
     tag: 'core',
+    icon: IconSparkles,
     items: [
       { href: '/', label: 'Главная' },
       { href: '/dashboard', label: 'Dashboard' },
@@ -16,6 +33,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'rag',
+    icon: IconDatabase,
     items: [
       { href: '/rag', label: 'RAG' },
       { href: '/rag/chat', label: 'чат' },
@@ -26,6 +44,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'chat',
+    icon: IconMessages,
     items: [
       { href: '/chat', label: 'Chat' },
       { href: '/joker', label: 'Шутник' },
@@ -33,6 +52,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'tg',
+    icon: IconTelegram,
     items: [
       { href: '/tg/top', label: 'топ' },
       { href: '/tg/collect', label: 'collect' },
@@ -41,6 +61,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'blog',
+    icon: IconRss,
     items: [
       { href: '/blog/news', label: 'новости' },
       { href: '/blog/posts', label: 'посты' },
@@ -50,6 +71,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'mcp',
+    icon: IconPlug,
     items: [
       { href: '/mcp/tools', label: 'tools' },
       { href: '/mcp/call', label: 'call' },
@@ -58,6 +80,7 @@ export const navGroups: Array<{ tag: string; items: NavItem[] }> = [
   },
   {
     tag: 'sys',
+    icon: IconCpu,
     items: [
       { href: '/agent', label: 'агент' },
       { href: '/briefing', label: 'сводка' },

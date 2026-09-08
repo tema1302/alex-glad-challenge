@@ -15,6 +15,8 @@ import {
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { SectionHead } from '../../components/ui/SectionHead';
+import { SectionLabel } from '../../components/ui/SectionLabel';
 // Полный конвейер (feat): одна кнопка — scout SSE → news SSE → фаза 3 «ready to publish»
 // (клиентский чейнінг существующих роутов, новых endpoint'ов нет).
 import { FullPipelineRun } from './FullPipelineRun';
@@ -136,21 +138,21 @@ export default function PipelinePage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">{PIPELINE_INTRO.headline}</h1>
-        <p className="mt-1 text-sm text-dim">{PIPELINE_INTRO.text}</p>
-      </header>
+      {/* Прогресс-лента стадий ниже и есть описание страницы — текстового интро нет. */}
+      <SectionHead code="blog · живой автомат" title={PIPELINE_INTRO.headline} />
 
       {view.sandbox && (
-        <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-sm text-warn">
-          Демо-режим: вы управляете копией конвейера — прогресс не сохраняется, другие посетители
-          ваших шагов не видят. Войдя как админ, вы управляете боевым состоянием.
-        </p>
+        <Card tone="warn">
+          <p className="text-sm text-warn">
+            Демо-режим: вы управляете копией конвейера — прогресс не сохраняется, другие посетители
+            ваших шагов не видят. Войдя как админ, вы управляете боевым состоянием.
+          </p>
+        </Card>
       )}
 
       <Card>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          <span className="text-xs uppercase text-dim">Стадия</span>
+          <span className="text-xs font-medium text-dim">Стадия</span>
           <strong className="text-base text-ink">{view.labels[view.stage]}</strong>
           <span className="text-xs text-dim">
             code: <code className="font-mono text-dim">{view.stage}</code>
@@ -188,26 +190,29 @@ export default function PipelinePage() {
         </ol>
       </Card>
 
-      {/* Карта шага под текущей стадией: человеческое «что делает агент» + вход → выход */}
-      <Card label="что происходит на этом шаге">
-        <p className="text-sm text-ink">{PIPELINE_STAGE_EXPLAINER[view.stage].what}</p>
+      {/* Справочник шага (что делает агент, вход → выход) — свёрнут по умолчанию. */}
+      <details className="rounded-xl border border-line bg-surface p-4 shadow-panel">
+        <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+          Что происходит на этом шаге: {view.labels[view.stage]}
+        </summary>
+        <p className="mt-2 text-sm text-ink">{PIPELINE_STAGE_EXPLAINER[view.stage].what}</p>
         <ul className="mt-2 space-y-1 text-sm text-dim">
           <li>
-            <span className="font-mono text-xs uppercase tracking-wider text-dim">вход: </span>
+            <span className="font-medium text-dim">вход: </span>
             {PIPELINE_STAGE_EXPLAINER[view.stage].inputExample}
           </li>
           <li>
-            <span className="font-mono text-xs uppercase tracking-wider text-dim">выход: </span>
+            <span className="font-medium text-dim">выход: </span>
             {PIPELINE_STAGE_EXPLAINER[view.stage].outputExample}
           </li>
         </ul>
-      </Card>
+      </details>
 
       {/* Полный конвейер: одна кнопка — scout → news → финал (клиентский чейнінг SSE). */}
       <FullPipelineRun sandbox={view.sandbox === true} />
 
       <section>
-        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-dim">// Разрешённые переходы</h2>
+        <SectionLabel>Разрешённые переходы</SectionLabel>
         {view.allowed.length === 0 ? (
           <p className="text-sm text-dim">Из этой стадии нет переходов.</p>
         ) : (
@@ -236,33 +241,37 @@ export default function PipelinePage() {
       />
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-        </p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
+      {/* Журнал FSM — дебаг-инструмент, закрыт по умолчанию. */}
       <section>
-        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-dim">
-          // История переходов ({histAll.length})
-        </h2>
-        {histAll.length === 0 ? (
-          <p className="text-sm text-dim">Переходов ещё не было.</p>
-        ) : (
-          <ul className="space-y-1 text-xs">
-            {histAll
-              .slice()
-              .reverse()
-              .map((h, i) => (
-                <li key={i} className="font-mono text-dim">
-                  <span className="opacity-70">
-                    {new Date(h.timestamp).toLocaleTimeString()}
-                  </span>{' '}
-                  {h.step}
-                  {h.detail ? ` — ${h.detail}` : ''}
-                </li>
-              ))}
-          </ul>
-        )}
+        <SectionLabel>{`История переходов (${histAll.length})`}</SectionLabel>
+        <details className="rounded-xl border border-line bg-surface p-4 shadow-panel">
+          <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+            Журнал переходов
+          </summary>
+          {histAll.length === 0 ? (
+            <p className="mt-2 text-sm text-dim">Переходов ещё не было.</p>
+          ) : (
+            <ul className="mt-2 space-y-1 text-xs">
+              {histAll
+                .slice()
+                .reverse()
+                .map((h, i) => (
+                  <li key={i} className="font-mono text-dim">
+                    <span className="opacity-70">
+                      {new Date(h.timestamp).toLocaleTimeString()}
+                    </span>{' '}
+                    {h.step}
+                    {h.detail ? ` — ${h.detail}` : ''}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </details>
       </section>
     </div>
   );

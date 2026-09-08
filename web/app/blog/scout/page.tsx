@@ -8,6 +8,8 @@ import { useCallback, useRef, useState } from 'react';
 import type { SseBlogScoutEvent } from '../../../lib/shared/sse';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { SectionHead } from '../../components/ui/SectionHead';
+import { INPUT_CLASS } from '../../components/ui/Field';
 
 type Llm = 'local' | 'cloud';
 
@@ -25,9 +27,6 @@ interface AgentSummary {
   count: number;
   error: string | null;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function BlogScoutPage() {
   const [query, setQuery] = useState('');
@@ -131,20 +130,18 @@ export default function BlogScoutPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Scout (3 source-агента)</h1>
-        <p className="mt-1 text-sm text-dim">
-          RSS + Forum (+ TG по выбору) собирают темы параллельно, оркестратор (LLM) выбирает
-          финальный топ. Это этап&nbsp;1 пайплайна — без написания поста.
-        </p>
-      </section>
+      <SectionHead
+        code="blog · scout"
+        title="Scout (3 source-агенты)"
+        description="Этап 1 пайплайна: источники собирают темы параллельно, оркестратор выбирает финальный топ — без написания поста."
+      />
 
       <Card label="Параметры сбора">
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex-1 min-w-[200px] text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Запрос</span>
+            <span className="block text-xs font-medium text-dim">Запрос</span>
             <input
-              className={`mt-1 w-full ${INPUT}`}
+              className={`mt-1 w-full ${INPUT_CLASS}`}
               type="text"
               placeholder="самые горячие футбольные новости"
               value={query}
@@ -154,9 +151,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Часов</span>
+            <span className="block text-xs font-medium text-dim">Часов</span>
             <input
-              className={`mt-1 w-20 ${INPUT}`}
+              className={`mt-1 w-20 ${INPUT_CLASS}`}
               type="number"
               min={1}
               max={168}
@@ -167,9 +164,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Топ (topK)</span>
+            <span className="block text-xs font-medium text-dim">Топ (topK)</span>
             <input
-              className={`mt-1 w-16 ${INPUT}`}
+              className={`mt-1 w-16 ${INPUT_CLASS}`}
               type="number"
               min={1}
               max={10}
@@ -180,9 +177,9 @@ export default function BlogScoutPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -223,8 +220,8 @@ export default function BlogScoutPage() {
           </div>
         </div>
         <p className="mt-2 text-xs text-dim">
-          Источник TG требует настроенной MTProto-сессии — по умолчанию выключен. Запрос идёт
-          в RSS/Forum + LLM-оркестратор, может занять десятки секунд.
+          Источник TG требует настроенной MTProto-сессии и по умолчанию выключен; прогон ходит в
+          RSS/Forum + LLM.
         </p>
       </Card>
 

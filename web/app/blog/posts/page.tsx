@@ -15,7 +15,7 @@ import { Skeleton } from '../../components/ui/Skeleton';
 import { Tooltip } from '../../components/ui/Tooltip';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useToast } from '../../components/ui/Toast';
-import { IconExternal, IconTrash } from '../../components/ui/icons';
+import { IconChevronRight, IconExternal, IconTrash } from '../../components/ui/icons';
 
 interface PostItem {
   id: number;
@@ -50,7 +50,8 @@ function verdictLabel(v: string | null): { text: string; tone: 'ok' | 'warn' | '
   }
 }
 
-const TH = 'px-3 py-2 font-mono text-[11px] uppercase tracking-wider text-dim';
+// Шапка таблицы: sans medium (данные в ячейках остаются mono)
+const TH = 'px-3 py-2 text-xs font-medium text-dim';
 
 export default function BlogPostsPage() {
   const { toast } = useToast();
@@ -98,7 +99,7 @@ export default function BlogPostsPage() {
       <SectionHead
         code="posts · blog.sqlite"
         title="Посты блога"
-        description="Сохранённые посты: откройте карточку для правки и публикации в Telegram. Публикация — только из карточки поста."
+        description="Правка и публикация в Telegram — из карточки поста."
         actions={
           <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
             {loading ? 'загрузка…' : 'обновить'}
@@ -141,15 +142,17 @@ export default function BlogPostsPage() {
                 {posts.map((p) => {
                   const v = verdictLabel(p.verdict);
                   return (
-                    <tr key={p.id} className="border-b border-line transition-colors duration-fast last:border-0 hover:bg-surface-2">
+                    <tr key={p.id} className="group border-b border-line transition-colors duration-fast last:border-0 hover:bg-surface-2">
                       <td className="px-3 py-2 font-mono text-xs tabular-nums text-dim">
                         <Link href={`/blog/posts/${p.id}`} className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
                           #{p.id}
                         </Link>
                       </td>
-                      <td className="max-w-0 px-3 py-2 text-ink">
-                        <Link href={`/blog/posts/${p.id}`} className="block truncate hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
-                          {snippet(p.content)}
+                      <td className="max-w-0 px-3 py-2">
+                        <Link href={`/blog/posts/${p.id}`} className="flex items-center gap-1.5 text-ink transition-colors duration-fast hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                          <span className="min-w-0 flex-1 truncate">{snippet(p.content)}</span>
+                          {/* Аффорданс строки-ссылки: «увидел стрелку — можно нажать» */}
+                          <IconChevronRight className="h-3.5 w-3.5 shrink-0 text-accent transition-transform duration-fast group-hover:translate-x-0.5" />
                         </Link>
                       </td>
                       <td className="px-3 py-2">{v ? <Badge tone={v.tone}>{v.text}</Badge> : <span className="text-dim">—</span>}</td>
@@ -172,7 +175,7 @@ export default function BlogPostsPage() {
                             <Link
                               href={`/blog/posts/${p.id}`}
                               aria-label={`Открыть пост #${p.id}`}
-                              className="inline-flex min-h-[32px] w-8 items-center justify-center rounded-md border border-line-strong text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+                              className="inline-flex h-8 w-8 max-md:h-10 max-md:w-10 items-center justify-center rounded-md border border-line-strong font-medium text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                             >
                               <IconExternal />
                             </Link>
@@ -205,8 +208,9 @@ export default function BlogPostsPage() {
                       {p.tg ? statusBadge(p.tg.status === 'ok' ? 'published' : 'error') : statusBadge('draft')}
                     </span>
                   </div>
-                  <Link href={`/blog/posts/${p.id}`} className="mt-2 block text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
-                    {snippet(p.content, 180)}
+                  <Link href={`/blog/posts/${p.id}`} className="mt-2 flex items-start gap-1.5 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim">
+                    <span className="min-w-0 flex-1">{snippet(p.content, 180)}</span>
+                    <IconChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent" />
                   </Link>
                   <div className="mt-2 flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] tabular-nums text-dim">

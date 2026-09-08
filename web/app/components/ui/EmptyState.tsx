@@ -14,9 +14,9 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-line bg-surface/50 px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-line bg-surface/50 px-6 py-10 text-center">
       {icon ? <div aria-hidden="true" className="text-dim">{icon}</div> : null}
-      <p className="font-mono text-sm text-ink">{title}</p>
+      <p className="font-sans text-sm font-medium text-ink">{title}</p>
       {hint ? <p className="max-w-sm text-xs leading-relaxed text-dim">{hint}</p> : null}
       {action ? <div className="mt-2">{action}</div> : null}
     </div>

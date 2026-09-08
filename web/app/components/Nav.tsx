@@ -17,11 +17,11 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
       ? { provider: keys.activeProvider, model: keys.activeModel }
       : null;
   return (
-    <header className="sticky top-0 z-nav border-b border-line bg-bg/95 backdrop-blur">
-      <div className="flex h-12 items-center justify-between px-5">
+    <header className="sticky top-0 z-nav border-b border-line bg-surface/80 backdrop-blur">
+      <div className="flex h-14 items-center justify-between px-5">
         <div className="flex items-center gap-1">
           {isAdmin && <MobileNav />}
-          <Link href="/" className="font-mono text-sm font-semibold tracking-tight text-ink">
+          <Link href="/" className="font-sans text-sm font-semibold tracking-tight text-ink">
             Артемия Артель
             <span className="text-accent">·</span>
             <span className="text-dim">AI</span>

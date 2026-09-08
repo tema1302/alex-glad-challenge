@@ -45,9 +45,11 @@ export function MobileNav() {
               const hasActive = g.items.some(
                 (it) => pathname === it.href || pathname.startsWith(it.href + '/'),
               );
+              const Icon = g.icon;
               return (
                 <details key={g.tag} open={hasActive} className="group mb-3">
-                  <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-wider text-dim hover:text-ink">
+                  <summary className="flex cursor-pointer select-none items-center gap-2 font-sans text-xs font-semibold text-dim hover:text-ink">
+                    {Icon ? <Icon className="shrink-0" /> : null}
                     {g.tag}
                   </summary>
                   <div className="mt-1 flex flex-col">

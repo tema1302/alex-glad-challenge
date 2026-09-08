@@ -8,6 +8,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface AliasRow {
   name: string;
@@ -25,10 +28,6 @@ interface Catalog {
   aliases: AliasRow[];
   chats: DialogChatItem[];
 }
-
-const inputCls =
-  'mt-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent disabled:opacity-50';
-const labelTagCls = 'block font-mono text-xs uppercase tracking-wider text-dim';
 
 export default function RagChatsPage() {
   const [data, setData] = useState<Catalog | null>(null);
@@ -78,33 +77,33 @@ export default function RagChatsPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>rag · chats catalog</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Каталог чатов</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Кэш chatKey→title (из index-tg) и aliases для RAG-чата. Только чтение, offline.
-        </p>
-      </section>
+      <SectionHead
+        code="rag · chats"
+        title="Каталог чатов"
+        description="Кэш названий чатов и aliases для RAG-чата (только чтение)."
+      />
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {/* Add alias */}
       <Card label="add alias">
         <div className="flex flex-wrap items-end gap-3">
           <label className="text-sm">
-            <span className={labelTagCls}>Имя</span>
+            <span className="block text-xs font-medium text-dim">Имя</span>
             <input
-              className={`${inputCls} w-40`}
+              className={`mt-1 ${INPUT_CLASS} w-40`}
               value={name} onChange={(e) => setName(e.target.value)} disabled={busy}
               placeholder="news_ru"
             />
           </label>
           <label className="flex-1 text-sm">
-            <span className={labelTagCls}>chatKey</span>
+            <span className="block text-xs font-medium text-dim">chatKey</span>
             <input
-              className={`${inputCls} w-full font-mono text-xs`}
+              className={`mt-1 ${INPUT_CLASS} w-full font-mono text-xs`}
               list="chatkey-dl"
               value={chatKey} onChange={(e) => setChatKey(e.target.value)} disabled={busy}
               placeholder="-1001234567890"
@@ -114,9 +113,9 @@ export default function RagChatsPage() {
             </datalist>
           </label>
           <label className="text-sm">
-            <span className={labelTagCls}>topicId (опц.)</span>
+            <span className="block text-xs font-medium text-dim">topicId (опц.)</span>
             <input
-              className={`${inputCls} w-24`}
+              className={`mt-1 ${INPUT_CLASS} w-24`}
               value={topicId} onChange={(e) => setTopicId(e.target.value)} disabled={busy}
             />
           </label>
@@ -136,16 +135,16 @@ export default function RagChatsPage() {
         {!data ? (
           <p className="text-sm text-dim">Загрузка…</p>
         ) : data.aliases.length === 0 ? (
-          <p className="text-sm text-dim">Нет aliases.</p>
+          <EmptyState title="Нет aliases." />
         ) : (
           <div className="overflow-x-auto rounded-md border border-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">name</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">chatKey</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">topic</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">name</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">chatKey</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">topic</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">title</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -179,16 +178,17 @@ export default function RagChatsPage() {
         {!data ? (
           <p className="text-sm text-dim">Загрузка…</p>
         ) : titleEntries.length === 0 ? (
-          <p className="text-sm text-dim">
-            Кэш пуст. Наполняется при индексации TG (<code className="font-mono text-[12px] text-ink">rag index-tg</code>).
-          </p>
+          <EmptyState
+            title="Кэш пуст."
+            hint={<>Наполняется при индексации TG (<code className="font-mono text-[12px] text-ink">rag index-tg</code>).</>}
+          />
         ) : (
           <div className="overflow-x-auto rounded-md border border-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">chatKey</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">chatKey</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">title</th>
                 </tr>
               </thead>
               <tbody>
@@ -210,16 +210,19 @@ export default function RagChatsPage() {
         {!data ? (
           <p className="text-sm text-dim">Загрузка…</p>
         ) : data.chats.length === 0 ? (
-          <p className="text-sm text-dim">Нет чатов. Создайте на <a href="/rag/chat" className="text-accent hover:underline">/rag/chat</a>.</p>
+          <EmptyState
+            title="Нет чатов."
+            hint={<>Создайте на <a href="/rag/chat" className="text-accent hover:underline">/rag/chat</a>.</>}
+          />
         ) : (
           <div className="overflow-x-auto rounded-md border border-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">id</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">title</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">messages</th>
-                  <th className="px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim">updated</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">id</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">title</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">messages</th>
+                  <th className="px-3 py-2 text-xs font-medium text-dim">updated</th>
                 </tr>
               </thead>
               <tbody>

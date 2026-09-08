@@ -20,15 +20,17 @@ import { SESSION_COOKIE, isValidSession } from './lib/auth';
 
 export const runtime = 'nodejs';
 
-// Публичные пути: точное совпадение pathname (префиксы не открываем). /jira и его API
-// открыты одновременно — иначе гость получает 401 от формы генератора.
+// Публичные пути: точное совпадение pathname (префиксы не открываем). /jira, /demo и их
+// API открыты одновременно — иначе гость получает 401/редирект вместо формы.
 const PUBLIC_PATHS = new Set([
   '/',
   '/login',
   '/harness',
   '/jira',
+  '/demo',
   '/blog/pipeline',
   '/api/jira/generate',
+  '/api/demo/rag',
   '/api/blog/pipeline',
   '/api/auth/login',
   '/api/auth/logout',

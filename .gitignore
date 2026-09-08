@@ -43,3 +43,6 @@ Thumbs.db
 # Playwright артефакты
 web/test-results/
 web/playwright-report/
+
+# Артефакты оркестратора (CLAUDE.md)
+swarm-report/

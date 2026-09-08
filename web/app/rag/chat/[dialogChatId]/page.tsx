@@ -11,6 +11,8 @@ import type { SseEvent, SseSource, SseQuote, SseDebug, RagStageStep } from '../.
 import { useModelPrefDefault } from '../../../../lib/shared/use-model-pref';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { INPUT_CLASS } from '../../../components/ui/Field';
+import { SectionHead } from '../../../components/ui/SectionHead';
 
 type Strategy = 'fixed' | 'structure' | 'telegram';
 type Llm = 'local' | 'cloud';
@@ -36,9 +38,6 @@ const STAGE_LABEL: Record<RagStageStep, string> = {
   guard: 'guard',
   llm: 'генерация',
 };
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function RagChatSessionPage() {
   const params = useParams<{ dialogChatId: string }>();
@@ -266,21 +265,20 @@ export default function RagChatSessionPage() {
 
   return (
     <div className="space-y-4">
-      <section className="flex items-center justify-between">
-        <div>
-          <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">{title || 'RAG-чат'}</h1>
-          <p className="mt-1 font-mono text-xs text-dim">{dialogChatId}</p>
-        </div>
-        <Link href="/rag/chat" className="text-sm text-accent hover:underline">чаты</Link>
-      </section>
+      <SectionHead
+        code="rag · chat"
+        title={title || 'RAG-чат'}
+        description={<span className="font-mono text-xs">{dialogChatId}</span>}
+        actions={<Link href="/rag/chat" className="text-sm text-accent hover:underline">чаты</Link>}
+      />
 
       {/* Панель управления */}
       <Card label="Параметры">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Стратегия</span>
+            <span className="block text-xs font-medium text-dim">Стратегия</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as Strategy)}
               disabled={running}
@@ -289,9 +287,9 @@ export default function RagChatSessionPage() {
             </select>
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -301,9 +299,9 @@ export default function RagChatSessionPage() {
             </select>
           </label>
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Чанков (k)</span>
+            <span className="block text-xs font-medium text-dim">Чанков (k)</span>
             <input
-              className={`mt-1 w-16 ${INPUT}`}
+              className={`mt-1 w-16 ${INPUT_CLASS}`}
               type="number" min={1} max={20}
               value={k}
               onChange={(e) => setK(Number(e.target.value) || 4)}
@@ -330,9 +328,9 @@ export default function RagChatSessionPage() {
         {strategy === 'telegram' && (
           <div className="mt-3 flex flex-wrap items-end gap-4">
             <label className="flex-1 text-sm">
-              <span className="block text-xs uppercase tracking-wide text-dim">chatKey (-100… / @username)</span>
+              <span className="block text-xs font-medium text-dim">chatKey (-100… / @username)</span>
               <input
-                className={`mt-1 w-full font-mono text-xs ${INPUT}`}
+                className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
                 value={chatKey}
                 onChange={(e) => setChatKey(e.target.value)}
                 disabled={running}
@@ -340,9 +338,9 @@ export default function RagChatSessionPage() {
               />
             </label>
             <label className="text-sm">
-              <span className="block text-xs uppercase tracking-wide text-dim">topicId (опц.)</span>
+              <span className="block text-xs font-medium text-dim">topicId (опц.)</span>
               <input
-                className={`mt-1 w-28 ${INPUT}`}
+                className={`mt-1 w-28 ${INPUT_CLASS}`}
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
                 disabled={running}
@@ -395,7 +393,7 @@ export default function RagChatSessionPage() {
           )}
           {sources.length > 0 && (
             <details className="rounded-md border border-line bg-surface p-3">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-dim">Источники ({sources.length})</summary>
+              <summary className="cursor-pointer text-xs font-medium text-dim">Источники ({sources.length})</summary>
               <ul className="mt-2 space-y-1 text-xs">
                 {sources.map((s, i) => (
                   <li key={s.chunkId} className="truncate">
@@ -410,7 +408,7 @@ export default function RagChatSessionPage() {
           )}
           {quotes.length > 0 && (
             <details className="rounded-md border border-line bg-surface p-3">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-dim">Цитаты</summary>
+              <summary className="cursor-pointer text-xs font-medium text-dim">Цитаты</summary>
               <ul className="mt-2 space-y-2 text-xs">
                 {quotes.map((q, i) => (
                   <li key={`${q.chunkId}-${i}`}>
@@ -423,7 +421,7 @@ export default function RagChatSessionPage() {
           )}
           {debug && (
             <details className="rounded-md border border-line bg-surface p-3">
-              <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-dim">Отладка</summary>
+              <summary className="cursor-pointer text-xs font-medium text-dim">Отладка</summary>
               <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                 <dt className="text-dim">pool / filtered</dt><dd className="tabular-nums text-ink">{debug.poolSize} / {debug.filteredSize}</dd>
                 <dt className="text-dim">threshold</dt><dd className="tabular-nums text-ink">{debug.threshold}</dd>
@@ -436,13 +434,15 @@ export default function RagChatSessionPage() {
       )}
 
       {error && (
-        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {/* Ввод */}
       <section className="flex gap-2">
         <textarea
-          className={`flex-1 resize-none ${INPUT}`}
+          className={`flex-1 resize-none ${INPUT_CLASS}`}
           rows={2}
           placeholder="Вопрос по базе… (/task, /task-clear — память задачи; /norag — без RAG; Enter — отправить)"
           value={input}

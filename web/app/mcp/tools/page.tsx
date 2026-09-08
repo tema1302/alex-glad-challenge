@@ -8,6 +8,8 @@ import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { StatusDot } from '../../components/ui/StatusDot';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface McpTool {
   name: string;
@@ -41,14 +43,11 @@ export default function McpToolsPage() {
 
   return (
     <div className="space-y-8">
-      <section>
-        <SectionLabel>mcp · tools</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">MCP-инструменты</h1>
-        <p className="mt-2 max-w-xl text-sm leading-relaxed text-dim">
-          Каталог инструментов MCP-сервера (<code className="font-mono text-[12px] text-ink">MCP_SERVER_URL</code>).
-          Вызов — на странице <a href="/mcp/call" className="text-accent hover:underline">/mcp/call</a>.
-        </p>
-      </section>
+      <SectionHead
+        code="mcp · tools"
+        title="MCP-инструменты"
+        description={<>Каталог инструментов MCP-сервера; вызов — на странице <a href="/mcp/call" className="text-accent hover:underline">/mcp/call</a>.</>}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="ghost" onClick={load} disabled={loading}>
@@ -60,17 +59,20 @@ export default function McpToolsPage() {
       </div>
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">{error}</p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       <section>
         <SectionLabel>{`tools${tools.length > 0 ? ` · ${tools.length}` : ''}`}</SectionLabel>
         {tools.length === 0 ? (
-          <p className="text-sm text-dim">
-            {loading ? 'Загрузка…' : configured === false
+          <EmptyState
+            title="Нет инструментов."
+            hint={loading ? 'Загрузка…' : configured === false
               ? 'MCP-сервер не настроен. Задайте MCP_SERVER_URL в .env.'
-              : 'Нет инструментов (или сервер недоступен).'}
-          </p>
+              : 'Сервер недоступен или не отдаёт инструменты.'}
+          />
         ) : (
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             {tools.map((t) => (
@@ -81,7 +83,7 @@ export default function McpToolsPage() {
                 )}
                 {t.inputSchema && Object.keys(t.inputSchema).length > 0 && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer font-mono text-xs uppercase tracking-wider text-dim">
+                    <summary className="cursor-pointer text-xs font-medium text-dim">
                       inputSchema
                     </summary>
                     <pre className="mt-2 overflow-x-auto rounded bg-bg p-2 font-mono text-xs text-dim">

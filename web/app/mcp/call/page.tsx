@@ -7,14 +7,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionLabel } from '../../components/ui/SectionLabel';
+import { INPUT_CLASS } from '../../components/ui/Field';
+import { SectionHead } from '../../components/ui/SectionHead';
 
 interface McpTool {
   name: string;
   description?: string;
 }
-
-const INPUT =
-  'w-full rounded border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function McpCallPage() {
   const [tools, setTools] = useState<McpTool[]>([]);
@@ -80,17 +79,16 @@ export default function McpCallPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Вызов MCP-инструмента</h1>
-        <p className="mt-1 text-sm text-dim">
-          Generic-вызов инструмента на MCP-сервере. Аргументы — JSON-объект, идут как данные.
-        </p>
-      </section>
+      <SectionHead
+        code="mcp · call"
+        title="Вызов MCP-инструмента"
+        description="Вызов инструмента на MCP-сервере; аргументы передаются JSON-объектом."
+      />
 
       <Card label="Инструмент">
         {tools.length > 0 ? (
           <select
-            className={`${INPUT} font-mono`}
+            className={`${INPUT_CLASS} w-full font-mono`}
             value={tool}
             onChange={(e) => setTool(e.target.value)}
             disabled={submitting}
@@ -105,9 +103,9 @@ export default function McpCallPage() {
           </p>
         )}
 
-        <div className="mt-3 text-xs uppercase tracking-wide text-dim">Аргументы (JSON-объект)</div>
+        <div className="mt-3 text-xs font-medium text-dim">Аргументы (JSON-объект)</div>
         <textarea
-          className={`mt-1 h-32 font-mono text-xs ${INPUT}`}
+          className={`mt-1 h-32 w-full font-mono text-xs ${INPUT_CLASS}`}
           value={argsText}
           onChange={(e) => setArgsText(e.target.value)}
           disabled={submitting}
@@ -121,7 +119,11 @@ export default function McpCallPage() {
         </div>
       </Card>
 
-      {error && <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">{error}</p>}
+      {error && (
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
+      )}
 
       {result !== null && (
         <section>

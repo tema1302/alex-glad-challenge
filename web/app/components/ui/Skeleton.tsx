@@ -11,7 +11,7 @@ export function Skeleton({
   return (
     <div
       aria-hidden="true"
-      className={`animate-pulse rounded-sm bg-surface-2 ${variant === 'line' ? 'h-4 w-full' : 'h-24 w-full'} ${className}`}
+      className={`animate-pulse rounded-md bg-surface-2 ${variant === 'line' ? 'h-4 w-full' : 'h-24 w-full'} ${className}`}
     />
   );
 }

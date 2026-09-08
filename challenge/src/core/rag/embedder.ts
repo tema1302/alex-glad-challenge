@@ -1,8 +1,10 @@
 // Локальный embedding-провайдер.
 // POST на OpenAI-совместимый эндпоинт /embeddings (Ollama /v1, LM Studio, vLLM и т.п.).
-// Только локальный baseURL из .env — внешний сеть-запрос запрещён (день 21+).
+// Только локальный baseURL из .env (день 21+); сеть — через netFetch (прокси-first
+// с фолбэком на прямое подключение), как весь репо.
 
 import { loadEnvUpward, getEmbedConfig } from '../env.js';
+import { netFetch } from '../net.js';
 import type { Embedder } from './types.js';
 
 loadEnvUpward();
@@ -36,10 +38,12 @@ export class HttpEmbedder implements Embedder {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (this.config.apiKey) headers.Authorization = `Bearer ${this.config.apiKey}`;
 
-    const resp = await fetch(url, {
+    const resp = await netFetch(url, {
       method: 'POST',
       headers,
       body: JSON.stringify({ model: this.config.model, input: texts }),
+      label: 'сервис эмбеддингов',
+      timeoutMs: 60_000, // батч эмбеддингов бывает дольше дефолтных 15с
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');

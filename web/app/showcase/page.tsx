@@ -6,6 +6,7 @@
 // architecture-layers → нумерованный список mono-labels.
 import { architectureLayers, capabilitySections, stack, webChokepoint } from '../../data/showcase';
 import { Card } from '../components/ui/Card';
+import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
 
 export const metadata = {
@@ -15,15 +16,11 @@ export const metadata = {
 export default function ShowcasePage() {
   return (
     <div className="space-y-10">
-      <section>
-        <SectionLabel>showcase · capabilities</SectionLabel>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Витрина возможностей</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">
-          Что умеет система — по модулям. Это функциональный обзор, а не
-          хронология разработки. Многие поверхности доступны сейчас только в
-          CLI/REPL; web-обвязка разделов появится в следующих фазах (P1+).
-        </p>
-      </section>
+      <SectionHead
+        code="core · showcase"
+        title="Витрина возможностей"
+        description="Что умеет система — по модулям: функциональный обзор, а не хронология разработки."
+      />
 
       <section>
         <SectionLabel>возможности</SectionLabel>

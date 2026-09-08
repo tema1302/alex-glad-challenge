@@ -7,7 +7,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SseEvent, SseUsage } from '../../lib/shared/sse';
 import { Button } from '../components/ui/Button';
-import { SectionLabel } from '../components/ui/SectionLabel';
+import { Card } from '../components/ui/Card';
+import { INPUT_CLASS } from '../components/ui/Field';
+import { SectionHead } from '../components/ui/SectionHead';
 import { StatusDot } from '../components/ui/StatusDot';
 import { FactLoader } from '../components/FactLoader';
 
@@ -18,9 +20,6 @@ interface SessionMessage {
   content: string;
   ts: string;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 const TEMP_MIN = 0.3;
 const TEMP_MAX = 1.2;
@@ -225,25 +224,21 @@ export default function JokerPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       {/* Хедер */}
-      <section className="flex items-start justify-between gap-4">
-        <div>
-          <SectionLabel>agent</SectionLabel>
-          <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Кино-Шутник</h1>
-          <p className="mt-1 text-sm text-dim">
-            Локальная LLM обыгрывает культовые сцены. Стрим + контекст сцены. Переживает reload.
-          </p>
-        </div>
-        <StatusDot status="ok" label="local · qwen3.5" />
-      </section>
+      <SectionHead
+        code="chat · joker"
+        title="Кино-Шутник"
+        description="Локальная LLM обыгрывает культовые сцены кино."
+        actions={<StatusDot status="ok" label="local · qwen3.5" />}
+      />
 
       {/* Параметры (свёрнуты): слайдер температуры */}
       <details className="rounded-md border border-line bg-surface">
-        <summary className="cursor-pointer select-none px-3 py-2 font-mono text-xs uppercase tracking-wider text-dim hover:text-ink">
+        <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-dim hover:text-ink">
           параметры
         </summary>
         <div className="border-t border-line px-3 py-3">
           <div className="flex items-baseline justify-between">
-            <span className="text-xs uppercase tracking-wide text-dim">Температура</span>
+            <span className="text-xs font-medium text-dim">Температура</span>
             <span className="font-mono text-xs text-ink tabular-nums">{temperature.toFixed(2)}</span>
           </div>
           <input
@@ -313,19 +308,21 @@ export default function JokerPage() {
       </section>
 
       {error && (
-        <p className="rounded border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-          {errorHint?.kind === 'refused' && (
-            <span className="mt-1 block text-dim">
-              Ollama не отвечает? Запустите <code className="font-mono text-err">ollama serve</code> на 127.0.0.1:11434 и повторите.
-            </span>
-          )}
-          {errorHint?.kind === 'timeout' && (
-            <span className="mt-1 block text-dim">
-              Превысили время ожидания ({JOKER_TIMEOUT_SEC}с). Ollama долго отвечает — попробуйте ещё раз.
-            </span>
-          )}
-        </p>
+        <Card tone="danger">
+          <p className="text-sm text-err">
+            {error}
+            {errorHint?.kind === 'refused' && (
+              <span className="mt-1 block text-dim">
+                Ollama не отвечает? Запустите <code className="font-mono text-err">ollama serve</code> на 127.0.0.1:11434 и повторите.
+              </span>
+            )}
+            {errorHint?.kind === 'timeout' && (
+              <span className="mt-1 block text-dim">
+                Превысили время ожидания ({JOKER_TIMEOUT_SEC}с). Ollama долго отвечает — попробуйте ещё раз.
+              </span>
+            )}
+          </p>
+        </Card>
       )}
 
       {/* Ввод */}
@@ -335,7 +332,7 @@ export default function JokerPage() {
       >
         <textarea
           ref={inputRef}
-          className={`flex-1 resize-none ${INPUT}`}
+          className={`flex-1 resize-none ${INPUT_CLASS}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           aria-label="Сообщение кино-шутнику"

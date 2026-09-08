@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { StatusDot } from '../components/ui/StatusDot';
+import { SectionHead } from '../components/ui/SectionHead';
 
 interface SettingsView {
   model: string | null;
@@ -61,17 +62,16 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Настройки</h1>
-        <p className="mt-1 text-sm text-dim">
-          Конфигурация сервера (только чтение) и preference. Ключи не отображаются.
-        </p>
-      </section>
+      <SectionHead
+        code="sys · settings"
+        title="Настройки"
+        description="Конфигурация сервера и preference (ключи не отображаются)."
+      />
 
       {error && (
-        <p className="rounded-md border border-err/40 bg-err/10 p-2 text-sm text-err">
-          {error}
-        </p>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {data && (
@@ -108,22 +108,27 @@ export default function SettingsPage() {
               <dd className="flex items-center gap-2">
                 <StatusDot status={data.mcpUrl.configured ? 'ok' : 'warn'} label="" />
                 {data.mcpUrl.host && (
-                  <span className="font-mono text-xs text-dim" title="read-only (env)">
-                    {data.mcpUrl.host} 🔒
+                  <span
+                    className="font-mono text-xs text-dim"
+                    title="read-only: MCP_URL меняется только через .env (защита от SSRF)"
+                  >
+                    {data.mcpUrl.host}
                   </span>
                 )}
               </dd>
             </div>
           </dl>
-          <p className="mt-2 text-xs text-dim">
-            MCP_URL меняется только через .env (read-only в UI — защита от SSRF).
-          </p>
         </Card>
       )}
 
       <Card label="Preference">
         <fieldset className="text-sm">
-          <span className="block text-xs uppercase tracking-wide text-dim">Модель по умолчанию</span>
+          <span
+            className="block text-xs font-medium text-dim"
+            title="Применяется как начальное значение LLM-селектора на /rag, /chat и /rag/chat (явный выбор в форме имеет приоритет)"
+          >
+            Модель по умолчанию
+          </span>
           <div className="mt-1 flex gap-3">
             {(['cloud', 'local'] as const).map((v) => (
               <label key={v} className="flex items-center gap-1 text-ink">
@@ -139,10 +144,6 @@ export default function SettingsPage() {
             ))}
             {!modelPref && <span className="text-xs text-dim">(не задан)</span>}
           </div>
-          <p className="mt-1 text-xs text-dim">
-            Применяется как начальное значение LLM-селектора на /rag, /chat и /rag/chat
-            (явный выбор в форме имеет приоритет).
-          </p>
         </fieldset>
       </Card>
     </div>

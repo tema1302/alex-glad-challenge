@@ -8,6 +8,9 @@ import Link from 'next/link';
 import type { SseBlogNewsEvent } from '../../../lib/shared/sse';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { SectionHead } from '../../components/ui/SectionHead';
+import { INPUT_CLASS } from '../../components/ui/Field';
 
 type Llm = 'local' | 'cloud';
 
@@ -20,9 +23,6 @@ interface TopNewsItem {
   score: number;
   why: string;
 }
-
-const INPUT =
-  'rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent';
 
 export default function BlogNewsPage() {
   const [hours, setHours] = useState(24);
@@ -124,20 +124,15 @@ export default function BlogNewsPage() {
 
   return (
     <div className="space-y-6">
-      <section>
-        <h1 className="font-mono text-2xl font-semibold uppercase tracking-tight text-ink">Блог-pipeline</h1>
-        <p className="mt-1 text-sm text-dim">
-          RSS → агент 1 (топ) → агент 2 (пост) → агент 3 (фактчекинг). Пост сохраняется в{' '}
-          <code className="rounded bg-surface-2 px-1 text-xs text-dim">blog.sqlite</code>.
-        </p>
-      </section>
+      {/* Описание (RSS → агенты → пост) — дубль /blog/pipeline, не дублируем. */}
+      <SectionHead code="blog · news" title="Блог-pipeline" />
 
       <Card label="Параметры запуска">
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Часов (hours)</span>
+            <span className="block text-xs font-medium text-dim">Часов (hours)</span>
             <input
-              className={`mt-1 w-20 ${INPUT}`}
+              className={`mt-1 w-20 ${INPUT_CLASS}`}
               type="number"
               min={1}
               max={168}
@@ -148,9 +143,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Топ (top)</span>
+            <span className="block text-xs font-medium text-dim">Топ (top)</span>
             <input
-              className={`mt-1 w-16 ${INPUT}`}
+              className={`mt-1 w-16 ${INPUT_CLASS}`}
               type="number"
               min={1}
               max={50}
@@ -161,9 +156,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">Пост про (index)</span>
+            <span className="block text-xs font-medium text-dim">Пост про (index)</span>
             <input
-              className={`mt-1 w-16 ${INPUT}`}
+              className={`mt-1 w-16 ${INPUT_CLASS}`}
               type="number"
               min={0}
               value={forIndex}
@@ -173,9 +168,9 @@ export default function BlogNewsPage() {
           </label>
 
           <label className="text-sm">
-            <span className="block text-xs uppercase tracking-wide text-dim">LLM</span>
+            <span className="block text-xs font-medium text-dim">LLM</span>
             <select
-              className={`mt-1 ${INPUT}`}
+              className={`mt-1 ${INPUT_CLASS}`}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -195,7 +190,7 @@ export default function BlogNewsPage() {
           </div>
         </div>
         <p className="mt-2 text-xs text-dim">
-          Pipeline мутирует blog.sqlite и ходит в RSS/LLM — запуск может занять до минуты.
+          Реальный прогон: пишет в blog.sqlite, ходит в RSS/LLM — может занять до минуты.
         </p>
       </Card>
 
@@ -212,15 +207,15 @@ export default function BlogNewsPage() {
       )}
 
       {error && (
-        <section className="rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
-          {error}
-        </section>
+        <Card tone="danger">
+          <p className="text-sm text-err">{error}</p>
+        </Card>
       )}
 
       {notice && !error && (
-        <section className="rounded-md border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
-          {notice}
-        </section>
+        <Card tone="warn">
+          <p className="text-sm text-warn">{notice}</p>
+        </Card>
       )}
 
       {topNews.length > 0 && (
@@ -256,10 +251,15 @@ export default function BlogNewsPage() {
       )}
 
       {!running && !post && !error && topNews.length === 0 && (
-        <p className="text-sm text-dim">
-          Настройте параметры и нажмите «Запустить». Пост появится здесь и в{' '}
-          <Link href="/blog/posts" className="text-accent hover:underline">/blog/posts</Link>.
-        </p>
+        <EmptyState
+          title="Пока пусто"
+          hint={
+            <>
+              Настройте параметры и нажмите «Запустить». Пост появится здесь и в{' '}
+              <Link href="/blog/posts" className="text-accent hover:underline">/blog/posts</Link>.
+            </>
+          }
+        />
       )}
     </div>
   );
