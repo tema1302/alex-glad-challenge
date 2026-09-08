@@ -19,10 +19,11 @@ import { INPUT_CLASS } from '../components/ui/Field';
 import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
 
-// P1 ограничивает стратегии fixed/structure (документация). 'telegram' добавим в P3
-// вместе с chat/topic-фильтром — без фильтра партиция шумная. server-side zod всё ещё
-// принимает 'telegram', но UI P1 его не暴露 (и literal "telegram" не попадает в client bundle).
-type Strategy = 'fixed' | 'structure';
+// P1 ограничивал стратегии fixed/structure (документация). 'notes' — партиция заметок
+// владельца из «Базы знаний» /rag/ingest: добавляются там, ищутся селектом ниже.
+// 'telegram' в этот селект НЕ добавляем осознанно (решение P1): без chat/topic-фильтра
+// партиция шумная — telegram ищите в /rag/chat. server-side zod (forms.ts, П-2) валидирует.
+type Strategy = 'fixed' | 'structure' | 'notes';
 type Llm = 'local' | 'cloud';
 
 interface StageItem {
@@ -175,6 +176,7 @@ export default function RagPage() {
             >
               <option value="fixed">fixed</option>
               <option value="structure">structure</option>
+              <option value="notes">заметки (база знаний)</option>
             </select>
           </label>
 

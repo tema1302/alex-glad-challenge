@@ -35,6 +35,7 @@ export const navGroups: Array<{
     tag: 'rag',
     icon: IconDatabase,
     items: [
+      { href: '/rag/ingest', label: 'база знаний' },
       { href: '/rag', label: 'RAG' },
       { href: '/rag/chat', label: 'чат' },
       { href: '/rag/chats', label: 'каталог' },

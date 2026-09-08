@@ -5,7 +5,9 @@ import { z } from 'zod';
 
 export const ragQuerySchema = z.object({
   query: z.string().trim().min(1, 'Введите вопрос').max(2000, 'Слишком длинный запрос'),
-  strategy: z.enum(['fixed', 'structure', 'telegram']).optional(),
+  // 'notes' — партиция заметок владельца (/rag/ingest): Retriever принимает её
+  // как ChunkingStrategy, ChatSourceFilter остаётся только для 'telegram'.
+  strategy: z.enum(['fixed', 'structure', 'telegram', 'notes']).optional(),
   k: z.coerce.number().int().min(1).max(20).optional(),
   llm: z.enum(['local', 'cloud']).optional(),
   noRag: z.boolean().optional(),
@@ -107,7 +109,8 @@ export type RagChatCreateInput = z.infer<typeof ragChatCreateSchema>;
 // strategy='telegram' включает ChatSourceFilter (нужен chatKey; topicId опц.).
 export const ragChatSendSchema = z.object({
   text: z.string().trim().min(1, 'Введите сообщение').max(8000, 'Слишком длинное сообщение'),
-  strategy: z.enum(['fixed', 'structure', 'telegram']).optional(),
+  // 'notes' — партиция заметок владельца (/rag/ingest), поиск по базе знаний.
+  strategy: z.enum(['fixed', 'structure', 'telegram', 'notes']).optional(),
   k: z.coerce.number().int().min(1).max(20).optional(),
   llm: z.enum(['local', 'cloud']).optional(),
   chatKey: z.string().trim().max(200).optional(),
@@ -335,3 +338,39 @@ export const demoRagSchema = z.object({
     .max(300, 'Слишком длинный вопрос — максимум 300 символов'),
 });
 export type DemoRagInput = z.infer<typeof demoRagSchema>;
+
+// --- rag-ingest: «База знаний» /rag/ingest (партиция 'notes') ---
+
+// POST /api/rag/notes — заметка владельца (JSON-ветка). Границы по замороженному
+// контракту (план §1); clean() применяется на сервере ПОВЕРХ схемы (tainted).
+export const noteIngestSchema = z.object({
+  title: z.string().trim().min(1, 'Введите заголовок заметки').max(120, 'Заголовок — до 120 символов'),
+  text: z.string().trim().min(1, 'Введите текст заметки').max(20000, 'Текст — до 20000 символов'),
+});
+export type NoteIngestInput = z.infer<typeof noteIngestSchema>;
+
+// DELETE /api/rag/notes — удалить заметку по source. Сервер ДО SQL дополнительно
+// проверяет префикс note:// (deleteBySource — exact-match по (strategy, source),
+// без префикс-чека можно удалить чужую партицию по точному source).
+export const noteDeleteSchema = z.object({
+  source: z.string().trim().min(1, 'source обязателен').max(200),
+});
+export type NoteDeleteInput = z.infer<typeof noteDeleteSchema>;
+
+// Файл-ветка POST /api/rag/notes (multipart): поле file — чистый текст ≤ 512 КБ.
+// Константы + чистая функция — единый источник текстов ошибок для клиентской
+// превалидации (П-3) и сервера (роут); без server-only — импортируется клиентом.
+export const NOTE_FILE_MAX_BYTES = 512 * 1024;
+export const NOTE_FILE_EXT: readonly string[] = ['.txt', '.md', '.markdown'];
+
+/** null = файл ок; иначе человекочитаемая причина отказа (ext проверяется первым). */
+export function noteFileError(name: string, size: number): string | null {
+  const lower = name.toLowerCase();
+  if (!NOTE_FILE_EXT.some((ext) => lower.endsWith(ext))) {
+    return 'Поддерживаются только файлы .txt, .md и .markdown';
+  }
+  if (size > NOTE_FILE_MAX_BYTES) {
+    return 'Файл слишком большой — максимум 512 КБ';
+  }
+  return null;
+}
