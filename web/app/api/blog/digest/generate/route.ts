@@ -7,7 +7,8 @@
 //   409 при пустом окне (LLM не вызывается) → LLM ВНЕ withDb-мьютекса (cloud-first,
 //   фолбэк local — прецедент /api/demo/rag) → clamp ≤4096 (лимит TG, обрезка по
 //   границе строки) → 200 {ok, digest, newsCount, sources, truncated}.
-// Новости — tainted (RSS): clean() до промпта; в промпт идут только
+// Новости — tainted (RSS): clean() до промпта; URL — только http(s) (server-гард
+// до промпта, параллель safeHref в клиенте); в промпт идут только
 // title/summary(≤200)/url/published_at из БД; sources — из БД-выборки, не из ответа
 // LLM (grounded by design). Ошибки LLM/сети → 502 safeMessage. server-only.
 import 'server-only';
@@ -86,7 +87,19 @@ export async function POST(req: NextRequest): Promise<Response> {
   // чтобы не блокировать админ-операции на время генерации.
   const since = new Date(Date.now() - days * 24 * 3600_000).toISOString();
   const rows = await withDb(() => getBlogDb().newsSince(since));
-  if (rows.length === 0) {
+  // RSS tainted: URL валидируем на сервере (параллель safeHref() в DigestComposer,
+  // но на границе — до промпта), чтобы sources/newsCount и текст дайджеста
+  // описывали одну выборку. Не-http(s) (javascript:/data:/битое) — дроп строки;
+  // всё дропнулось → обычный 409 пустого окна, LLM не вызывается.
+  const safeRows = rows.filter((r) => {
+    try {
+      const u = new URL(r.url);
+      return u.protocol === 'http:' || u.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  });
+  if (safeRows.length === 0) {
     return Response.json(
       {
         ok: false,
@@ -99,7 +112,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   // RSS-контент tainted → clean() до промпта; ORDER BY published_at DESC —
   // slice берёт свежайшие.
-  const news: DigestNewsItem[] = rows.slice(0, MAX_NEWS).map((n) => ({
+  const news: DigestNewsItem[] = safeRows.slice(0, MAX_NEWS).map((n) => ({
     title: clean(n.title, FIELD_MAX),
     summary: clean(n.summary, FIELD_MAX),
     url: n.url,

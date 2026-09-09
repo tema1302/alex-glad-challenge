@@ -159,6 +159,32 @@ describe('POST /api/blog/digest/generate', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
+  it('не-http(s) URL (javascript:) из tainted RSS дропается ДО промпта: нет ни в sources, ни в промпте', async () => {
+    newsSince.mockReturnValue([row(1, { url: 'javascript:alert(1)' }), row(2)]);
+    chat.mockResolvedValue('дайджест');
+
+    const res = await POST(req({}, authed()));
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as DigestOk;
+    expect(body.newsCount).toBe(1);
+    expect(body.sources).toEqual([{ title: 'Новость 2', url: 'https://example.com/news-2' }]);
+    const messages = chat.mock.calls[0]?.[0] as Array<{ role: string; content: string }>;
+    expect(messages[1]!.content).not.toContain('javascript:');
+    expect(messages[1]!.content).toContain('https://example.com/news-2');
+  });
+
+  it('все URL окна не-http(s) → 409 empty-window, LLM не вызывается', async () => {
+    newsSince.mockReturnValue([
+      row(1, { url: 'data:text/html,hi' }),
+      row(2, { url: 'not a url' }),
+    ]);
+    const res = await POST(req({}, authed()));
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({ ok: false, errorKind: 'empty-window' });
+    expect(chat).not.toHaveBeenCalled();
+  });
+
   it('days=3 → newsSince(now − 3 дня): окно по published_at пробрасывается', async () => {
     await POST(req({ days: 3 }, authed()));
     const sinceIso = newsSince.mock.calls[0]?.[0] as string;
