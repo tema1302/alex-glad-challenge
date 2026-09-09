@@ -26,7 +26,12 @@ export interface Chunk {
 // (core/support/faqCorpus.ts, ручные Chunk[] = один Q&A на чанк), индексируется
 // через indexDocuments напрямую. Изоляция в rag.sqlite сохраняет остальные
 // партиции нетронутыми (clearStrategy('faq') чистит только 'faq').
-export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram' | 'docs' | 'faq';
+// 'notes' — НЕ входит в RAG_STRATEGIES: заметки владельца /rag/ingest,
+// индексируются через ingestNote (core/rag/notesIngest.ts) напрямую, с
+// delete-then-insert по source='note://<slug>'. Изоляция партиций в rag.sqlite:
+// docs-reindex (/rag/index, партиции fixed/structure) заметки не трогает,
+// публичный /demo (PUBLIC_STRATEGY='structure') их не видит.
+export type ChunkingStrategy = 'fixed' | 'structure' | 'telegram' | 'docs' | 'faq' | 'notes';
 
 export interface Embedder {
   /** Размерность вектора. Неизвестна до первого вызова. */

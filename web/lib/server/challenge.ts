@@ -101,6 +101,10 @@ export type { TgMessageRow } from '@challenge/core/tg/tgStore';
 export { indexDocuments, runIndexing, RAG_STRATEGIES } from '@challenge/core/rag/pipeline';
 export type { IndexingResult } from '@challenge/core/rag/pipeline';
 export type { Chunk, Embedder } from '@challenge/core/rag/types';
+// rag-ingest: ингест заметок владельца (/rag/ingest) в партицию 'notes'.
+// listNotes/deleteBySource/count — методы RagStore (выше), отдельных экспортов не нужно.
+export { ingestNote } from '@challenge/core/rag/notesIngest';
+export type { NoteIngestResult } from '@challenge/core/rag/notesIngest';
 export {
   getConnectedRawScanClient,
   disconnectScanClient,

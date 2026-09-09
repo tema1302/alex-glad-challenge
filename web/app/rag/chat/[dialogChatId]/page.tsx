@@ -14,7 +14,7 @@ import { Card } from '../../../components/ui/Card';
 import { INPUT_CLASS } from '../../../components/ui/Field';
 import { SectionHead } from '../../../components/ui/SectionHead';
 
-type Strategy = 'fixed' | 'structure' | 'telegram';
+type Strategy = 'fixed' | 'structure' | 'telegram' | 'notes';
 type Llm = 'local' | 'cloud';
 
 interface ChatMessage {
@@ -28,6 +28,7 @@ const STRATEGY_OPTIONS: Array<{ value: Strategy; label: string }> = [
   { value: 'fixed', label: 'fixed (документация)' },
   { value: 'structure', label: 'structure' },
   { value: 'telegram', label: 'telegram (по chat/topic)' },
+  { value: 'notes', label: 'заметки (база знаний)' },
 ];
 
 const STAGE_LABEL: Record<RagStageStep, string> = {

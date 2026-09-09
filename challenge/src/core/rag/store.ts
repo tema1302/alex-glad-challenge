@@ -103,6 +103,16 @@ export class RagStore {
       .run(strategy, `tg://chat/${key}/%`);
   }
 
+  /** DELETE чанков одного ТОЧНОГО source (notes: idempotent update через
+   *  delete-then-insert в notesIngest.ts). Exact-match без LIKE — source не паттерн,
+   *  экранирование не нужно; parameterized SQL. Возвращает число удалённых строк. */
+  deleteBySource(strategy: string, source: string): number {
+    const res = this.db
+      .prepare('DELETE FROM rag_chunks WHERE strategy = ? AND source = ?')
+      .run(strategy, source);
+    return Number(res.changes);
+  }
+
   /** Счётчик чанков чата — no-data guard (§2.6): 0 → чат не скачан/не проиндексирован. */
   countBySourcePrefix(strategy: ChunkingStrategy, chatKey: string): number {
     const key = escapeLike(chatKey);
@@ -142,6 +152,27 @@ export class RagStore {
       chunks: e.chunks,
       topics: e.topics.size,
     }));
+  }
+
+  /** /rag/ingest: список заметок владельца (GET /api/rag/notes). JS-агрегация по
+   *  прецеденту listTelegramChats — SQL без параметров от ввода (strategy — литерал
+   *  'notes', префикс source — литерал 'note://'), инъекция невозможна. title — из
+   *  первого чанка: ingestNote кладёт человеческий title заметки во ВСЕ чанки.
+   *  Сортировка по title — стабильный список независимо от порядка ингеста/обновления. */
+  listNotes(): { source: string; title: string; chunks: number }[] {
+    const rows = this.db
+      .prepare("SELECT source, title FROM rag_chunks WHERE strategy = 'notes' AND source LIKE 'note://%'")
+      .all() as unknown as { source: string; title: string }[];
+    const map = new Map<string, { source: string; title: string; chunks: number }>();
+    for (const r of rows) {
+      const entry = map.get(r.source);
+      if (entry) {
+        entry.chunks++;
+      } else {
+        map.set(r.source, { source: r.source, title: r.title, chunks: 1 });
+      }
+    }
+    return [...map.values()].sort((a, b) => a.title.localeCompare(b.title, 'ru'));
   }
 
   insertChunks(strategy: ChunkingStrategy, chunks: Chunk[], embeddings: number[][]): void {
