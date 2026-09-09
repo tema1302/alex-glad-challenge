@@ -97,6 +97,13 @@ export class BlogDb {
       .all(iso) as unknown as NewsRow[];
   }
 
+  // Все новости (включая used) с даты — окно еженедельного дайджеста.
+  newsSince(iso: string): NewsRow[] {
+    return this.db
+      .prepare('SELECT * FROM news WHERE published_at >= ? ORDER BY published_at DESC')
+      .all(iso) as unknown as NewsRow[];
+  }
+
   markUsed(id: number): void {
     this.db.prepare('UPDATE news SET used = 1 WHERE id = ?').run(id);
   }

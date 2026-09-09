@@ -65,6 +65,7 @@ export const navGroups: Array<{
     items: [
       { href: '/blog/news', label: 'новости' },
       { href: '/blog/posts', label: 'посты' },
+      { href: '/blog/digest', label: 'дайджест' },
       { href: '/blog/pipeline', label: 'pipeline' },
       { href: '/blog/scout', label: 'scout' },
     ],

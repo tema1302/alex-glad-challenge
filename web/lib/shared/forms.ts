@@ -283,6 +283,14 @@ export const tgPublishSchema = z.object({
 });
 export type TgPublishInput = z.infer<typeof tgPublishSchema>;
 
+// POST /api/blog/digest/generate — окно дайджеста в днях по published_at (включая
+// used). Дефолт 7 — на сервере (контракт П-1: поле оставляет расширение окна UI
+// без ломки контракта).
+export const digestGenerateSchema = z.object({
+  days: z.coerce.number().int().min(1).max(30).optional(),
+});
+export type DigestGenerateInput = z.infer<typeof digestGenerateSchema>;
+
 // --- Day 36: admin-auth ---
 
 // POST /api/auth/login — пароль единственного админа. Без .trim(): пробелы в
