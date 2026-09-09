@@ -8,7 +8,8 @@
 //   4) retrieval ЖЁСТКО по публичной партиции strategy='structure' (руководство
 //      EVOLUTE i-SPACE): RagStore.search строит WHERE strategy = ? — чанки партиций
 //      telegram/docs физически не читаются из SQLite, утечка через промпт/цитаты
-//      невозможна. Плюс defense-in-depth: страховочный дроп источника с tg://|telegram.
+//      невозможна. Плюс defense-in-depth: страховочный дроп источника с
+//      tg://|telegram в source/title/section/chunkId (chunkId в ответ не идёт).
 //
 // Контракт (заморожен, план §2): 200 {ok:true, answer, gaveUp,
 // sources:[{n,title,section,snippet,score}]} — БЕЗ source/chunkId/tg-метаданных.
@@ -87,6 +88,16 @@ function tooMany(retryAfterSec: number): NextResponse {
 export async function POST(req: NextRequest): Promise<Response> {
   // --- Rate-limit до всего остального ---
   const now0 = Date.now();
+  // Глобальный предохранитель — ДО создания per-IP-окна: запись в карте иначе
+  // создаётся даже под 429, и спуфинг XFF надувает Map быстрее, чем её чистит
+  // sweep (записи протухают только через 15 мин). Пока fuse сработал — короткий
+  // 429 без записи; per-IP-проверка ниже остаётся первой для немобилизованных
+  // окон, чтобы одиночный абьюзер не дожигал глобальный бюджет.
+  rollWindow(rate.total, now0);
+  if (rate.total.count > RATE_GLOBAL) {
+    return tooMany(Math.max(1, Math.ceil((rate.total.resetAt - now0) / 1000)));
+  }
+
   const ip = clientIp(req);
   // Sweep протухших окон: не даём карте расти бесконечно при спуфинге XFF.
   if (rate.ips.size > 500) {
@@ -105,7 +116,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     return tooMany(Math.max(1, Math.ceil((win.resetAt - now0) / 1000)));
   }
 
-  rollWindow(rate.total, now0);
   rate.total.count += 1;
   if (rate.total.count > RATE_GLOBAL) {
     return tooMany(Math.max(1, Math.ceil((rate.total.resetAt - now0) / 1000)));
@@ -151,10 +161,12 @@ export async function POST(req: NextRequest): Promise<Response> {
     const answer = clean(result.answer, MAX_ANSWER_LEN);
     // Страховочный фильтр (defense-in-depth): партиция 'structure' tg-чанк вернуть
     // не может в принципе, но любой источник с tg://|telegram в метаданных — дроп.
+    // chunkId (= `${source}::${index}`) в haystack наравне с source: если формат
+    // идентификатора когда-нибудь изменится, страховка не развалится.
     const sources = result.sources
       .filter((s) => {
         const m = s.chunk.metadata;
-        const hay = `${m.source}\n${m.title}\n${m.section}`.toLowerCase();
+        const hay = `${m.source}\n${m.title}\n${m.section}\n${m.chunkId}`.toLowerCase();
         return !hay.includes('tg://') && !hay.includes('telegram');
       })
       .map((s, i) => ({

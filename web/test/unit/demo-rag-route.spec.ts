@@ -161,6 +161,32 @@ describe('POST /api/demo/rag', () => {
     expect(answerWithRag).toHaveBeenCalledTimes(6);
   });
 
+  it('глобальный fuse сработал → 429 без создания новых IP-окон (спуфинг XFF не надувает Map)', async () => {
+    answerWithRag.mockResolvedValue(ragResult({ answer: 'ок' }));
+    let ok = 0;
+    let limited = 0;
+    // 100 уникальных XFF при глобальном лимите 60: первые 60 проходят, дальше 429.
+    for (let i = 1; i <= 100; i++) {
+      const res = await POST(
+        new NextRequest('http://127.0.0.1:3000/api/demo/rag', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-forwarded-for': `10.0.0.${i}` },
+          body: JSON.stringify({ question: `вопрос ${i}` }),
+        }),
+      );
+      if (res.status === 200) ok += 1;
+      else if (res.status === 429) limited += 1;
+    }
+    expect(ok).toBe(60);
+    expect(limited).toBe(40);
+    // Запись успевают создать только 61 IP (60 успешных + 1 на первом 429);
+    // запросы под сработавшим fuse карту не растят (до раннего 429 было бы 100).
+    const g = globalThis as unknown as {
+      __demoRagRate?: { ips: Map<string, unknown> };
+    };
+    expect(g.__demoRagRate?.ips.size).toBe(61);
+  });
+
   it('успех → 200: контракт {ok,answer,gaveUp,sources}, без source/chunkId/tg-метаданных', async () => {
     answerWithRag.mockResolvedValue(
       ragResult({

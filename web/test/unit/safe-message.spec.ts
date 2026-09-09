@@ -1,4 +1,5 @@
-// Unit: safeMessage — redact секретов (Bearer, URL, Windows-пути) из текстов ошибок.
+// Unit: safeMessage — redact секретов (Bearer, sk-ключи, Authorization, URL,
+// Windows-пути) из текстов ошибок.
 import { describe, expect, it } from 'vitest';
 import { safeMessage } from '../../lib/server/safe-message';
 
@@ -7,6 +8,18 @@ describe('safeMessage', () => {
     expect(safeMessage('auth failed: Bearer sk-abc123')).toBe('auth failed: Bearer ***');
     // Регистр совпадения глушится (gi), но замена — литеральная строка 'Bearer ***'
     expect(safeMessage('bearer lowercase-token')).toBe('Bearer ***');
+  });
+
+  it('маскирует «голый» sk-ключ без Bearer (тела ошибок провайдера эхоят ключ)', () => {
+    expect(safeMessage('invalid api key: sk-abcdef1234567890')).toBe('invalid api key: sk-***');
+    // Короткое 'sk-1' и слово с -sk внутри ('task-12345') — не ключи, не трогаем.
+    expect(safeMessage('task-12345 и sk-1 не ключи')).toBe('task-12345 и sk-1 не ключи');
+  });
+
+  it('маскирует Authorization-заголовок с любой схемой', () => {
+    expect(safeMessage('POST failed: Authorization: Basic dXNlcjpwYXNz')).toBe(
+      'POST failed: Authorization: ***',
+    );
   });
 
   it('маскирует http(s) URL (там живёт TG_BOT_TOKEN в пути)', () => {

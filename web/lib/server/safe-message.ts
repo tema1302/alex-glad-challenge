@@ -6,6 +6,11 @@ import 'server-only';
 export function safeMessage(m: string): string {
   return m
     .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+    // «Голый» ключ без Bearer — тела ошибок провайдеров иногда эхоят ключ сам по себе.
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, 'sk-***')
+    // Authorization с любой схемой (Basic/Digest/кастомной) — глотаем до конца
+    // строки: в значении после схемы идут креды (Basic base64, токены).
+    .replace(/Authorization:\s*[^\r\n]*/gi, 'Authorization: ***')
     .replace(/https?:\/\/\S+/gi, '<url>')
     .replace(/\b[A-Za-z]:\\[^\s"']*/g, '<path>');
 }
