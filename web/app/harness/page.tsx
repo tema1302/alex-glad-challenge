@@ -8,6 +8,7 @@ import { SectionShell } from '../components/landing/SectionShell';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { Card } from '../components/ui/Card';
 import { CopyButton } from './CopyButton';
+import { PipelineGame } from './PipelineGame';
 import { harnessLead, harnessMeta, harnessTemplates } from '../../data/harness';
 
 // page-local metadata (openGraph НЕ добавляем: без metadataBase — build-warning).
@@ -76,6 +77,24 @@ export default function HarnessPage() {
           </div>
         </SectionShell>
       ))}
+      {/* Тренажёр: те же пять стадий и граф переходов — в игровом режиме.
+          Оформление — по ритму SectionShell (border-t + py-16/24 + max-w-6xl). */}
+      <section className="border-t border-line">
+        <div className="mx-auto w-full max-w-6xl px-5 py-16 md:py-24">
+          <SectionLabel>тренажёр · собери пайплайн</SectionLabel>
+          <h2 className="mt-3 font-mono text-2xl font-semibold uppercase tracking-tight text-ink">
+            Проверьте, что запомнили
+          </h2>
+          <p className="mt-2 max-w-3xl text-sm leading-relaxed text-dim">
+            Пять стадий из шаблона 01 — соберите пайплайн и разберите граф переходов.
+          </p>
+          <div className="mt-6">
+            <Card>
+              <PipelineGame />
+            </Card>
+          </div>
+        </div>
+      </section>
     </>
   );
 }
