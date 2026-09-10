@@ -62,10 +62,10 @@ test.describe('Блог (админ)', () => {
     await expect(save).toBeDisabled();
     await expect(revert).toBeDisabled();
 
-    // Правка через клавиатуру: в конец текста + хвост
-    await textarea.click();
-    await page.keyboard.press('Control+End');
-    await page.keyboard.type(' e2e-правка');
+    // Правка: fill одной операцией вместо потока клавиатурных событий —
+    // контролируемый textarea в dev-режиме мог отыграть перезагрузку контента
+    // посреди ввода (гонка гидрации), теряя часть набранного.
+    await textarea.fill(`${original} e2e-правка`);
     await expect(textarea).toHaveValue(original + ' e2e-правка');
     await expect(save).toBeEnabled();
     await expect(revert).toBeEnabled();
