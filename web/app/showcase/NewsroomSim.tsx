@@ -17,6 +17,7 @@ import {
   type SimPhase,
 } from './sim-engine';
 import { Button } from '../components/ui/Button';
+import { useTimeoutQueue } from '../components/arcade/use-timeouts';
 import { IconCheck, IconSend } from '../components/ui/icons';
 
 const PHASE_STEPS: { id: SimPhase; label: string }[] = [
@@ -49,7 +50,7 @@ export function NewsroomSim() {
   const [chosen, setChosen] = useState<string | null>(null);
 
   const queueRef = useRef<SimEvent[]>([]);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { set: setTimer, clearAll: clearTimers } = useTimeoutQueue();
   const speedRef = useRef(speed);
   speedRef.current = speed;
   const pausedRef = useRef(paused);
@@ -59,9 +60,6 @@ export function NewsroomSim() {
 
   useEffect(() => {
     reducedRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
   }, []);
 
   // Лог дожимает прокрутку к свежей строке.
@@ -84,18 +82,18 @@ export function NewsroomSim() {
       return;
     }
     const dt = reducedRef.current ? 0 : (next.t - ev.t) / speedRef.current;
-    timerRef.current = setTimeout(step, Math.max(16, Math.min(dt, 1200)));
-  }, []);
+    setTimer(step, Math.max(16, Math.min(dt, 1200)));
+  }, [setTimer]);
 
   const play = useCallback(
     (events: SimEvent[]): void => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      clearTimers();
       queueRef.current = events;
       setPaused(false);
       setRunning(true);
       step();
     },
-    [step],
+    [step, clearTimers],
   );
 
   const start = useCallback((): void => {
@@ -116,13 +114,13 @@ export function NewsroomSim() {
   }, [play]);
 
   const restart = useCallback((): void => {
-    if (timerRef.current) clearTimeout(timerRef.current);
+    clearTimers();
     setRunning(false);
     setPaused(false);
     setChosen(null);
     queueRef.current = [];
     dispatch({ kind: 'reset' });
-  }, []);
+  }, [clearTimers]);
 
   const togglePause = useCallback((): void => {
     setPaused((p) => {
@@ -130,12 +128,12 @@ export function NewsroomSim() {
         step();
         return false;
       }
-      if (timerRef.current) clearTimeout(timerRef.current);
+      clearTimers();
       return true;
     });
-  }, [step]);
+  }, [step, clearTimers]);
 
-  const post = chosen ? newsroomScript.posts[chosen] : null;
+  const selectedPost = chosen ? newsroomScript.posts[chosen] : null;
   // done — за пределами шагов: день закрыт, значит все шаги пройдены.
   const phaseIdx = state.phase === 'done' ? PHASE_STEPS.length : PHASE_STEPS.findIndex((p) => p.id === state.phase);
 
@@ -309,20 +307,20 @@ export function NewsroomSim() {
             </div>
           )}
 
-          {state.phase === 'writing' && post && (
+          {state.phase === 'writing' && selectedPost && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-[11px] uppercase tracking-wider text-dim">черновик поста</span>
                 <span className="font-mono text-[11px] text-accent">
-                  {state.postChars}/{post.body.length}
+                  {state.postChars}/{selectedPost.body.length}
                 </span>
               </div>
-              <h4 className="text-sm font-semibold text-ink">{post.title}</h4>
+              <h4 className="text-sm font-semibold text-ink">{selectedPost.title}</h4>
               <p className="min-h-[7rem] whitespace-pre-wrap text-sm leading-relaxed text-ink">
-                {post.body.slice(0, state.postChars)}
+                {selectedPost.body.slice(0, state.postChars)}
                 <span aria-hidden="true" className="ml-0.5 inline-block h-4 w-[2px] animate-pulse bg-accent align-text-bottom" />
               </p>
-              {state.postChars >= post.body.length && (
+              {state.postChars >= selectedPost.body.length && (
                 <Button variant="primary" size="sm" icon={<IconSend />} onClick={publish}>
                   Опубликовать в канал
                 </Button>

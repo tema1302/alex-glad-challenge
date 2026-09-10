@@ -56,6 +56,12 @@ describe('buildQuizDeck', () => {
     const deck = buildQuizDeck(capabilitySections, { questions: 999, rng: lcg(5) });
     expect(deck).toHaveLength(total);
   });
+
+  it('edge: пустые входы → пустые колоды, без краша', () => {
+    expect(buildQuizDeck([], { rng: lcg(1) })).toHaveLength(0);
+    expect(buildQuizDeck([{ id: 'x', title: 'X', icon: 'x', items: [] }], { rng: lcg(1) })).toHaveLength(0);
+    expect(buildStackDeck([{ name: 'пусто', items: [] }], lcg(1))).toHaveLength(0);
+  });
 });
 
 describe('buildStackDeck', () => {

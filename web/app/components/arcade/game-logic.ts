@@ -35,6 +35,9 @@ export interface QuizQuestion {
 
 // Колода без повторов: секции перемешиваются, вопросы идут по кругу
 // (по одному item из каждой), поэтому раунд покрывает разные модули, а не подряд.
+// @example buildQuizDeck(capabilitySections, { questions: 8, rng: lcg(42) })
+//   → 8 вопросов по всем секциям; q.options — все id модулей вперемешку,
+//     верный moduleId среди них гарантирован.
 export function buildQuizDeck(
   sections: readonly QuizSectionInput[],
   opts: { questions?: number; rng?: Rng } = {},

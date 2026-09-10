@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DemoScript } from '../../data/capability-demos';
 import { Button } from '../components/ui/Button';
+import { useTimeoutQueue } from '../components/arcade/use-timeouts';
 
 interface Msg {
   who: 'user' | 'bot';
@@ -18,13 +19,11 @@ export function DemoPlayer({ script }: { script: DemoScript }) {
   const [beat, setBeat] = useState(0);
   const [thinking, setThinking] = useState(false);
   const reducedRef = useRef(false);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const { set: setTimer, clearAll: clearTimers } = useTimeoutQueue();
   const listRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     reducedRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const timers = timersRef.current;
-    return () => timers.forEach((t) => clearTimeout(t));
   }, []);
 
   useEffect(() => {
@@ -37,22 +36,24 @@ export function DemoPlayer({ script }: { script: DemoScript }) {
       if (!b || thinking) return;
       setMsgs((m) => [...m, { who: 'user', text: phrase }]);
       setThinking(true);
-      const t = setTimeout(() => {
-        setMsgs((m) => [...m, { who: 'bot', text: b.reply, chips: b.chips }]);
-        setThinking(false);
-        setBeat((x) => x + 1);
-      }, reducedRef.current ? 120 : 750);
-      timersRef.current.push(t);
+      setTimer(
+        () => {
+          setMsgs((m) => [...m, { who: 'bot', text: b.reply, chips: b.chips }]);
+          setThinking(false);
+          setBeat((x) => x + 1);
+        },
+        reducedRef.current ? 120 : 750,
+      );
     },
-    [beat, script, thinking],
+    [beat, script, thinking, setTimer],
   );
 
   const restart = useCallback((): void => {
-    timersRef.current.forEach((t) => clearTimeout(t));
+    clearTimers();
     setMsgs([]);
     setBeat(0);
     setThinking(false);
-  }, []);
+  }, [clearTimers]);
 
   const done = beat >= script.beats.length;
   const asks = done ? [] : script.beats[beat]!.ask;
