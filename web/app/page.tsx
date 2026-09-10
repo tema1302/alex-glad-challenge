@@ -50,6 +50,7 @@ import {
   type LandingIconId,
 } from '../data/landing';
 import { isAdminAuthed } from '../lib/server/session';
+import { getChannelPreview } from '../lib/server/channel-preview';
 
 export const metadata: Metadata = {
   title: `${person.name} — ${person.role}`,
@@ -82,6 +83,8 @@ const FEATURE_ART: Record<string, ComponentType> = {
 };
 
 const CHANNEL_URL_TEXT = channel.url.replace(/^https?:\/\//, '');
+
+const POST_DATE_FMT = new Intl.DateTimeFormat('ru-RU', { day: 'numeric', month: 'long' });
 
 // Орбитальные чипы hero: живые ссылки на соответствующие разделы.
 // guestHref — публичная альтернатива для гостя (без логина): чип «RAG-поиск»
@@ -125,6 +128,9 @@ function LpLabel({ n, label }: { n: string; label: string }) {
 
 export default async function HomePage() {
   const isAdmin = await isAdminAuthed();
+  // «Свежее в канале» — превью публичной веб-версии канала. Сеть/прокси легли —
+  // getChannelPreview отдаёт { ok:false } и секция целиком не рендерится.
+  const channelPreview = await getChannelPreview();
 
   return (
     <div className="lp">
@@ -436,6 +442,48 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* ═══ S6.5 СВЕЖЕЕ В КАНАЛЕ — превью публичной веб-версии канала ═══ */}
+      {channelPreview.ok && channelPreview.posts.length > 0 && (
+        <section className="l-reveal border-y border-p-line/70 bg-paper-2/60">
+          <div className="mx-auto w-full max-w-6xl px-5 py-20 md:py-24">
+            <LpLabel n="05" label="свежее в канале" />
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+              <h2 className="max-w-xl font-display text-[clamp(1.5rem,3vw,2.25rem)] font-bold leading-tight tracking-tight text-p-ink">
+                Вот что уже <span className="lp-gradient-text">вышло в канале</span>
+              </h2>
+              <a
+                href={channel.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`font-mono text-xs uppercase tracking-wider text-brand-600 hover:text-brand-700 ${FOCUS}`}
+              >
+                {CHANNEL_URL_TEXT} →
+              </a>
+            </div>
+
+            <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+              {channelPreview.posts.map((p) => (
+                <a
+                  key={p.id}
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`lp-card flex flex-col p-5 ${FOCUS}`}
+                >
+                  <div className="font-mono text-[11px] uppercase tracking-wider text-p-dim/70">
+                    {POST_DATE_FMT.format(new Date(p.dateIso))}
+                  </div>
+                  <p className="mt-3 line-clamp-5 whitespace-pre-line text-sm leading-relaxed text-p-ink">
+                    {p.text}
+                  </p>
+                  <span className="mt-auto pt-4 font-mono text-xs text-brand-600">Читать в канале →</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* ═══ S7. МАНИФЕСТ ═══ */}
       <section className="l-reveal border-y border-p-line/70 bg-paper-2/60">
         <div className="mx-auto w-full max-w-3xl px-5 py-20 text-center md:py-24">
@@ -454,7 +502,7 @@ export default async function HomePage() {
       {/* ═══ S8. FAQ — снятие возражений ═══ */}
       <section className="l-reveal">
         <div className="mx-auto w-full max-w-3xl px-5 py-20 md:py-24">
-          <LpLabel n="05" label="вопросы" />
+          <LpLabel n="06" label="вопросы" />
           <h2 className="mt-4 font-display text-[clamp(1.5rem,3vw,2.25rem)] font-bold leading-tight tracking-tight text-p-ink">
             Частые вопросы
           </h2>

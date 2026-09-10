@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { stack } from '../../../data/showcase';
 import { buildStackDeck, type StackCard } from './game-logic';
+import { reportResult } from './use-progress';
 import { Button } from '../ui/Button';
 import { IconX } from '../ui/icons';
 
@@ -147,7 +148,15 @@ export function StackGame() {
       </div>
 
       {remaining.length === 0 && (
-        <Button variant="primary" size="sm" onClick={() => setDone(true)}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            setDone(true);
+            // Раунд финализирован только по «Итог» — считаем разложенное без осечек.
+            reportResult({ game: 'stack', score: cleanCount, total });
+          }}
+        >
           Итог
         </Button>
       )}

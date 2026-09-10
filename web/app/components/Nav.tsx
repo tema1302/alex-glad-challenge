@@ -9,6 +9,7 @@ import { MobileNav } from './MobileNav';
 import { NavCoreLinks } from './NavLinks';
 import { LogoutButton } from './LogoutButton';
 import { ThemeToggle } from './ThemeToggle';
+import { PaletteButton } from './palette/PaletteButton';
 
 export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const keys = isAdmin ? getKeysStatus() : null;
@@ -31,6 +32,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
           <>
             <NavCoreLinks />
             <div className="flex items-center gap-3">
+              <PaletteButton />
               <div className="hidden font-mono text-xs text-dim sm:block">
                 {model ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -50,6 +52,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
           </>
         ) : (
           <nav className="flex items-center gap-1">
+            <PaletteButton />
             <ThemeToggle />
             <Link
               href="/login"

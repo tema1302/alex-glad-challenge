@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { architectureLayers } from '../../../data/showcase';
 import { shuffle } from './game-logic';
 import { OrderPuzzle, type PuzzleItem } from './OrderPuzzle';
+import { reportResult } from './use-progress';
 
 export function LayersGame() {
   const [firstTry, setFirstTry] = useState<boolean | null>(null);
@@ -44,7 +45,11 @@ export function LayersGame() {
       <OrderPuzzle
         items={items}
         correctKeys={architectureLayers.map((l) => l.name)}
-        onSolved={setFirstTry}
+        onSolved={(firstTryWin) => {
+          setFirstTry(firstTryWin);
+          // Пазл решён: XP + бонус «с первой попытки» — в общий прогресс игрока.
+          reportResult({ game: 'layers', score: 1, total: 1, bonusXp: firstTryWin ? 5 : 0 });
+        }}
         success={
           <div className="space-y-3 rounded-lg border border-line bg-surface-2 p-3">
             {architectureLayers.map((l, i) => (

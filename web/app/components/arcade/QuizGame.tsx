@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { capabilitySections } from '../../../data/showcase';
 import { buildQuizDeck, type QuizQuestion } from './game-logic';
+import { reportResult } from './use-progress';
+import { buildResultShareText, tgShareUrl } from './share-card';
 import { Button } from '../ui/Button';
 import { IconCheck, IconX } from '../ui/icons';
 
@@ -69,6 +71,8 @@ export function QuizGame() {
     const finalBest = Math.max(score, readBest());
     writeBest(finalBest);
     setBest(finalBest);
+    // Раунд финализирован — в общий прогресс игрока (XP/достижения аркады).
+    reportResult({ game: 'quiz', score, total: deck.length });
   }, [idx, deck, score]);
 
   const restart = useCallback((): void => {
@@ -95,9 +99,27 @@ export function QuizGame() {
         </p>
         <p className="text-sm text-dim">{verdict}</p>
         <p className="font-mono text-xs text-dim">рекорд: {best}</p>
-        <Button variant="primary" size="sm" onClick={restart}>
-          Ещё раунд
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" size="sm" onClick={restart}>
+            Ещё раунд
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(buildResultShareText({ game: 'quiz', score, total: deck.length }))
+                .catch(() => undefined);
+              window.open(
+                tgShareUrl(buildResultShareText({ game: 'quiz', score, total: deck.length })),
+                '_blank',
+                'noopener,noreferrer',
+              );
+            }}
+          >
+            Поделиться результатом
+          </Button>
+        </div>
       </div>
     );
   }
