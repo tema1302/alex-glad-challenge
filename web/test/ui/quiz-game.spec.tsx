@@ -65,4 +65,17 @@ describe('QuizGame', () => {
       .filter((b) => b.textContent !== 'Дальше' && b.textContent !== 'Итог');
     expect(optionButtons).toHaveLength(capabilitySections.length);
   });
+
+  it('edge: повторный клик по варианту после ответа ничего не меняет (disabled)', () => {
+    render(<QuizGame />);
+    const optionButtons = screen
+      .getAllByRole('button')
+      .filter((b) => b.textContent !== 'Дальше' && b.textContent !== 'Итог');
+    fireEvent.click(optionButtons[0]!);
+    expect(optionButtons[0]).toBeDisabled();
+    const counter = screen.getByText(/верно:/).textContent;
+    fireEvent.click(optionButtons[0]!);
+    expect(screen.getByText(/верно:/).textContent).toBe(counter);
+    expect(screen.getAllByRole('button', { name: 'Дальше' })).toHaveLength(1);
+  });
 });
