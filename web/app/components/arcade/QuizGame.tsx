@@ -16,7 +16,10 @@ const SECTION_BY_ID = new Map(capabilitySections.map((s) => [s.id, s]));
 
 function readBest(): number {
   try {
-    return Number(window.localStorage.getItem(BEST_KEY)) || 0;
+    const raw = window.localStorage.getItem(BEST_KEY);
+    const num = raw === null ? 0 : Number(raw);
+    // мусор в хранилище («abc» и пр.) → NaN → честный 0, без выброса
+    return Number.isFinite(num) ? num : 0;
   } catch {
     return 0;
   }
