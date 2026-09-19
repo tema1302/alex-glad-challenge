@@ -43,7 +43,9 @@ export class HttpEmbedder implements Embedder {
       headers,
       body: JSON.stringify({ model: this.config.model, input: texts }),
       label: 'сервис эмбеддингов',
-      timeoutMs: 60_000, // батч эмбеддингов бывает дольше дефолтных 15с
+      // Батч из 32 чанков по ~2400 символов на локальном 7.6B-эмбеддере идёт ~60-70с —
+      // впритык к прежним 60с (флапает batch-to-batch). 300с покрывает с запасом.
+      timeoutMs: 300_000,
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');

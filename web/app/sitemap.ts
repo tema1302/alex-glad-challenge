@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/`, lastModified: new Date(), changeFrequency: 'weekly', priority: 1 },
     { url: `${base}/demo`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     { url: `${base}/jira`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
+    { url: `${base}/style`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     { url: `${base}/harness`, lastModified: new Date(), changeFrequency: 'monthly', priority: 0.8 },
     {
       url: `${base}/blog/pipeline`,

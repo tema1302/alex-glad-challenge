@@ -339,6 +339,21 @@ export const demoRagSchema = z.object({
 });
 export type DemoRagInput = z.infer<typeof demoRagSchema>;
 
+// POST /api/style/rewrite — «Антоновайзер»: переписать текст в стиле
+// канала-инсайдера (публичный LLM-endpoint: cap 2000 + rate-limit в роуте).
+// mode/format/signature — предпочтения подачи; LLM и промпт фиксирует сервер.
+export const styleRewriteSchema = z.object({
+  text: z
+    .string()
+    .trim()
+    .min(1, 'Введите текст')
+    .max(2000, 'Слишком длинный текст — максимум 2000 символов'),
+  mode: z.enum(['soft', 'normal', 'hard']).default('normal'),
+  format: z.enum(['auto', 'post', 'essay', 'guide', 'calm']).default('auto'),
+  signature: z.boolean().default(false),
+});
+export type StyleRewriteInput = z.infer<typeof styleRewriteSchema>;
+
 // --- rag-ingest: «База знаний» /rag/ingest (партиция 'notes') ---
 
 // POST /api/rag/notes — заметка владельца (JSON-ветка). Границы по замороженному
