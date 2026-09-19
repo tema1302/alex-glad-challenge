@@ -59,6 +59,7 @@ export const navGroups: Array<{
       { href: '/tg/top', label: 'топ' },
       { href: '/tg/collect', label: 'collect' },
       { href: '/telegram/publish', label: 'TG-постинг' },
+      { href: '/evolute', label: 'evolute · топ+агент' },
     ],
   },
   {
