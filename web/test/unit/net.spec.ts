@@ -89,4 +89,29 @@ describe('netFetch', () => {
     await netFetch('https://example.test/x');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it('loopback-цель при живом прокси → сразу напрямую, без dispatcher (Ollama не ходит через прокси)', async () => {
+    process.env.HTTPS_PROXY = 'http://127.0.0.1:10808';
+    for (const host of ['127.0.0.1', 'localhost']) {
+      const fetchMock = mockFetch((_url, init) => {
+        expect((init as Record<string, unknown>)['dispatcher']).toBeUndefined();
+        return Promise.resolve(new Response('ok'));
+      });
+      const resp = await netFetch(`http://${host}:11434/api/tags`, { label: 'Ollama' });
+      expect(resp.status).toBe(200);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('loopback-цель при мёртвом прокси → одна прямая попытка, ошибка без «прокси» в тексте', async () => {
+    process.env.HTTPS_PROXY = 'http://127.0.0.1:9';
+    const fetchMock = mockFetch(() => {
+      throw new TypeError('fetch failed');
+    });
+    await expect(netFetch('http://localhost:11434/api/tags', { label: 'Ollama' })).rejects.toThrow(
+      /Ollama: сеть недоступна \(прямое подключение\)/,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });

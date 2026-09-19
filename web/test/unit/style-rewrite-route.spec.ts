@@ -141,11 +141,12 @@ describe('POST /api/style/rewrite', () => {
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('no-store');
 
-    const body = (await res.json()) as { ok: boolean; post: string };
+    const body = (await res.json()) as { ok: boolean; post: string; provider: string };
     expect(body.ok).toBe(true);
     expect(body.post).toContain('Понимаю.');
-    // В ответе нет служебных полей промпта.
-    expect(Object.keys(body).sort()).toEqual(['ok', 'post']);
+    // Наружу идут только пост + фактически использованный провайдер.
+    expect(Object.keys(body).sort()).toEqual(['ok', 'post', 'provider']);
+    expect(body.provider).toBe('cloud');
 
     // Контекст вызова LLM: system-промпт стиля + user с режимом/форматом/текстом.
     expect(chat).toHaveBeenCalledTimes(1);
@@ -163,8 +164,41 @@ describe('POST /api/style/rewrite', () => {
     expect(params.temperature).toBe(0.8);
     expect(params.maxTokens).toBe(1500);
 
-    // Выбор LLM серверный: cloud-first, поле llm из запроса игнорируется.
+    // Выбор LLM серверный: дефолт cloud, поле llm отсутствует → cloud.
     expect(pickLlmClient).toHaveBeenCalledWith('cloud');
+  });
+
+  it('llm:"local" → локальный клиент, provider в ответе', async () => {
+    chat.mockResolvedValue('Ну что, спишь?\n\nПонимаю.');
+    const res = await POST(req({ text: 'текст', llm: 'local' }));
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; provider: string };
+    expect(body.provider).toBe('local');
+    expect(pickLlmClient).toHaveBeenCalledWith('local');
+  });
+
+  it('llm:"local", но local не настроен → 503 с подсказкой про env, до вызова модели', async () => {
+    const env = await import('../../lib/server/env');
+    vi.mocked(env.getKeysStatus).mockReturnValueOnce({
+      cloud: { configured: true, provider: 'DeepSeek', model: 'test-model' },
+      local: { configured: false },
+      embed: { configured: true, model: 'test-embed' },
+      mtproto: { configured: false },
+      botApi: { configured: false, channelLabel: null },
+      activeModel: 'test-model',
+      activeProvider: 'DeepSeek',
+    });
+    const res = await POST(req({ text: 'текст', llm: 'local' }));
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { ok: boolean; error: string };
+    expect(body.error).toContain('LOCAL_LLM_BASE_URL');
+    expect(chat).not.toHaveBeenCalled();
+  });
+
+  it('неверный llm → 400 (enum zod)', async () => {
+    const res = await POST(req({ text: 'привет', llm: 'quantum' }));
+    expect(res.status).toBe(400);
+    expect(chat).not.toHaveBeenCalled();
   });
 
   it('подпись и жёсткий режим доходят до user-промпта', async () => {

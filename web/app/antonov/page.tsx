@@ -15,20 +15,25 @@ import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { INPUT_CLASS } from '../components/ui/Field';
 import { SectionHead } from '../components/ui/SectionHead';
+import { useModelPrefDefault } from '../../lib/shared/use-model-pref';
 import { styleCopy, styleExamples, type StyleExample } from '../../data/style';
 
 const MAX_TEXT = 6000; // контракт antonovRewriteSchema (zod на сервере вторым слоем)
-const TIMEOUT_MS = 150_000;
+// Локальная Ollama на слабом CPU генерирует дольше облака — таймаут подвижный.
+const TIMEOUT_CLOUD_MS = 150_000;
+const TIMEOUT_LOCAL_MS = 300_000;
 const HISTORY_KEY = 'antonov-history-v1';
 const HISTORY_MAX = 10;
 
 type Mode = 'soft' | 'normal' | 'hard';
 type Format = 'auto' | 'post' | 'essay' | 'guide' | 'calm';
+type Llm = 'cloud' | 'local';
 type Status = 'idle' | 'loading' | 'done' | 'error';
 
 interface RewriteResponse {
   ok: boolean;
   post?: string;
+  provider?: Llm;
   error?: string;
   retryAfterSec?: number;
 }
@@ -53,6 +58,11 @@ const FORMATS: ReadonlyArray<{ id: Format; label: string }> = [
   { id: 'essay', label: styleCopy.formatEssay },
   { id: 'guide', label: styleCopy.formatGuide },
   { id: 'calm', label: styleCopy.formatCalm },
+];
+
+const LLMS: ReadonlyArray<{ id: Llm; label: string }> = [
+  { id: 'cloud', label: styleCopy.llmCloud },
+  { id: 'local', label: styleCopy.llmLocal },
 ];
 
 const CHANNEL_URL = 'https://t.me/auantonov';
@@ -89,6 +99,7 @@ export default function AntonovPage() {
   const [mode, setMode] = useState<Mode>('normal');
   const [format, setFormat] = useState<Format>('auto');
   const [signature, setSignature] = useState(false);
+  const [llm, setLlm] = useState<Llm>('cloud');
   const [status, setStatus] = useState<Status>('idle');
   const [post, setPost] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +107,9 @@ export default function AntonovPage() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
+
+  // Предпочтение движка из настроек (cookie model_pref) — best-effort, до выбора юзера.
+  useModelPrefDefault(setLlm);
 
   // История — только на клиенте после гидратации (localStorage-остров).
   useEffect(() => {
@@ -112,7 +126,7 @@ export default function AntonovPage() {
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), llm === 'local' ? TIMEOUT_LOCAL_MS : TIMEOUT_CLOUD_MS);
 
     setStatus('loading');
     setPost(null);
@@ -122,7 +136,7 @@ export default function AntonovPage() {
       const r = await fetch('/api/antonov/rewrite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t, mode, format, signature }),
+        body: JSON.stringify({ text: t, mode, format, signature, llm }),
         signal: ac.signal,
       });
       const data = (await r.json().catch(() => null)) as RewriteResponse | null;
@@ -163,7 +177,7 @@ export default function AntonovPage() {
       clearTimeout(timer);
       if (abortRef.current === ac) abortRef.current = null;
     }
-  }, [text, mode, format, signature]);
+  }, [text, mode, format, signature, llm]);
 
   const copy = useCallback(async () => {
     if (post === null) return;
@@ -263,6 +277,29 @@ export default function AntonovPage() {
                   mode === m.id ? 'bg-accent text-accent-ink' : 'text-dim hover:text-ink'
                 }`}
                 onClick={() => setMode(m.id)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* Движок: облако или локальная Ollama (обе настроены сервером). */}
+        <fieldset className="mt-5" disabled={loading}>
+          <legend className="font-mono text-xs uppercase tracking-wider text-dim">
+            {styleCopy.llmLabel}
+          </legend>
+          <div className="mt-2 inline-flex rounded-md border border-line bg-surface p-1" role="radiogroup" aria-label={styleCopy.llmLabel}>
+            {LLMS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                role="radio"
+                aria-checked={llm === m.id}
+                className={`rounded px-3.5 py-1.5 text-sm font-medium transition-colors duration-fast ${
+                  llm === m.id ? 'bg-accent text-accent-ink' : 'text-dim hover:text-ink'
+                }`}
+                onClick={() => setLlm(m.id)}
               >
                 {m.label}
               </button>

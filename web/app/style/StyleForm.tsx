@@ -14,6 +14,7 @@ import {
   styleCopy,
   type StyleExample,
 } from '../../data/style';
+import { useModelPrefDefault } from '../../lib/shared/use-model-pref';
 
 const FOCUS =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-paper';
@@ -22,15 +23,19 @@ const TEXTAREA =
   'w-full resize-y rounded-xl border border-p-line bg-paper-2 p-3 text-[15px] leading-relaxed text-p-ink placeholder:text-p-dim/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-paper';
 
 const MAX_TEXT = 2000; // контракт формы (zod на сервере вторым слоем)
-const TIMEOUT_MS = 150_000;
+// Локальная Ollama на слабом CPU генерирует дольше облака — таймаут подвижный.
+const TIMEOUT_CLOUD_MS = 150_000;
+const TIMEOUT_LOCAL_MS = 300_000;
 
 type Mode = 'soft' | 'normal' | 'hard';
 type Format = 'auto' | 'post' | 'essay' | 'guide' | 'calm';
+type Llm = 'cloud' | 'local';
 type Status = 'idle' | 'loading' | 'done' | 'error';
 
 interface RewriteResponse {
   ok: boolean;
   post?: string;
+  provider?: Llm;
   error?: string;
   retryAfterSec?: number;
 }
@@ -39,6 +44,11 @@ const MODES: ReadonlyArray<{ id: Mode; label: string }> = [
   { id: 'soft', label: styleCopy.modeSoft },
   { id: 'normal', label: styleCopy.modeNormal },
   { id: 'hard', label: styleCopy.modeHard },
+];
+
+const LLMS: ReadonlyArray<{ id: Llm; label: string }> = [
+  { id: 'cloud', label: styleCopy.llmCloud },
+  { id: 'local', label: styleCopy.llmLocal },
 ];
 
 const FORMATS: ReadonlyArray<{ id: Format; label: string }> = [
@@ -54,12 +64,16 @@ export function StyleForm({ examples }: { examples?: readonly StyleExample[] }) 
   const [mode, setMode] = useState<Mode>('normal');
   const [format, setFormat] = useState<Format>('auto');
   const [signature, setSignature] = useState(false);
+  const [llm, setLlm] = useState<Llm>('cloud');
   const [status, setStatus] = useState<Status>('idle');
   const [post, setPost] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
+
+  // Предпочтение движка из настроек (cookie model_pref) — best-effort, до выбора юзера.
+  useModelPrefDefault(setLlm);
 
   // Размонтирование — снять висящий запрос.
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -71,7 +85,7 @@ export function StyleForm({ examples }: { examples?: readonly StyleExample[] }) 
     abortRef.current?.abort();
     const ac = new AbortController();
     abortRef.current = ac;
-    const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    const timer = setTimeout(() => ac.abort(), llm === 'local' ? TIMEOUT_LOCAL_MS : TIMEOUT_CLOUD_MS);
 
     setStatus('loading');
     setPost(null);
@@ -81,7 +95,7 @@ export function StyleForm({ examples }: { examples?: readonly StyleExample[] }) 
       const r = await fetch('/api/style/rewrite', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: t, mode, format, signature }),
+        body: JSON.stringify({ text: t, mode, format, signature, llm }),
         signal: ac.signal,
       });
       const data = (await r.json().catch(() => null)) as RewriteResponse | null;
@@ -114,7 +128,7 @@ export function StyleForm({ examples }: { examples?: readonly StyleExample[] }) 
       clearTimeout(timer);
       if (abortRef.current === ac) abortRef.current = null;
     }
-  }, [text, mode, format, signature]);
+  }, [text, mode, format, signature, llm]);
 
   const copy = useCallback(async () => {
     if (post === null) return;
@@ -189,6 +203,31 @@ export function StyleForm({ examples }: { examples?: readonly StyleExample[] }) 
                     : 'text-p-dim hover:text-brand-600'
                 }`}
                 onClick={() => setMode(m.id)}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* Движок: облако или локальная Ollama (обе настроены сервером). */}
+        <fieldset className="mt-5" disabled={loading}>
+          <legend className="block font-mono text-xs uppercase tracking-[0.18em] text-p-dim">
+            {styleCopy.llmLabel}
+          </legend>
+          <div className="mt-2 inline-flex rounded-full border border-p-line bg-paper-2 p-1" role="radiogroup" aria-label={styleCopy.llmLabel}>
+            {LLMS.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                role="radio"
+                aria-checked={llm === m.id}
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition-colors duration-fast ${FOCUS} ${
+                  llm === m.id
+                    ? 'bg-brand-600 text-white shadow-lift'
+                    : 'text-p-dim hover:text-brand-600'
+                }`}
+                onClick={() => setLlm(m.id)}
               >
                 {m.label}
               </button>

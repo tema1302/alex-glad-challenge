@@ -7,8 +7,9 @@
 //      предохранитель 60 на 15 мин; fuse проверяется ДО создания IP-окна);
 //   2) zod-граница antonovRewriteSchema (text ≤6000 — тг-пост с запасом) +
 //      clean() tainted-текста;
-//   3) LLM и промпт фиксирует сервер (cloud → fallback local; из запроса НЕ
-//      принимаются).
+//   3) LLM и промпт фиксирует сервер; из запроса принимается выбор движка
+//      llm: 'cloud' | 'local' (дефолт cloud; cloud без ключа → фолбэк на local);
+//   4) ответ = переписанный текст + фактически использованный provider.
 // Ошибки: 400 (zod/не-JSON), 429 (+Retry-After), 502 (LLM/сеть, safeMessage),
 // 503 (LLM не настроен нигде).
 import 'server-only';
@@ -109,7 +110,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     return json({ ok: false, error: parsed.error.issues[0]?.message ?? 'invalid request' }, 400);
   }
 
-  // --- Провайдеры фиксирует сервер: cloud → fallback local; ни один не настроен → 503 ---
+  // --- Провайдер: явный выбор из запроса (llm), дефолт cloud; если выбранного
+  // нет — 503 с конкретикой, если cloud не настроен — фолбэк на local.
+  const input = parsed.data;
   const keys = getKeysStatus();
   if (!keys.cloud.configured && !keys.local.configured) {
     return json(
@@ -117,9 +120,16 @@ export async function POST(req: NextRequest): Promise<Response> {
       503,
     );
   }
-  const client = pickLlmClient(keys.cloud.configured ? 'cloud' : 'local');
+  const prefersLocal = input.llm === 'local';
+  if (prefersLocal && !keys.local.configured) {
+    return json(
+      { ok: false, error: 'Локальная LLM не настроена (LOCAL_LLM_BASE_URL / LOCAL_LLM_MODEL) — выберите облако или настройте Ollama.' },
+      503,
+    );
+  }
+  const provider: 'cloud' | 'local' = prefersLocal || !keys.cloud.configured ? 'local' : 'cloud';
+  const client = pickLlmClient(provider);
 
-  const input = parsed.data;
   // clean() поверх tainted-текста: в промпт идёт очищенная версия (и это единственная).
   const userPrompt = buildStyleUserPrompt({ ...input, text: clean(input.text, 6000) });
 
@@ -133,7 +143,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (post.length === 0) {
       return json({ ok: false, error: 'Модель вернула пустой результат — попробуйте ещё раз.' }, 502);
     }
-    return json({ ok: true, post }, 200);
+    return json({ ok: true, post, provider }, 200);
   } catch (e) {
     // LLM/сеть упали (Ollama лежит, таймаут, ключ) → честный 502, safeMessage
     // чистит Bearer/URL/пути/ключи из сообщения.

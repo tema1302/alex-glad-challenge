@@ -341,7 +341,8 @@ export type DemoRagInput = z.infer<typeof demoRagSchema>;
 
 // POST /api/style/rewrite — «Антоновайзер»: переписать текст в стиле
 // канала-инсайдера (публичный LLM-endpoint: cap 2000 + rate-limit в роуте).
-// mode/format/signature — предпочтения подачи; LLM и промпт фиксирует сервер.
+// mode/format/signature — предпочтения подачи; llm — выбор движка (облако или
+// локальная Ollama, оба настроены сервером). Промпт и модели фиксирует сервер.
 export const styleRewriteSchema = z.object({
   text: z
     .string()
@@ -351,6 +352,7 @@ export const styleRewriteSchema = z.object({
   mode: z.enum(['soft', 'normal', 'hard']).default('normal'),
   format: z.enum(['auto', 'post', 'essay', 'guide', 'calm']).default('auto'),
   signature: z.boolean().default(false),
+  llm: z.enum(['cloud', 'local']).default('cloud'),
 });
 export type StyleRewriteInput = z.infer<typeof styleRewriteSchema>;
 

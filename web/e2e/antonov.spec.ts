@@ -35,32 +35,42 @@ test.describe('Студия Антонова /antonov (админ)', () => {
     await expect(textarea).not.toHaveValue('');
     await expect(submit).toBeEnabled();
 
-    // Режим грубости: radio-семантика, дефолт «Обычный».
+    // Режим грубости: radio-семантика, дефолт «Обычный»; движок — дефолт «Облако».
     await expect(page.getByRole('radio', { name: 'Обычный' })).toBeChecked();
     await page.getByRole('radio', { name: 'Жёстко' }).click();
     await expect(page.getByRole('radio', { name: 'Жёстко' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: 'Облако' })).toBeChecked();
+    await page.getByRole('radio', { name: 'Локально (Ollama)' }).click();
+    await expect(page.getByRole('radio', { name: 'Локально (Ollama)' })).toBeChecked();
 
     await expect(page.getByLabel('Формат')).toBeVisible();
     await expect(page.getByLabel('С подписью «быть добру»')).toBeVisible();
   });
 
-  test('генерация с моком: пост появляется, история переживает перезагрузку, restore и удаление', async ({
+  test('генерация с моком (движок «Локально»): пост появляется, история переживает перезагрузку, restore и удаление', async ({
     page,
   }) => {
     await page.route('**/api/antonov/rewrite', async (route) => {
-      const body = route.request().postDataJSON() as { text: string; mode: string; signature: boolean };
+      const body = route.request().postDataJSON() as {
+        text: string;
+        mode: string;
+        signature: boolean;
+        llm: string;
+      };
       expect(body.mode).toBe('hard');
       expect(body.signature).toBe(true);
+      expect(body.llm).toBe('local');
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ ok: true, post: MOCK_POST }),
+        body: JSON.stringify({ ok: true, post: MOCK_POST, provider: 'local' }),
       });
     });
     await login(page, '/antonov');
 
     await page.getByLabel('Исходный текст').fill('Парковка у офиса станет платной с понедельника.');
     await page.getByRole('radio', { name: 'Жёстко' }).click();
+    await page.getByRole('radio', { name: 'Локально (Ollama)' }).click();
     await page.getByLabel('С подписью «быть добру»').check();
     await page.getByRole('button', { name: 'Переписать' }).click();
 
