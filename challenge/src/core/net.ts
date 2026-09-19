@@ -41,8 +41,23 @@ export async function netFetch(url: string, init: NetFetchInit = {}): Promise<Re
   const { label, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
   const proxy = getHttpsProxy();
 
+  // Loopback (локальные Ollama/embeddings/MCP) — ВСЕГДА напрямую, даже при заданном
+  // HTTPS_PROXY: hop через внешний прокси для 127.0.0.1 бессмыслен, а при мёртвом
+  // прокси превращает живой локальный сервис в «сеть недоступна».
+  let target: URL;
+  try {
+    target = new URL(url);
+  } catch {
+    target = new URL('http://invalid.invalid/');
+  }
+  const isLoopback =
+    target.hostname === 'localhost' ||
+    target.hostname === '127.0.0.1' ||
+    target.hostname === '::1' ||
+    target.hostname === '[::1]';
+
   const strategies: Array<Record<string, unknown>> = [];
-  if (proxy) strategies.push({ dispatcher: agentFor(proxy) });
+  if (proxy && !isLoopback) strategies.push({ dispatcher: agentFor(proxy) });
   strategies.push({});
 
   let lastErr: unknown = null;
@@ -60,7 +75,8 @@ export async function netFetch(url: string, init: NetFetchInit = {}): Promise<Re
   }
 
   const cause = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  const via = proxy ? 'прокси и прямое подключение' : 'прямое подключение';
-  const hint = proxy ? 'Проверьте интернет и локальный прокси (HTTPS_PROXY)' : 'Проверьте интернет';
+  const proxied = proxy && !isLoopback;
+  const via = proxied ? 'прокси и прямое подключение' : 'прямое подключение';
+  const hint = proxied ? 'Проверьте интернет и локальный прокси (HTTPS_PROXY)' : 'Проверьте интернет';
   throw new Error(`${label ?? 'внешний сервис'}: сеть недоступна (${via}). ${hint}. Причина: ${cause}`);
 }

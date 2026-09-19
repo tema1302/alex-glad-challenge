@@ -13,6 +13,7 @@ import type {
   Usage,
 } from '../types.js';
 import { loadEnvUpward, getLocalLlmConfig } from '../env.js';
+import { netFetch } from '../net.js';
 
 loadEnvUpward();
 
@@ -111,7 +112,10 @@ export class OllamaNativeClient extends LlmClient {
     if (typeof req.seed === 'number') options.seed = req.seed;
     if (req.stop && req.stop.length > 0) options.stop = req.stop;
 
-    const resp = await fetch(url, {
+    // Через netFetch-chokepoint (инвариант core-egress): loopback netFetch шлёт
+    // напрямую (без прокси-хопа), таймаут страхует зависшую генерацию. Нестримовый
+    // запрос: 1024 токена на слабом CPU могут генериться минуты — 300 c с запасом.
+    const resp = await netFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -124,6 +128,8 @@ export class OllamaNativeClient extends LlmClient {
         think: false,
         options,
       }),
+      label: 'локальная LLM (Ollama)',
+      timeoutMs: 300_000,
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
@@ -191,7 +197,9 @@ export class OllamaNativeClient extends LlmClient {
     if (typeof params.numCtx === 'number') options.num_ctx = params.numCtx;
     if (typeof params.seed === 'number') options.seed = params.seed;
     if (params.stop && params.stop.length > 0) options.stop = params.stop;
-    const resp = await fetch(url, {
+    // Стрим — через netFetch с timeoutMs:null: ограничение только внешним signal
+    // (SSE-disconnect клиента), иначе таймаут убил бы долгий поток.
+    const resp = await netFetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -204,6 +212,8 @@ export class OllamaNativeClient extends LlmClient {
         think: false,
         options,
       }),
+      label: 'локальная LLM (Ollama)',
+      timeoutMs: null,
       signal,
     });
     if (!resp.ok) {
