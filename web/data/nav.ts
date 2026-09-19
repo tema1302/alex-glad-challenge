@@ -49,6 +49,7 @@ export const navGroups: Array<{
     items: [
       { href: '/chat', label: 'Chat' },
       { href: '/joker', label: 'Шутник' },
+      { href: '/antonov', label: 'Антонов' },
     ],
   },
   {

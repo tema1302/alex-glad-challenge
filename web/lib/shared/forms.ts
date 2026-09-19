@@ -354,6 +354,18 @@ export const styleRewriteSchema = z.object({
 });
 export type StyleRewriteInput = z.infer<typeof styleRewriteSchema>;
 
+// POST /api/antonov/rewrite — студия канала /antonov (авторизованный роут,
+// НЕ публичный): те же поля подачи, что у /api/style/rewrite, но кап хозяина —
+// текст до 6000 (тг-пост с запасом). Лимиты запросов задаёт роут (шире публичных).
+export const antonovRewriteSchema = styleRewriteSchema.extend({
+  text: z
+    .string()
+    .trim()
+    .min(1, 'Введите текст')
+    .max(6000, 'Слишком длинный текст — максимум 6000 символов'),
+});
+export type AntonovRewriteInput = z.infer<typeof antonovRewriteSchema>;
+
 // --- rag-ingest: «База знаний» /rag/ingest (партиция 'notes') ---
 
 // POST /api/rag/notes — заметка владельца (JSON-ветка). Границы по замороженному
