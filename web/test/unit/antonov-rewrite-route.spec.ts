@@ -144,7 +144,8 @@ describe('POST /api/antonov/rewrite', () => {
     expect(messages[1]!.content).toContain('АВТО');
     expect(messages[1]!.content).toContain('парковка станет платной');
     expect(params.temperature).toBe(0.8);
-    expect(params.maxTokens).toBe(1500);
+    // 3000 (не 1500): вход ≤6000 знаков — хвост длинных статей раньше молча резался.
+    expect(params.maxTokens).toBe(3000);
     expect(pickLlmClient).toHaveBeenCalledWith('cloud');
   });
 

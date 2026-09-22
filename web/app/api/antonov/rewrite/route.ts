@@ -27,7 +27,9 @@ import { STYLE_SYSTEM_PROMPT, buildStyleUserPrompt } from '../../../../lib/serve
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const MAX_POST_LEN = 4000;
+// Вход ≤6000 знаков → выход ±30% может быть ~7800; ранее кап 4000 и maxTokens 1500
+// молча обрезали хвост длинных статей — владелец терял концовку вместе со смыслом.
+const MAX_POST_LEN = 8000;
 // Лимиты владельца: шире публичных (5/40), но не бездонные — Ollama/ключ всё
 // равно конечны. Роут закрыт сессией (см. шапку).
 const RATE_PER_IP = 20;
@@ -136,7 +138,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   try {
     const raw = await client.chat([msg.system(STYLE_SYSTEM_PROMPT), msg.user(userPrompt)], {
       temperature: 0.8,
-      maxTokens: 1500,
+      maxTokens: 3000,
     });
     // clean() поверх ответа модели: tainted LLM-текст → владельцу (клацание «Скопировать»).
     const post = clean(raw, MAX_POST_LEN).trim();
