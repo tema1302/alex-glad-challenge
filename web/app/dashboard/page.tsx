@@ -1,9 +1,11 @@
 // Dashboard (/dashboard) — server component (ТЗ §8.3): хаб админки.
 // (а) Быстрые действия: «Новый пост в TG» (J1), «Черновики блога» (J2),
-//     «История публикаций» (J3); (б) статус-строка ключей + tg configured
-//     (getKeysStatus — только флаги/мета, значения секретов NEVER); (в) тайлы
-//     статистики (live-БД). Все обращения к БД — server-only singletons +
-//     withDb(). force-dynamic: читает live-данные каждый запрос.
+//     «История публикаций» (J3); (б) карта возможностей — все инструменты
+//     сгруппированы по задачам владельца (наполнение канала, стиль, база знаний,
+//     архив TG, сервисы), по карточке на страницу с человеческим описанием;
+//     (в) статус-строка ключей + tg configured (getKeysStatus — только флаги/мета,
+//     значения секретов NEVER); (г) тайлы статистики (live-БД). Все обращения к БД —
+//     server-only singletons + withDb(). force-dynamic: читает live-данные каждый запрос.
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import type { ComponentType, ReactNode } from 'react';
@@ -14,7 +16,28 @@ import { SectionLabel } from '../components/ui/SectionLabel';
 import { Card } from '../components/ui/Card';
 import { Tile } from '../components/ui/Tile';
 import { StatusDot } from '../components/ui/StatusDot';
-import { IconEdit, IconHistory, IconSend } from '../components/ui/icons';
+import {
+  IconCheck,
+  IconCpu,
+  IconDatabase,
+  IconDownload,
+  IconEdit,
+  IconEye,
+  IconGlobe,
+  IconHistory,
+  IconLayers,
+  IconList,
+  IconMessages,
+  IconPlay,
+  IconPlug,
+  IconRss,
+  IconSearch,
+  IconSend,
+  IconSliders,
+  IconSparkles,
+  IconTelegram,
+  IconWand,
+} from '../components/ui/icons';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,7 +90,7 @@ function QuickAction({
   desc,
 }: {
   href: string;
-  icon: ComponentType;
+  icon?: ComponentType;
   title: string;
   desc: string;
 }) {
@@ -78,9 +101,11 @@ function QuickAction({
     >
       <Card variant="interactive" arrow className="h-full">
         <span className="flex items-center gap-2 font-sans text-sm font-semibold text-ink">
-          <span aria-hidden="true" className="text-accent">
-            <Icon />
-          </span>
+          {Icon ? (
+            <span aria-hidden="true" className="shrink-0 text-accent">
+              <Icon />
+            </span>
+          ) : null}
           {title}
         </span>
         <span className="mt-1 block text-sm leading-snug text-dim group-hover:text-ink">{desc}</span>
@@ -88,6 +113,190 @@ function QuickAction({
     </Link>
   );
 }
+
+// Карта возможностей: одна группа = одна задача владельца, одна карточка = одна
+// страница инструмента. Описания — человеческим голосом, ≤ 1 предложения, без
+// dev-жаргона (контракт вкуса владельца).
+const CAPABILITY_GROUPS: Array<{
+  label: string;
+  items: Array<{ href: string; icon: ComponentType; title: string; desc: string }>;
+}> = [
+  {
+    label: 'наполнение канала',
+    items: [
+      {
+        href: '/blog/scout',
+        icon: IconRss,
+        title: 'Скаут тем',
+        desc: 'Три агента прочёсывают RSS, форумы и Telegram и сводят найденное в топ лучших тем по вашему запросу.',
+      },
+      {
+        href: '/blog/news',
+        icon: IconEdit,
+        title: 'Пост из новостей',
+        desc: 'Собирает свежие новости за выбранный период в готовый черновик поста.',
+      },
+      {
+        href: '/blog/digest',
+        icon: IconSparkles,
+        title: 'Дайджест недели',
+        desc: 'Недельный дайджест одним кликом: соберёт и покажет предпросмотр — в канал уйдёт только после вашего подтверждения.',
+      },
+      {
+        href: '/blog/posts',
+        icon: IconHistory,
+        title: 'Посты блога',
+        desc: 'Все посты: правка, статусы, публикация в канал из карточки.',
+      },
+      {
+        href: '/summary',
+        icon: IconSend,
+        title: 'Сводка задач в канал',
+        desc: 'Собирает накопившиеся задачи в один текст и отправляет в Telegram после подтверждения.',
+      },
+      {
+        href: '/blog/pipeline',
+        icon: IconCheck,
+        title: 'Стадии конвейера',
+        desc: 'Шпаргалка по конвейеру: какие стадии проходит пост и какое действие ждёт систему на каждой.',
+      },
+    ],
+  },
+  {
+    label: 'стиль и тексты',
+    items: [
+      {
+        href: '/antonov',
+        icon: IconWand,
+        title: 'Студия «Антонов»',
+        desc: 'Переписывает черновик голосом канала «Антонов такой Антонов» — с выбором грубости, формата и подписи.',
+      },
+      {
+        href: '/style',
+        icon: IconGlobe,
+        title: 'Антоновайзер',
+        desc: 'Публичная версия переписывателя стиля — то, что уже доступно гостям сайта.',
+      },
+      {
+        href: '/joker',
+        icon: IconMessages,
+        title: 'Кино-Шутник',
+        desc: 'Развлекательный чат-шутник на локальной модели: работает даже без облачных ключей.',
+      },
+    ],
+  },
+  {
+    label: 'база знаний',
+    items: [
+      {
+        href: '/rag/ingest',
+        icon: IconDatabase,
+        title: 'Пополнить базу',
+        desc: 'Заметки, файлы и Telegram-чаты складываются в одну базу знаний.',
+      },
+      {
+        href: '/rag',
+        icon: IconSearch,
+        title: 'Спросить базу',
+        desc: 'Задаёте вопрос — получаете ответ с цитатами из собственной базы знаний.',
+      },
+      {
+        href: '/rag/chat',
+        icon: IconMessages,
+        title: 'Чат по базе',
+        desc: 'Ассистент в диалоге: сам ищет по базе знаний и отвечает со ссылками на источники.',
+      },
+      {
+        href: '/rag/chats',
+        icon: IconList,
+        title: 'Каталог чатов',
+        desc: 'Какие Telegram-чаты система знает и как их вызывать по короткому имени.',
+      },
+    ],
+  },
+  {
+    label: 'архив telegram',
+    items: [
+      {
+        href: '/tg/top',
+        icon: IconEye,
+        title: 'Топ сообщений',
+        desc: 'Самые обсуждаемые сообщения любого известного топика — только чтение, архив не меняется.',
+      },
+      {
+        href: '/tg/collect',
+        icon: IconDownload,
+        title: 'Докачать архив',
+        desc: 'Дозагружает сообщения форум-чата в локальный архив с живым прогрессом.',
+      },
+      {
+        href: '/evolute',
+        icon: IconTelegram,
+        title: 'Эволют',
+        desc: 'Отобранный топ полезных сообщений «Эволют-чата» и ассистент, который отвечает по его истории.',
+      },
+    ],
+  },
+  {
+    label: 'сервисы и обслуживание',
+    items: [
+      {
+        href: '/chat',
+        icon: IconMessages,
+        title: 'Чат с моделью',
+        desc: 'Обычный чат с облачной или локальной моделью — с ветками диалога и настраиваемым поведением.',
+      },
+      {
+        href: '/agent',
+        icon: IconSparkles,
+        title: 'Разовый вопрос',
+        desc: 'Один вопрос — один ответ без истории: быстро проверить мысль или модель.',
+      },
+      {
+        href: '/mcp/tools',
+        icon: IconPlug,
+        title: 'MCP-инструменты',
+        desc: 'Какие внешние инструменты сейчас подключены к системе.',
+      },
+      {
+        href: '/mcp/call',
+        icon: IconPlay,
+        title: 'Вызов инструмента',
+        desc: 'Запустить подключённый инструмент с нужными аргументами и сразу увидеть результат.',
+      },
+      {
+        href: '/mcp/todos',
+        icon: IconCheck,
+        title: 'Задачи',
+        desc: 'Общий список дел: добавить, отметить сделанным, удалить.',
+      },
+      {
+        href: '/briefing',
+        icon: IconEye,
+        title: 'Сводка системы',
+        desc: 'Мгновенная картина: задачи, статистика баз, топ Telegram.',
+      },
+      {
+        href: '/rag/index',
+        icon: IconLayers,
+        title: 'Переиндексация',
+        desc: 'Служебное: пересобрать поисковый индекс — документы здесь, Telegram-архив на соседней странице.',
+      },
+      {
+        href: '/admin/servers',
+        icon: IconCpu,
+        title: 'Серверы',
+        desc: 'Какие сервисы и ключи настроены — только факт, без значений секретов.',
+      },
+      {
+        href: '/settings',
+        icon: IconSliders,
+        title: 'Настройки',
+        desc: 'Модель по умолчанию для сайта и обзор текущей конфигурации.',
+      },
+    ],
+  },
+];
 
 export default async function DashboardPage() {
   const [stats, keys] = await Promise.all([readStats(), Promise.resolve(getKeysStatus())]);
@@ -112,7 +321,7 @@ export default async function DashboardPage() {
       <SectionHead
         code="dashboard · live"
         title="Dashboard"
-        description="Ключи показаны только как факт настройки — значения секретов не отображаются."
+        description="Карта возможностей: что умеет система и куда нажимать. Ключи показаны только как факт настройки — значения секретов не отображаются."
       />
 
       {/* ── Быстрые действия (J1/J2/J3) ── */}
@@ -139,6 +348,24 @@ export default async function DashboardPage() {
           />
         </div>
       </section>
+
+      {/* ── Карта возможностей: группа = задача владельца ── */}
+      {CAPABILITY_GROUPS.map((g) => (
+        <section key={g.label}>
+          <SectionLabel>{g.label}</SectionLabel>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {g.items.map((it) => (
+              <QuickAction
+                key={it.href}
+                href={it.href}
+                icon={it.icon}
+                title={it.title}
+                desc={it.desc}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
 
       {/* ── Статус: ключи + tg configured (Boolean only, values NEVER) ── */}
       <section>
