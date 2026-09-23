@@ -68,4 +68,27 @@ describe('buildStyleUserPrompt', () => {
     });
     expect(p).toContain('без ритуальной подписи');
   });
+
+  it('digest: включает дайджест-инструкцию и отменяет «±30% от исходника»', () => {
+    const p = buildStyleUserPrompt(
+      { text: 'длинная статья', mode: 'normal', format: 'auto', signature: false, llm: 'cloud' },
+      { digest: true },
+    );
+    expect(p).toContain('РЕЖИМ ДАЙДЖЕСТА');
+    expect(p).toMatch(/НЕ действует/); // отмена правила «длина сопоставима с исходником»
+    expect(p).toContain('~4000 знаков');
+    // сжатие разрешено только выбрасыванием второстепенного, оставленное — 1:1
+    expect(p).toMatch(/фактическим 1:1/);
+  });
+
+  it('без digest: дайджест-инструкции нет (публичный /style не меняется)', () => {
+    const p = buildStyleUserPrompt({
+      text: 'короткий пост',
+      mode: 'normal',
+      format: 'auto',
+      signature: false,
+      llm: 'cloud',
+    });
+    expect(p).not.toContain('РЕЖИМ ДАЙДЖЕСТА');
+  });
 });

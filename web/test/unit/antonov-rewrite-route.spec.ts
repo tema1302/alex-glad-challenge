@@ -1,6 +1,7 @@
 // Unit: Route Handler POST /api/antonov/rewrite — студия канала (авторизованный
 // инструмент владельца, зеркало /api/style/rewrite). Отличия от публичного:
-// лимиты 20/60 (не 5/40), zod-кап 15000 (не 2000). Промпт-модуль ОБЩИЙ со
+// лимиты 20/60 (не 5/40), zod-кап 15000 (не 2000), вход >6000 → дайджест-режим
+// (сжатый пересказ). Промпт-модуль ОБЩИЙ со
 // style-роутом (lib/server/style-prompt) — проверяем, что system/user доходят
 // как у Антоновайзера. pickLlmClient/env мокаются; server-only застаблен;
 // clean() — реальный. Auth-гейт — middleware, юнит-тестом не покрывается.
@@ -144,10 +145,22 @@ describe('POST /api/antonov/rewrite', () => {
     expect(messages[1]!.content).toContain('АВТО');
     expect(messages[1]!.content).toContain('парковка станет платной');
     expect(params.temperature).toBe(0.8);
-    // 8000 (было 1500→3000): вход ≤15000 знаков — выходные лимиты масштабированы
-    // вместе с входом, хвост длинных статей не режется.
-    expect(params.maxTokens).toBe(8000);
+    // 3000: выход по замыслу компактный — вход >6000 идёт в дайджест-режиме
+    // (сжатый пересказ до ~4000 зн.), масштабировать под вход не нужно.
+    expect(params.maxTokens).toBe(3000);
     expect(pickLlmClient).toHaveBeenCalledWith('cloud');
+  });
+
+  it('длинный вход (>6000) → дайджест-инструкция в user-промпте, короткий — без неё', async () => {
+    chat.mockResolvedValue('пост');
+    await POST(req({ text: 'а'.repeat(6500) }));
+    let [messages] = chat.mock.calls[0] as unknown as [Array<{ content: string }>];
+    expect(messages[1]!.content).toContain('РЕЖИМ ДАЙДЖЕСТА');
+    expect(messages[1]!.content).toContain('~4000 знаков');
+
+    await POST(req({ text: 'а'.repeat(1500) }));
+    [messages] = chat.mock.calls[1] as unknown as [Array<{ content: string }>];
+    expect(messages[1]!.content).not.toContain('РЕЖИМ ДАЙДЖЕСТА');
   });
 
   it('подпись и жёсткий режим доходят до user-промпта', async () => {

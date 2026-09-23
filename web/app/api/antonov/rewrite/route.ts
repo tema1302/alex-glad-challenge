@@ -5,8 +5,8 @@
 // контур лимитов (владелец генерит черновики пачками):
 //   1) двойной rate-limit по прецеденту /api/style/rewrite (per-IP 20 + глобальный
 //      предохранитель 60 на 15 мин; fuse проверяется ДО создания IP-окна);
-//   2) zod-граница antonovRewriteSchema (text ≤15000 — длинная статья с запасом) +
-//      clean() tainted-текста;
+//   2) zod-граница antonovRewriteSchema (text ≤15000) + clean() tainted-текста;
+//      вход >6000 знаков → дайджест-режим: выход — сжатый пересказ, не рерайт ±30%;
 //   3) LLM и промпт фиксирует сервер; из запроса принимается выбор движка
 //      llm: 'cloud' | 'local' (дефолт cloud; cloud без ключа → фолбэк на local);
 //   4) ответ = переписанный текст + фактически использованный provider.
@@ -27,12 +27,15 @@ import { STYLE_SYSTEM_PROMPT, buildStyleUserPrompt } from '../../../../lib/serve
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Вход ≤15000 знаков → выход ±30% может быть ~19500; лимиты выхода (maxTokens
-// и кап ответа) масштабированы вместе с входом: раньше кап 4000 и maxTokens 1500
-// молча обрезали хвост длинных статей — владелец терял концовку вместе со смыслом.
-// maxTokens 8000 — с запасом под deepseek-chat (апи-кап 8192).
-const MAX_POST_LEN = 20000;
-const MAX_OUTPUT_TOKENS = 8000;
+// Вход ≤15000 знаков, но выход по замыслу КОМПАКТНЫЙ: длинный исходник — это
+// дайджест (сжатый пересказ голосом канала, ориентир ≤~4000 зн.), а не построчный
+// рерайт — иначе модель по правилу «±30% от исходника» упирается в кап и хвост
+// теряется молча. Дайджест включает buildStyleUserPrompt({digest:true}) для входа
+// длиннее DIGEST_THRESHOLD; maxTokens 3000 и кап ответа 8000 достаточно.
+const MAX_POST_LEN = 8000;
+const MAX_OUTPUT_TOKENS = 3000;
+// Порог дайджеста = старый кап хозяина: до него рерайт ±30%, после — выжимка.
+const DIGEST_THRESHOLD = 6000;
 // Локальная модель без явного num_ctx берёт дефолт Ollama (часто 4096) и молча
 // режет длинный вход: 15000 знаков + system-промпт ≈ 10-12к токенов. 32768 —
 // прецедент RAG-мержа на этой же машине. Облако параметр игнорирует.
@@ -140,7 +143,11 @@ export async function POST(req: NextRequest): Promise<Response> {
   const client = pickLlmClient(provider);
 
   // clean() поверх tainted-текста: в промпт идёт очищенная версия (и это единственная).
-  const userPrompt = buildStyleUserPrompt({ ...input, text: clean(input.text, 15000) });
+  // Длинный исходник → дайджест-инструкция в user-промпте (сжатый пересказ).
+  const text = clean(input.text, 15000);
+  const userPrompt = buildStyleUserPrompt({ ...input, text }, {
+    digest: text.length > DIGEST_THRESHOLD,
+  });
 
   try {
     const raw = await client.chat([msg.system(STYLE_SYSTEM_PROMPT), msg.user(userPrompt)], {
