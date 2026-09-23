@@ -1,7 +1,7 @@
 // /antonov — студия канала «Антонов такой Антонов»: черновик любого текста
 // голосом канала. Личный инструмент владельца (за auth-middleware), потребитель
 // ТОГО ЖЕ серверного промпта, что и публичный Антоновайзер — POST
-// /api/antonov/rewrite (см. шапку роута: те же инварианты, лимиты шире, кап 6000).
+// /api/antonov/rewrite (см. шапку роута: те же инварианты, лимиты шире, кап 15000).
 // 'use client' по канону тул-страниц (/joker): textarea + счётчик + чипы примеров
 // + режим грубости + формат + подпись → 200 {ok,post} | 429/400/502/503.
 // Клиентский таймаут 150с (провайдер режет генерацию на 120-й). История удачных
@@ -18,7 +18,7 @@ import { SectionHead } from '../components/ui/SectionHead';
 import { useModelPrefDefault } from '../../lib/shared/use-model-pref';
 import { styleCopy, styleExamples, type StyleExample } from '../../data/style';
 
-const MAX_TEXT = 6000; // контракт antonovRewriteSchema (zod на сервере вторым слоем)
+const MAX_TEXT = 15000; // контракт antonovRewriteSchema (zod на сервере вторым слоем)
 // Локальная Ollama на слабом CPU генерирует дольше облака — таймаут подвижный.
 const TIMEOUT_CLOUD_MS = 150_000;
 const TIMEOUT_LOCAL_MS = 300_000;

@@ -5,7 +5,7 @@
 // контур лимитов (владелец генерит черновики пачками):
 //   1) двойной rate-limit по прецеденту /api/style/rewrite (per-IP 20 + глобальный
 //      предохранитель 60 на 15 мин; fuse проверяется ДО создания IP-окна);
-//   2) zod-граница antonovRewriteSchema (text ≤6000 — тг-пост с запасом) +
+//   2) zod-граница antonovRewriteSchema (text ≤15000 — длинная статья с запасом) +
 //      clean() tainted-текста;
 //   3) LLM и промпт фиксирует сервер; из запроса принимается выбор движка
 //      llm: 'cloud' | 'local' (дефолт cloud; cloud без ключа → фолбэк на local);
@@ -27,9 +27,16 @@ import { STYLE_SYSTEM_PROMPT, buildStyleUserPrompt } from '../../../../lib/serve
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Вход ≤6000 знаков → выход ±30% может быть ~7800; ранее кап 4000 и maxTokens 1500
+// Вход ≤15000 знаков → выход ±30% может быть ~19500; лимиты выхода (maxTokens
+// и кап ответа) масштабированы вместе с входом: раньше кап 4000 и maxTokens 1500
 // молча обрезали хвост длинных статей — владелец терял концовку вместе со смыслом.
-const MAX_POST_LEN = 8000;
+// maxTokens 8000 — с запасом под deepseek-chat (апи-кап 8192).
+const MAX_POST_LEN = 20000;
+const MAX_OUTPUT_TOKENS = 8000;
+// Локальная модель без явного num_ctx берёт дефолт Ollama (часто 4096) и молча
+// режет длинный вход: 15000 знаков + system-промпт ≈ 10-12к токенов. 32768 —
+// прецедент RAG-мержа на этой же машине. Облако параметр игнорирует.
+const LOCAL_NUM_CTX = 32768;
 // Лимиты владельца: шире публичных (5/40), но не бездонные — Ollama/ключ всё
 // равно конечны. Роут закрыт сессией (см. шапку).
 const RATE_PER_IP = 20;
@@ -133,12 +140,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   const client = pickLlmClient(provider);
 
   // clean() поверх tainted-текста: в промпт идёт очищенная версия (и это единственная).
-  const userPrompt = buildStyleUserPrompt({ ...input, text: clean(input.text, 6000) });
+  const userPrompt = buildStyleUserPrompt({ ...input, text: clean(input.text, 15000) });
 
   try {
     const raw = await client.chat([msg.system(STYLE_SYSTEM_PROMPT), msg.user(userPrompt)], {
       temperature: 0.8,
-      maxTokens: 3000,
+      maxTokens: MAX_OUTPUT_TOKENS,
+      numCtx: provider === 'local' ? LOCAL_NUM_CTX : undefined,
     });
     // clean() поверх ответа модели: tainted LLM-текст → владельцу (клацание «Скопировать»).
     const post = clean(raw, MAX_POST_LEN).trim();

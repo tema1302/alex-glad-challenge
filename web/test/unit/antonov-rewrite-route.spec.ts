@@ -1,6 +1,6 @@
 // Unit: Route Handler POST /api/antonov/rewrite — студия канала (авторизованный
 // инструмент владельца, зеркало /api/style/rewrite). Отличия от публичного:
-// лимиты 20/60 (не 5/40), zod-кап 6000 (не 2000). Промпт-модуль ОБЩИЙ со
+// лимиты 20/60 (не 5/40), zod-кап 15000 (не 2000). Промпт-модуль ОБЩИЙ со
 // style-роутом (lib/server/style-prompt) — проверяем, что system/user доходят
 // как у Антоновайзера. pickLlmClient/env мокаются; server-only застаблен;
 // clean() — реальный. Auth-гейт — middleware, юнит-тестом не покрывается.
@@ -65,15 +65,15 @@ describe('POST /api/antonov/rewrite', () => {
     expect(chat).not.toHaveBeenCalled();
   });
 
-  it('кап хозяина: 6000 символов проходит, 6001 → 400', async () => {
+  it('кап хозяина: 15000 символов проходит, 15001 → 400', async () => {
     chat.mockResolvedValue('пост');
-    const ok = await POST(req({ text: 'а'.repeat(6000) }));
+    const ok = await POST(req({ text: 'а'.repeat(15000) }));
     expect(ok.status).toBe(200);
 
-    const res = await POST(req({ text: 'а'.repeat(6001) }));
+    const res = await POST(req({ text: 'а'.repeat(15001) }));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };
-    expect(body.error).toContain('максимум 6000 символов');
+    expect(body.error).toContain('максимум 15000 символов');
   });
 
   it('не-JSON тело → 400', async () => {
@@ -144,8 +144,9 @@ describe('POST /api/antonov/rewrite', () => {
     expect(messages[1]!.content).toContain('АВТО');
     expect(messages[1]!.content).toContain('парковка станет платной');
     expect(params.temperature).toBe(0.8);
-    // 3000 (не 1500): вход ≤6000 знаков — хвост длинных статей раньше молча резался.
-    expect(params.maxTokens).toBe(3000);
+    // 8000 (было 1500→3000): вход ≤15000 знаков — выходные лимиты масштабированы
+    // вместе с входом, хвост длинных статей не режется.
+    expect(params.maxTokens).toBe(8000);
     expect(pickLlmClient).toHaveBeenCalledWith('cloud');
   });
 
@@ -165,8 +166,14 @@ describe('POST /api/antonov/rewrite', () => {
     const body = (await res.json()) as { ok: boolean; provider: string };
     expect(body.provider).toBe('local');
     expect(pickLlmClient).toHaveBeenCalledWith('local');
-    const [messages] = chat.mock.calls[0] as unknown as [Array<{ role: string; content: string }>];
+    const [messages, params] = chat.mock.calls[0] as unknown as [
+      Array<{ role: string; content: string }>,
+      { numCtx?: number },
+    ];
     expect(messages[0]!.content).toContain('РЕРАЙТЕР-СТИЛИЗАТОР');
+    // Локальной модели явно задаётся num_ctx — иначе дефолт Ollama молча режет
+    // длинный вход (15000 знаков + промпт > 4096 токенов).
+    expect(params.numCtx).toBe(32768);
   });
 
   it('llm:"local" при ненастроенной local → 503 с подсказкой про env', async () => {
