@@ -4,7 +4,8 @@
 // /api/antonov/rewrite (см. шапку роута: те же инварианты, лимиты шире, кап 15000).
 // 'use client' по канону тул-страниц (/joker): textarea + счётчик + чипы примеров
 // + режим грубости + формат + подпись → 200 {ok,post} | 429/400/502/503.
-// Клиентский таймаут 150с (провайдер режет генерацию на 120-й). История удачных
+// Клиентский таймаут: cloud 150с (провайдер режет генерацию на 120-й), local 600с
+// (потолок серверного вызова Ollama). История удачных
 // генераций — localStorage (последние 10), читается в useEffect (не в рендере —
 // готча гидрации). Импорты — только data/* и components/ui (без lib/server, core).
 'use client';
@@ -20,8 +21,11 @@ import { styleCopy, styleExamples, type StyleExample } from '../../data/style';
 
 const MAX_TEXT = 15000; // контракт antonovRewriteSchema (zod на сервере вторым слоем)
 // Локальная Ollama на слабом CPU генерирует дольше облака — таймаут подвижный.
+// local 600с = серверному потолку Ollama (core/rag/llm.ts): qwen3.5:4b на
+// CPU-swap ~5 tok/s, дайджест до 3000 токенов ≈ до 10 мин; раньше клиент отваливался
+// на 300-й, пока сервер продолжал генерировать вхолостую.
 const TIMEOUT_CLOUD_MS = 150_000;
-const TIMEOUT_LOCAL_MS = 300_000;
+const TIMEOUT_LOCAL_MS = 600_000;
 const HISTORY_KEY = 'antonov-history-v1';
 const HISTORY_MAX = 10;
 
