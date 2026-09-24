@@ -114,7 +114,8 @@ export class OllamaNativeClient extends LlmClient {
 
     // Через netFetch-chokepoint (инвариант core-egress): loopback netFetch шлёт
     // напрямую (без прокси-хопа), таймаут страхует зависшую генерацию. Нестримовый
-    // запрос: 1024 токена на слабом CPU могут генериться минуты — 300 c с запасом.
+    // запрос: qwen3.5:4b на 3.8 GB RAM частично в swap (~5 tok/s) — дайджест-режим
+    // студии /antonov (до 3000 токенов выхода) требует до ~10 мин; 600 c потолок.
     const resp = await netFetch(url, {
       method: 'POST',
       headers: {
@@ -129,7 +130,7 @@ export class OllamaNativeClient extends LlmClient {
         options,
       }),
       label: 'локальная LLM (Ollama)',
-      timeoutMs: 300_000,
+      timeoutMs: 600_000,
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');

@@ -37,7 +37,8 @@ import {
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const TIMEOUT_MS = 120_000; // abort одной попытки (умещает локальную 4B и облако)
+const TIMEOUT_MS = 300_000; // abort одной попытки; 4B-модель на 3.8 GB RAM частично в swap
+// и на полном JIRA-промпте генерирует ~140 с (5 tok/s) — 120 с абортит валидный ответ (502).
 const MAX_ATTEMPTS = 2;
 const MAX_STORY_LEN = 8000;
 
