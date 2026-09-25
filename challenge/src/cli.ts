@@ -86,6 +86,7 @@ import {
   assertDimCompatible,
 } from './core/tg/index.js';
 import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.js';
+import { runTgBot } from './core/tg/bot.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -141,6 +142,9 @@ function printHelp(): void {
   console.log('  tg-top <chat> [<topicId>]  Топ сообщений по реакциям/дате (SQL над tg.sqlite, без сети)');
   console.log('    --by likes|date     сортировка (по умолч. likes)');
   console.log('    --limit <N>         сколько строк (по умолч. 20)');
+  console.log('  tg-bot           Бот «Фактчемпик» в чате «Факты в чате» (Bot API long polling, M1)');
+  console.log('    --index-only       собрать/доклеить FTS-индекс (tg-fts.sqlite) и выйти, без сети');
+  console.log('    --rebuild          полная перестройка FTS-индекса (можно вместе с --index-only)');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
@@ -428,6 +432,9 @@ async function runMcpCommand(argv: string[]): Promise<void> {
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  // pnpm в части версий передаёт `--` буквально (pnpm run start -- list);
+  // ни одна команда не начинается с `--` — глотаем ведущий разделитель.
+  if (argv[0] === '--') argv.shift();
   const arg = argv[0];
 
   // По умолчанию (без аргумента) или явный chat — запускаем REPL.
@@ -602,6 +609,16 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- Бот «Фактчемпик» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
+  if (arg === 'tg-bot') {
+    const rest = argv.slice(1);
+    await runTgBot({
+      indexOnly: rest.includes('--index-only'),
+      rebuildIndex: rest.includes('--rebuild'),
+    });
+    return;
+  }
+
   if (arg === 'file-server') {
     const allowWrite = argv.slice(1).includes('--write');
     console.log(
@@ -684,7 +701,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, rag, tg-collect, tg-top, tg-bot, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 

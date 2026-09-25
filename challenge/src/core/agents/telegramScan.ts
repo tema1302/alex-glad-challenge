@@ -286,7 +286,7 @@ export async function scanChatMessages(chat: string, limit: number): Promise<Sca
   return { chat: title, total: messages.length, messages };
 }
 
-const STOP_WORDS = new Set([
+export const STOP_WORDS = new Set([
   'и', 'в', 'во', 'на', 'не', 'что', 'это', 'я', 'а', 'с', 'по', 'для', 'но', 'же', 'бы',
   'ли', 'как', 'так', 'то', 'он', 'она', 'они', 'мы', 'вы', 'ты', 'его', 'ее', 'их',
   'the', 'a', 'an', 'to', 'of', 'and', 'in', 'is', 'it', 'for', 'on', 'with', 'as', 'at',

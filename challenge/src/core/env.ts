@@ -185,6 +185,36 @@ export function getMcpAuth(): string | undefined {
 }
 
 /**
+ * Конфиг рантайм-бота «Фактчемпик» (CLI tg-bot). null если нет TG_BOT_TOKEN.
+ * allowChats — CSV TG_BOT_ALLOW_CHATS; пусто = бот не работает (fail-closed,
+ * проверяется на старте). ownerChatId — TG_BOT_OWNER_ID (user id владельца для
+ * админ-команд и лички); без него — первый ЛИЧНЫЙ (положительный) chat_id из
+ * allow-list, иначе null (админ-команды недоступны).
+ */
+export interface TgBotRuntimeConfig {
+  botToken: string;
+  allowChats: ReadonlySet<string>;
+  ownerChatId: string | null;
+  pollTimeoutSec: number;
+}
+
+export function getTgBotRuntimeConfig(): TgBotRuntimeConfig | null {
+  const botToken = process.env.TG_BOT_TOKEN?.trim() || '';
+  if (!botToken) return null;
+  const allowChats = (process.env.TG_BOT_ALLOW_CHATS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const ownerRaw = process.env.TG_BOT_OWNER_ID?.trim() || '';
+  const ownerChatId =
+    ownerRaw || allowChats.find((id) => !id.startsWith('-')) || null;
+  const pollRaw = Number(process.env.TG_BOT_POLL_TIMEOUT?.trim());
+  const pollTimeoutSec =
+    Number.isFinite(pollRaw) && pollRaw >= 5 && pollRaw <= 120 ? pollRaw : 25;
+  return { botToken, allowChats: new Set(allowChats), ownerChatId, pollTimeoutSec };
+}
+
+/**
  * Конфиг приватного LLM-gateway (day-30): порт bind, auth-токен (отдельный домен
  * от MCP_AUTH_TOKEN), RPS/TPM-лимиты, concurrency-кап и max-context-tokens cap.
  * Дефолты рассчитаны на один инстанс vLLM/Ollama на loopback. Секрет (authToken)
