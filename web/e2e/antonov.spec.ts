@@ -93,3 +93,64 @@ test.describe('Студия Антонова /antonov (админ)', () => {
     await expect(page.getByRole('heading', { name: 'история (последние 10)' })).toBeHidden();
   });
 });
+
+const THREAD_POSTS = [
+  'Перевожу для вас большой разбор TheNearPost. Дальше — от лица автора, я только перевожу. Поехали.',
+  'Голос автора: факты, цифры, панч. Вот именно.',
+  'Прим. переводчика: жёстко, но по делу.\n\nИсточник: TheNearPost. Перевод и адаптация — мои.',
+];
+
+test.describe('Студия /antonov — режим «Поток-перевод» (агент потока)', () => {
+  test.use({ storageState: undefined });
+
+  test('переключение режима показывает поля потока; мок /api/antonov/thread → серия постов со счётчиками', async ({
+    page,
+  }) => {
+    await page.route('**/api/antonov/thread', async (route) => {
+      const body = route.request().postDataJSON() as {
+        text: string;
+        author: string;
+        source: string;
+        images: string[];
+        mode: string;
+        llm: string;
+      };
+      expect(body.author).toBe('TheNearPost');
+      expect(body.source).toBe('https://example.com/src');
+      expect(body.images).toEqual(['схема центра поля']);
+      expect(body.mode).toBe('hard');
+      expect(body.llm).toBe('cloud');
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, posts: THREAD_POSTS, provider: 'cloud' }),
+      });
+    });
+    await login(page, '/antonov');
+
+    // По умолчанию — одиночный пост; переключение на поток показывает его поля
+    // и прячет формат/подпись одиночки.
+    await expect(page.getByRole('radio', { name: 'Пост', exact: true })).toBeChecked();
+    await page.getByRole('radio', { name: 'Поток-перевод' }).click();
+    await expect(page.getByLabel('Формат')).toBeHidden();
+    await expect(page.getByLabel('С подписью «быть добру»')).toBeHidden();
+    await expect(page.getByLabel('Автор оригинала')).toBeVisible();
+    await expect(page.getByLabel('Ссылка на источник')).toBeVisible();
+    await expect(page.getByLabel('Картинки — по одной в строке')).toBeVisible();
+
+    await page.getByLabel('Исходный текст').fill('Длинный чужой разбор про полузащиту.');
+    await page.getByLabel('Автор оригинала').fill('TheNearPost');
+    await page.getByLabel('Ссылка на источник').fill('https://example.com/src');
+    await page.getByLabel('Картинки — по одной в строке').fill('схема центра поля');
+    await page.getByRole('radio', { name: 'Жёстко' }).click();
+    await page.getByRole('button', { name: 'Собрать поток' }).click();
+
+    await expect(page.getByRole('heading', { name: /Поток · 3/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole('heading', { name: 'пост 1', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'пост 3', exact: true })).toBeVisible();
+    await expect(page.getByText(THREAD_POSTS[1]!)).toBeVisible();
+    // Счётчик лимита ТГ у каждого поста.
+    await expect(page.getByText(/ \/ 4096/).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Скопировать все' })).toBeVisible();
+  });
+});

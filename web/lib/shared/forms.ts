@@ -369,6 +369,29 @@ export const antonovRewriteSchema = styleRewriteSchema.extend({
 });
 export type AntonovRewriteInput = z.infer<typeof antonovRewriteSchema>;
 
+// POST /api/antonov/thread — агент «Поток-перевод» (авторизованный роут): чужой
+// разбор → серия постов ТГ с рамкой переводчика (пост 1 — рамка, середина —
+// голос автора, последний — «прим. переводчика» + источник). Кап исходника —
+// как у студии (15000). author/source идут в рамку первого и последнего поста;
+// images — описания картинок (по одному на элемент), модель раскладывает их
+// маркерами [📸: …] по постам по смыслу.
+export const antonovThreadSchema = z.object({
+  text: z
+    .string()
+    .trim()
+    .min(1, 'Введите текст')
+    .max(15000, 'Слишком длинный текст — максимум 15000 символов'),
+  author: z.string().trim().max(120, 'Имя автора — до 120 символов').default(''),
+  source: z.string().trim().max(300, 'Ссылка на источник — до 300 символов').default(''),
+  images: z
+    .array(z.string().trim().min(1).max(200, 'Описание картинки — до 200 символов'))
+    .max(12, 'Картинок — не больше 12')
+    .default([]),
+  mode: z.enum(['soft', 'normal', 'hard']).default('normal'),
+  llm: z.enum(['cloud', 'local']).default('cloud'),
+});
+export type AntonovThreadInput = z.infer<typeof antonovThreadSchema>;
+
 // --- rag-ingest: «База знаний» /rag/ingest (партиция 'notes') ---
 
 // POST /api/rag/notes — заметка владельца (JSON-ветка). Границы по замороженному
