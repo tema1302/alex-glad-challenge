@@ -44,6 +44,19 @@ const SEED_ALIASES: Readonly<Record<string, string>> = {
 const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
 const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
+const START_INTRO = [
+  'Привет! Я «Фактчемпик» — бот-память чата «Факты в чате».',
+  '',
+  'Что умею:',
+  '/цитата — случайная топ-цитата из истории чата',
+  '/цитата @ник — цитата конкретного автора',
+  '/сказал @ник — что и когда человек говорил',
+  '/игра — угадай, кто сказал фразу',
+  '/изобрази — вообрази, как автор это сказал (боту нужна роль админа в чате)',
+  '',
+  'Владельцу ещё доступны: /стат, /алиас, /reindex, /off, /on.',
+  'Команды работают и здесь, в личке (игры — в сольном режиме), и в самом чате.',
+].join('\n');
 
 export interface RunTgBotOpts {
   /** Собрать/доклеить FTS-индекс и выйти (без сети). */
@@ -289,6 +302,13 @@ export class FactchempikBot {
     if (isPrivate ? !isOwner : !this.d.cfg.allowChats.has(chatId)) return;
     if (!this.d.session.enabled && !isOwner) return;
 
+    const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
+    if (cmd?.name === 'start') {
+      // Раньше /start молча проваливался в default — теперь короткое интро.
+      await this.reply(chatId, START_INTRO, msg.message_id);
+      return;
+    }
+
     // Реплай на анонс «Изобрази» — всегда запись (даже если текст начинается с «/»);
     // жёсткое сравнение message_id отсекает реплаи на другие карточки бота.
     if (msg.reply_to_message && this.improv.isCollectAnnounce(chatId, msg.reply_to_message.message_id)) {
@@ -307,7 +327,6 @@ export class FactchempikBot {
       return;
     }
 
-    const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
     if (!cmd) return;
 
     if (!isOwner) {
