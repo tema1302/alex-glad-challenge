@@ -45,18 +45,22 @@ const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
 const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
 const START_INTRO = [
-  'Привет! Я «Фактчемпик» — бот-память чата «Факты в чате».',
+  '🎭 О, здравствуйте! Я — Фактчемпик, бот-память чата «Факты в чате».',
+  '',
+  'Я прочитал этот чат целиком: от первого сообщения 2021 года',
+  'до последнего «ахахаха». Ничего не забыл. Ни-че-го.',
   '',
   'Что умею:',
-  '/цитата — случайная топ-цитата из истории чата',
-  '/цитата @ник — цитата конкретного автора',
-  '/сказал @ник — что и когда человек говорил',
-  '/игра — угадай, кто сказал фразу',
-  '/изобрази — вообрази, как автор это сказал (боту нужна роль админа в чате)',
+  '/цитата — вытащу жемчужину, которую вы сами написали и забыли',
+  '/цитата @ник — персональная ретроспектива чужих грехов',
+  '/сказал @ник — полное досье: всё, что человек говорил. Всё.',
+  '/игра — угадай по фразе, кто это сказал. Стыд прилагается',
+  '/изобрази — вообразим, КАК это было сказано. Голосом вашей души',
   '',
-  'Владельцу ещё доступны: /стат, /алиас, /reindex, /off, /on.',
-  'Команды работают и здесь, в личке (игры — в сольном режиме), и в самом чате.',
+  'Команды работают в самом чате «Факты в чате» — там и играем.',
 ].join('\n');
+const START_INTRO_OWNER =
+  '\n\nТвои админские: /стат, /алиас, /reindex, /off, /on. Никому не говори.';
 
 export interface RunTgBotOpts {
   /** Собрать/доклеить FTS-индекс и выйти (без сети). */
@@ -297,17 +301,22 @@ export class FactchempikBot {
     const userId = String(msg.from.id);
     if (msg.from.is_bot || userId === this.d.botId) return;
 
-    const isPrivate = msg.chat.type === 'private';
     const isOwner = this.isOwner(userId);
-    if (isPrivate ? !isOwner : !this.d.cfg.allowChats.has(chatId)) return;
     if (!this.d.session.enabled && !isOwner) return;
 
     const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
     if (cmd?.name === 'start') {
-      // Раньше /start молча проваливался в default — теперь короткое интро.
-      await this.reply(chatId, START_INTRO, msg.message_id);
+      // Интро: в личке — каждому, в разрешённом чате — всем участникам.
+      // В чужих группах (бот сидит там не ради Фактчемпика) молчим.
+      const isPrivate = msg.chat.type === 'private';
+      if (isPrivate || this.d.cfg.allowChats.has(chatId)) {
+        const intro = isOwner ? START_INTRO + START_INTRO_OWNER : START_INTRO;
+        await this.reply(chatId, intro, msg.message_id);
+      }
       return;
     }
+
+    if (msg.chat.type === 'private' ? !isOwner : !this.d.cfg.allowChats.has(chatId)) return;
 
     // Реплай на анонс «Изобрази» — всегда запись (даже если текст начинается с «/»);
     // жёсткое сравнение message_id отсекает реплаи на другие карточки бота.
