@@ -2123,6 +2123,7 @@ interface TgCmdFlags {
   resume?: boolean;
   reset?: boolean;
   probe?: boolean;
+  plain?: boolean;
   by?: 'likes' | 'date';
   top?: number;
   rest?: boolean;
@@ -2137,6 +2138,7 @@ function parseTgArgs(argv: string[]): { flags: TgCmdFlags; positional: string[] 
     if (a === '--resume') { flags.resume = true; continue; }
     if (a === '--reset') { flags.reset = true; continue; }
     if (a === '--probe') { flags.probe = true; continue; }
+    if (a === '--plain') { flags.plain = true; continue; }
     if (a === '--by' && argv[i + 1]) {
       const v = argv[++i];
       if (v === 'likes' || v === 'date') flags.by = v;
@@ -2257,6 +2259,7 @@ async function runTgCollectCommand(argv: string[]): Promise<void> {
       limit: flags.limit,
       resume: flags.resume,
       reset: flags.reset,
+      plain: flags.plain,
       onProgress: ({ fetched, newlyInserted, lastId }) => {
         console.log(`  [collect] fetched=${fetched} new=${newlyInserted} last_id=${lastId ?? '-'}`);
       },
