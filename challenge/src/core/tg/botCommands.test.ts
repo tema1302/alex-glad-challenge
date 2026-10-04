@@ -60,6 +60,25 @@ test('extractInvocation: @упоминание с командой и «как �
   assert.equal(extractInvocation('@factchempik', 'factchempik'), null);
 });
 
+test('parseCommand: латинские алиасы меню Telegram', () => {
+  assert.deepEqual(parseCommand('/quote'), { name: 'цитата', args: '' });
+  assert.deepEqual(parseCommand('/QUOTE'), { name: 'цитата', args: '' });
+  assert.deepEqual(parseCommand('/said севенс парковка'), {
+    name: 'сказал',
+    args: 'севенс парковка',
+  });
+  assert.deepEqual(parseCommand('/game'), { name: 'игра', args: '' });
+  assert.deepEqual(parseCommand('/improv севенс'), { name: 'изобрази', args: 'севенс' });
+  assert.deepEqual(parseCommand('/stat'), { name: 'стат', args: '' });
+  assert.deepEqual(parseCommand('/alias сёва Saveliy'), { name: 'алиас', args: 'сёва Saveliy' });
+  assert.deepEqual(parseCommand('/reindex'), { name: 'reindex', args: '' });
+});
+
+test('parseCommand: /start не игровая команда (обрабатывается отдельно в bot.ts)', () => {
+  assert.equal(parseCommand('/start'), null);
+  assert.equal(parseCommand('/start@memo7repost_bot', 'memo7repost_bot'), null);
+});
+
 test('extractInvocation: обычный текст не инвокация', () => {
   assert.equal(extractInvocation('на это сказал савелий', 'factchempik'), null);
   assert.equal(extractInvocation('просто сообщение @другойбот', 'factchempik'), null);

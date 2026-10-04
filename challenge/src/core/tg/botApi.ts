@@ -113,6 +113,14 @@ export class BotApiClient {
     return this.call<boolean>('deleteWebhook', { drop_pending_updates: false }, 10_000);
   }
 
+  /** Публикация меню команд (алиасы a-z0-9_; кириллицу Bot API в меню не берёт). */
+  setMyCommands(
+    commands: { command: string; description: string }[],
+    scope?: Record<string, unknown>,
+  ): Promise<boolean> {
+    return this.call<boolean>('setMyCommands', scope ? { commands, scope } : { commands }, 10_000);
+  }
+
   getUpdates(
     offset: number,
     timeoutSec: number,

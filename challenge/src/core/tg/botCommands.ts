@@ -14,6 +14,32 @@ export const BOT_COMMANDS = [
   'стат',
 ] as const;
 
+/** Латинские алиасы команд (для меню Telegram: Bot API принимает только [a-z0-9_]). */
+export const BOT_COMMAND_ALIASES = {
+  цитата: 'quote',
+  сказал: 'said',
+  игра: 'game',
+  изобрази: 'improv',
+  алиас: 'alias',
+  стат: 'stat',
+  reindex: 'reindex',
+  off: 'off',
+  on: 'on',
+} as const;
+
+/** Команда → человекочитаемое описание для меню Telegram. */
+export const BOT_COMMAND_DESCRIPTIONS = {
+  quote: 'Жемчужина из истории чата (/цитата)',
+  said: 'Досье: /said <ник> [тема] (/сказал)',
+  game: 'Угадай, кто это сказал (/игра)',
+  improv: 'Как это было сказано (/изобрази)',
+  reindex: 'Адм: дотянуть FTS-индекс',
+  alias: 'Адм: алиасы ников (/алиас)',
+  off: 'Адм: выключить бота',
+  on: 'Адм: включить бота',
+  stat: 'Адм: состояние (/стат)',
+} as const;
+
 export type BotCommandName = (typeof BOT_COMMANDS)[number];
 
 export interface ParsedCommand {
@@ -30,7 +56,12 @@ export function parseCommand(
   const m = /^\s*\/([^\s@]+)(?:@(\S+))?(?:\s+([\s\S]*))?$/.exec(text);
   if (!m) return null;
   if (botUsername && m[2] && m[2].toLowerCase() !== botUsername.toLowerCase()) return null;
-  const name = m[1].toLowerCase().replace(/ё/g, 'е');
+  let name = m[1].toLowerCase().replace(/ё/g, 'е');
+  // Латинские алиасы меню → кириллические канонические имена (/quote = /цитата …).
+  const aliasEntry = (Object.entries(BOT_COMMAND_ALIASES) as [string, string][]).find(
+    ([, lat]) => lat === name,
+  );
+  if (aliasEntry) name = aliasEntry[0];
   // «стат»/«stat»-варианты не расширяем — фиксированный набор M1.
   if (!(BOT_COMMANDS as readonly string[]).includes(name)) return null;
   return { name, args: (m[3] ?? '').trim() };

@@ -17,7 +17,7 @@ import { FtsStore } from './ftsStore.js';
 import { buildFtsQuery, scoreQuote, themeFromReplyText } from './botFtsQuery.js';
 import { resolveAuthor, resolveGreedyName } from './botNames.js';
 import type { AuthorEntry, ResolveResult } from './botNames.js';
-import { extractInvocation } from './botCommands.js';
+import { extractInvocation, BOT_COMMAND_DESCRIPTIONS } from './botCommands.js';
 import type { ParsedCommand } from './botCommands.js';
 import { OutboxQueue, SendError, CooldownLimiter, errText } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
@@ -45,10 +45,11 @@ const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
 const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
 const START_INTRO = [
-  '🎭 О, здравствуйте! Я — Фактчемпик, бот-память чата «Факты в чате».',
+  '🎭 О, здравствуйте! Я — Медиум, дух-память чата «Факты в чате».',
   '',
   'Я прочитал этот чат целиком: от первого сообщения 2021 года',
-  'до последнего «ахахаха». Ничего не забыл. Ни-че-го.',
+  'до последнего «ахахаха». Вызываю духов прошлого — и они говорят',
+  'вашими же голосами. Ничего не забыл. Ни-че-го.',
   '',
   'Что умею:',
   '/цитата — вытащу жемчужину, которую вы сами написали и забыли',
@@ -128,9 +129,24 @@ export async function runTgBot(opts: RunTgBotOpts = {}): Promise<void> {
   } catch (err) {
     console.error(`[tg-bot] deleteWebhook (не фатально): ${errText(err)}`);
   }
-// Меню команд (setMyCommands) не регистрируем: Bot API принимает только [a-z0-9_]{1,32},
-// команды M1 кириллические по спеку — вызов падал BOT_COMMAND_INVALID на каждом старте.
-// Парсер читает текст сообщения, команды работают при ручном вводе.
+// Меню команд: кириллицу Bot API в меню не принимает ([a-z0-9_]{1,32} — BOT_COMMAND_INVALID),
+// поэтому публикуем латинские алиасы (/quote = /цитата и т.д.); парсер понимает оба вида.
+const menu = (Object.entries(BOT_COMMAND_DESCRIPTIONS) as [string, string][]).map(
+  ([command, description]) => ({ command, description }),
+);
+const publicMenu = menu.filter((c) => ['quote', 'said', 'game', 'improv'].includes(c.command));
+try {
+  await api.setMyCommands(publicMenu);
+  if (cfg.ownerChatId) {
+    await api.setMyCommands(menu, { type: 'chat', chat_id: Number(cfg.ownerChatId) });
+  }
+  console.error(
+    `[tg-bot] setMyCommands: ${publicMenu.length} публичных` +
+      (cfg.ownerChatId ? ` + ${menu.length} админских (чат owner)` : ''),
+  );
+} catch (err) {
+  console.error(`[tg-bot] setMyCommands (не фатально): ${errText(err)}`);
+}
 
   const queue = new OutboxQueue({
     sender: async (m) => {
@@ -304,10 +320,13 @@ export class FactchempikBot {
     const isOwner = this.isOwner(userId);
     if (!this.d.session.enabled && !isOwner) return;
 
-    const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
-    if (cmd?.name === 'start') {
+    const rawText = (msg.text ?? msg.caption ?? '').trim();
+    // /start парсер не проходит (нет в BOT_COMMANDS) — ловим отдельно.
+    const startM = /^\/start(?:@(\S+))?$/i.exec(rawText);
+    const startBot = startM?.[1]?.toLowerCase();
+    if (startM && (startBot === undefined || startBot === this.d.botUsername?.toLowerCase())) {
       // Интро: в личке — каждому, в разрешённом чате — всем участникам.
-      // В чужих группах (бот сидит там не ради Фактчемпика) молчим.
+      // В чужих группах (бот сидит там не ради Медиума) молчим.
       const isPrivate = msg.chat.type === 'private';
       if (isPrivate || this.d.cfg.allowChats.has(chatId)) {
         const intro = isOwner ? START_INTRO + START_INTRO_OWNER : START_INTRO;
@@ -315,8 +334,22 @@ export class FactchempikBot {
       }
       return;
     }
+    const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
 
     if (msg.chat.type === 'private' ? !isOwner : !this.d.cfg.allowChats.has(chatId)) return;
+
+    // Голый пинг «@бот» без команды — подсказка вместо тишины.
+    const ping = this.d.botUsername
+      ? rawText.toLowerCase().includes(`@${this.d.botUsername.toLowerCase()}`)
+      : false;
+    if (cmd === null && ping) {
+      await this.reply(
+        chatId,
+        '🎭 Слушаю. Команды: /цитата, /сказал <ник> [тема], /игра, /изобрази — или /start.',
+        msg.message_id,
+      );
+      return;
+    }
 
     // Реплай на анонс «Изобрази» — всегда запись (даже если текст начинается с «/»);
     // жёсткое сравнение message_id отсекает реплаи на другие карточки бота.
