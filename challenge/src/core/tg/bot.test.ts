@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MediumBot } from './bot.js';
+import { MediumBot, weightedDistractors } from './bot.js';
 import { OutboxQueue, UserCommandQueue, ConcurrencyLimiter } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
 import type { TgCallbackQuery, TgUpdate } from './botApi.js';
@@ -497,4 +497,50 @@ test('/какбы стоп без сеанса — честное «никого
   const h = makeBot();
   await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('стоп', ctx());
   assert.match(h.sent.at(-1)!.text, /никого не вызываю/);
+});
+
+test('weightedDistractors: k разных авторов, без повторов, k > пула → весь пул', () => {
+  const pool: AuthorEntry[] = Array.from({ length: 20 }, (_, i) => ({
+    fromId: String(i),
+    name: `Автор ${i}`,
+    messages: i + 1,
+    textMessages: i + 1,
+    firstDate: '2022-03-23T00:00:00.000Z',
+    lastDate: '2026-09-18T00:00:00.000Z',
+  }));
+  const picked = weightedDistractors(pool, 7);
+  assert.equal(picked.length, 7, 'ровно k выбрано');
+  assert.equal(new Set(picked.map((e) => e.fromId)).size, 7, 'все разные');
+  const ids = new Set(pool.map((e) => e.fromId));
+  for (const p of picked) assert.ok(ids.has(p.fromId), 'каждый выбранный из пула');
+  const all = weightedDistractors(pool, 100);
+  assert.equal(all.length, 20, 'k больше пула → весь пул без дублей');
+});
+
+test('weightedDistractors: активные авторы выбираются чаще молчунов', () => {
+  const loud: AuthorEntry[] = Array.from({ length: 3 }, (_, i) => ({
+    fromId: `loud${i}`,
+    name: `Громкий ${i}`,
+    messages: 500,
+    textMessages: 500,
+    firstDate: '2022-03-23T00:00:00.000Z',
+    lastDate: '2026-09-18T00:00:00.000Z',
+  }));
+  const quiet: AuthorEntry[] = Array.from({ length: 30 }, (_, i) => ({
+    fromId: `q${i}`,
+    name: `Тихий ${i}`,
+    messages: 1,
+    textMessages: 1,
+    firstDate: '2022-03-23T00:00:00.000Z',
+    lastDate: '2026-09-18T00:00:00.000Z',
+  }));
+  const loudSet = new Set(loud.map((e) => e.fromId));
+  let loudPicks = 0;
+  const runs = 2000;
+  for (let i = 0; i < runs; i++) {
+    const picked = weightedDistractors([...loud, ...quiet], 1);
+    if (loudSet.has(picked[0].fromId)) loudPicks++;
+  }
+  // 3 громких (вес 500) против 30 тихих (вес 1): ожидание ~1500/2000, допускаем шум
+  assert.ok(loudPicks > runs * 0.7, `громкие доминируют: ${loudPicks}/${runs}`);
 });

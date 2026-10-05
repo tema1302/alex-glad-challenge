@@ -338,6 +338,10 @@ export class MediumBot {
   private readonly kakbySessions = new Map<string, KakbySession>();
   private readonly rounds = new Map<string, GameRound>();
   private readonly scores = new Map<string, Map<string, { name: string; score: number }>>();
+  /** Окно anti-повтора: msg_id последних показанных цитат на чат (игра — 30). */
+  private static readonly QUOTE_AVOID_GAME = 30;
+  /** Кап для узких пулов (авторские цитаты), чтобы не вычитать пул дочерна. */
+  private static readonly QUOTE_AVOID_NARROW = 5;
   private readonly lastQuotes = new Map<string, number[]>();
   private readonly improv: ImprovGame;
   private roundSeq = 0;
@@ -535,7 +539,8 @@ export class MediumBot {
     const store = this.d.store;
     const words = args.split(/\s+/).filter(Boolean);
     if (words.length === 0) {
-      const avoid = this.lastQuotes.get(ctx.chatId) ?? [];
+      // кап окна: топ-пул широкий, но avoid в COUNT+OFFSET вычитает дочерна
+      const avoid = this.lastQuotesFor(ctx.chatId, MediumBot.QUOTE_AVOID_NARROW);
       const row = store.randomTopQuote(BOT_CHAT_KEY, BOT_TOPIC_ID, {
         minReactions: 3,
         excludeFromId: BOT_CHANNEL_FROM_ID,
@@ -661,7 +666,8 @@ export class MediumBot {
   }
 
   private async sendAuthorQuote(author: AuthorEntry, ctx: CommandCtx): Promise<void> {
-    const avoid = this.lastQuotes.get(ctx.chatId) ?? [];
+    // кап окна: пул одного автора узкий, avoid в COUNT+OFFSET вычитает дочерна
+    const avoid = this.lastQuotesFor(ctx.chatId, MediumBot.QUOTE_AVOID_NARROW);
     const row = this.d.store.randomAuthorQuote(BOT_CHAT_KEY, BOT_TOPIC_ID, author.fromId, 3, avoid);
     if (!row) {
       await this.reply(
@@ -788,7 +794,7 @@ export class MediumBot {
       await this.reply(ctx.chatId, `Раунд уже идёт, осталось ${sec} с.`, ctx.replyTo);
       return;
     }
-    const avoid = this.lastQuotes.get(ctx.chatId) ?? [];
+    const avoid = this.lastQuotesFor(ctx.chatId, MediumBot.QUOTE_AVOID_GAME);
     const quote = this.d.store.randomGameQuote(BOT_CHAT_KEY, BOT_TOPIC_ID, {
       excludeFromId: BOT_CHANNEL_FROM_ID,
       avoidMsgIds: avoid,
@@ -797,13 +803,14 @@ export class MediumBot {
       await this.reply(ctx.chatId, 'Не нашёл цитату для раунда (база пуста?).', ctx.replyTo);
       return;
     }
-    const distractors = this.d.directory
-      .get()
-      .filter((e) => e.fromId !== quote.from_id && e.textMessages > 20)
-      .sort((a, b) => b.textMessages - a.textMessages)
-      .slice(0, 15)
-      .sort(() => Math.random() - 0.5)
-      .slice(0, 3);
+    // Дедуп по имени: два from_id с одинаковым from_name дали бы одинаковые кнопки.
+    const byName = new Map<string, AuthorEntry>();
+    for (const e of this.d.directory.get()) {
+      if (e.fromId === quote.from_id || e.textMessages <= 10) continue;
+      const prev = byName.get(e.name);
+      if (!prev || e.textMessages > prev.textMessages) byName.set(e.name, e);
+    }
+    const distractors = weightedDistractors([...byName.values()], 7);
     if (distractors.length < 3) {
       await this.reply(ctx.chatId, 'Мало известных авторов для вариантов — попробуй позже.', ctx.replyTo);
       return;
@@ -934,7 +941,8 @@ export class MediumBot {
         return;
       }
     } else {
-      const avoid = this.lastQuotes.get(ctx.chatId) ?? [];
+      // кап окна: пул одного автора узкий, avoid в COUNT+OFFSET вычитает дочерна
+      const avoid = this.lastQuotesFor(ctx.chatId, MediumBot.QUOTE_AVOID_NARROW);
       const row = this.d.store.randomAuthorGameQuote(BOT_CHAT_KEY, BOT_TOPIC_ID, author.fromId, {
         avoidMsgIds: avoid,
       });
@@ -1405,10 +1413,17 @@ export class MediumBot {
     }
   }
 
+  /** Последние N msg_id цитат чата (anti-повтор); N = 0 → пустой список. */
+  private lastQuotesFor(chatId: string, n: number): number[] {
+    const arr = this.lastQuotes.get(chatId) ?? [];
+    return n > 0 ? arr.slice(-n) : [];
+  }
+
   private rememberQuote(chatId: string, msgId: number): void {
     const arr = this.lastQuotes.get(chatId) ?? [];
     arr.push(msgId);
-    while (arr.length > 5) arr.shift();
+    // Кап = самое широкое окно anti-повтора, иначе NARROW-константы не видят историю.
+    while (arr.length > MediumBot.QUOTE_AVOID_GAME) arr.shift();
     this.lastQuotes.set(chatId, arr);
   }
 
@@ -1561,6 +1576,29 @@ export function truncate(s: string, max: number): string {
 /** Вопрос /игра: дата обязательна (реальная цитата), имя автора НЕ показываем. */
 export function formatGameQuestion(quote: { text: string; date_iso: string }): string {
   return `🎯 Кто это сказал?\n\n[${formatDate(quote.date_iso)}] «${truncate(quote.text, 400)}»\n\n⏱ 90 секунд`;
+}
+
+/**
+ * Дистракторы для /игра: k разных авторов через взвешенный сэмплинр без повторов —
+ * вес = textMessages, активные участники попадаются чаще, «молчуны» остаются в игре,
+ * но редко. Известный (правильный) автор исключён фильтром выше по потоку.
+ */
+export function weightedDistractors(pool: AuthorEntry[], k: number): AuthorEntry[] {
+  const items = pool.map((e) => ({ e, w: Math.max(1, e.textMessages) }));
+  const picked: AuthorEntry[] = [];
+  while (picked.length < k && items.length > 0) {
+    const total = items.reduce((s, it) => s + it.w, 0);
+    let r = Math.random() * total;
+    let idx = 0;
+    for (; idx < items.length; idx++) {
+      r -= items[idx].w;
+      if (r <= 0) break;
+    }
+    if (idx >= items.length) idx = items.length - 1;
+    picked.push(items[idx].e);
+    items.splice(idx, 1);
+  }
+  return picked;
 }
 
 export function formatQuoteCard(row: { from_name: string; text: string; date_iso: string }): string {

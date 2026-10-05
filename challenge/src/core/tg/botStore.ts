@@ -189,8 +189,10 @@ export class BotStore {
   }
 
   /**
-   * Случайная цитата для /игра (reaction_total ≥ 5, 40–400 зн., живой участник):
-   * пробы случайных msg_id с PK-range сканом — без полного COUNT.
+   * Случайная цитата для /игра: 40–400 зн., живой участник. Равномерный COUNT +
+   * случайный OFFSET по фильтру — прежний PK-range скан смещал выбор к цитатам,
+   * идущим после длинных «пустых» зон msg_id (попадание пропорционально размеру
+   * пустого промежутка, а не 1/пулу). Реакции ≥5 с фолбэком ≥3, затем ≥1.
    */
   randomGameQuote(
     chatKey: string,
@@ -200,34 +202,27 @@ export class BotStore {
       minReactions?: number;
       minLen?: number;
       maxLen?: number;
-      attempts?: number;
       avoidMsgIds?: number[];
     },
   ): TgMessageRow | null {
-    const minReactions = opts.minReactions ?? 5;
     const minLen = opts.minLen ?? 40;
     const maxLen = opts.maxLen ?? 400;
-    const attempts = opts.attempts ?? 10;
-    const bounds = this.db
-      .prepare(
-        'SELECT MIN(msg_id) AS lo, MAX(msg_id) AS hi FROM tg_messages WHERE chat_id = ? AND topic_id = ?',
-      )
-      .get(chatKey, topicId) as { lo: number | null; hi: number | null };
-    if (bounds.lo === null || bounds.hi === null) return null;
-    const avoid = new Set(opts.avoidMsgIds ?? []);
-    for (let i = 0; i < attempts; i++) {
-      const start = bounds.lo + Math.floor(Math.random() * (bounds.hi - bounds.lo + 1));
-      const rows = this.db
-        .prepare(
-          `SELECT ${ROW_COLS} FROM tg_messages
-           WHERE chat_id = ? AND topic_id = ? AND msg_id >= ?
-             AND text <> '' AND length(text) BETWEEN ? AND ?
-             AND reaction_total >= ? AND from_id IS NOT NULL AND from_id <> ?
-           ORDER BY msg_id LIMIT 3`,
-        )
-        .all(chatKey, topicId, start, minLen, maxLen, minReactions, opts.excludeFromId) as unknown as TgMessageRow[];
-      const fresh = rows.find((r) => !avoid.has(r.msg_id));
-      if (fresh) return fresh;
+    const avoid = opts.avoidMsgIds ?? [];
+    const base =
+      `chat_id = ? AND topic_id = ? AND text <> '' AND length(text) BETWEEN ? AND ?` +
+      ` AND from_id IS NOT NULL AND from_id <> ?` +
+      (avoid.length > 0 ? ` AND msg_id NOT IN (${placeholders(avoid.length)})` : '');
+    const baseArgs: Array<string | number> = [
+      chatKey,
+      topicId,
+      minLen,
+      maxLen,
+      opts.excludeFromId,
+      ...avoid,
+    ];
+    for (const min of [opts.minReactions ?? 5, 3, 1]) {
+      const found = this.randomByWhere(`${base} AND reaction_total >= ?`, [...baseArgs, min]);
+      if (found) return found;
     }
     return null;
   }
