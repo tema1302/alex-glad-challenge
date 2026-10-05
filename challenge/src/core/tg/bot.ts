@@ -16,11 +16,8 @@ import { dataPath } from '../paths.js';
 import { BotApiClient, BotApiError } from './botApi.js';
 import type { TgUpdate, TgCallbackQuery, TgUser } from './botApi.js';
 import { BotStore } from './botStore.js';
-import { TgStore } from './tgStore.js';
 import type { TgMessageRow } from './tgStore.js';
 import { FtsStore } from './ftsStore.js';
-import { collectTopic, resolveChatTopic } from './topicCollector.js';
-import { getConnectedRawScanClient, isScanConfigured, disconnectScanClient } from '../agents/telegramScan.js';
 import { buildFtsQuery, scoreQuote, themeFromReplyText, tokenizeTheme } from './botFtsQuery.js';
 import { resolveAuthor, resolveGreedyName, collectAliasCandidates } from './botNames.js';
 import type { AuthorEntry, ResolveResult } from './botNames.js';
@@ -1243,39 +1240,10 @@ export class MediumBot {
   // --- admin (только owner) ---
 
   private async cmdReindex(ctx: CommandCtx): Promise<void> {
-    let collectInfo = '';
-    if (isScanConfigured()) {
-      const client = await getConnectedRawScanClient();
-      if (client) {
-        const tgStore = new TgStore(dataPath('tg.sqlite'));
-        try {
-          const ref = await resolveChatTopic(client, BOT_CHAT_KEY, String(BOT_TOPIC_ID));
-          const r = await collectTopic(tgStore, client, ref, {
-            reset: true,
-            plain: BOT_TOPIC_ID === 0,
-          });
-          collectInfo = `пересобрано ${r.fetched} сообщений (${r.newlyInserted} новых, ${r.updated} обновлено); `;
-        } catch (err) {
-          const m = err instanceof Error ? err.message : String(err);
-          collectInfo = `пересбор сообщений не удался (${m}); `;
-        } finally {
-          tgStore.close();
-          try {
-            await disconnectScanClient();
-          } catch {
-            /* cleanup-ошибки gramjs игнорируем */
-          }
-        }
-      } else {
-        collectInfo = 'MTProto недоступен; ';
-      }
-    } else {
-      collectInfo = 'MTProto не настроен; ';
-    }
     const idx = rebuildFtsFull(this.d.store, this.d.fts);
     await this.reply(
       ctx.chatId,
-      `♻️ ${collectInfo}FTS пересобран: ${idx.added} док. за ${(idx.ms / 1000).toFixed(1)} с, курсор msg_id=${idx.maxId}.`,
+      `♻️ FTS пересобран: ${idx.added} док. за ${(idx.ms / 1000).toFixed(1)} с, курсор msg_id=${idx.maxId}.`,
       ctx.replyTo,
     );
   }
