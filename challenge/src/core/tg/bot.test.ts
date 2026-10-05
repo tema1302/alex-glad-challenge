@@ -25,6 +25,7 @@ interface BotHarness {
   sent: OutboundMessage[];
   deleted: number[];
   edits: Array<{ chatId: string; msgId: number; text: string }>;
+  answered: Array<string | undefined>;
   session: { startedAt: number; updatesSeen: number; enabled: boolean };
   announceId(): number;
 }
@@ -33,11 +34,16 @@ function makeBot(
   opts: {
     enabled?: boolean;
     generateImitation?: (a: unknown, t: string, s: string[]) => Promise<string>;
+    said?: {
+      hits: Array<{ topicId: number; msgId: number }>;
+      rows: Map<string, unknown>;
+    };
   } = {},
 ): BotHarness {
   const sent: OutboundMessage[] = [];
   const deleted: number[] = [];
   const edits: Array<{ chatId: string; msgId: number; text: string }> = [];
+  const answered: Array<string | undefined> = [];
   const queue = new OutboxQueue({
     sender: async (m) => {
       sent.push(m);
@@ -58,7 +64,10 @@ function makeBot(
         edits.push({ chatId, msgId: messageId, text });
         return true;
       },
-      answerCallbackQuery: async () => true,
+      answerCallbackQuery: async (_id: string, text?: string) => {
+        answered.push(text);
+        return true;
+      },
     },
     store: {
       setState: () => {},
@@ -67,9 +76,9 @@ function makeBot(
       sampleAuthorDate: () => null,
       sampleAuthorQuotes: () => [],
       listAliases: () => new Map(),
-      getMessagesByKeys: () => new Map(),
+      getMessagesByKeys: () => opts.said?.rows ?? new Map(),
     },
-    fts: {},
+    fts: { get: () => ({ search: () => opts.said?.hits ?? [] }) },
     queue,
     cooldown: new CooldownLimiter(),
     directory: { get: () => DIRECTORY },
@@ -84,6 +93,7 @@ function makeBot(
     sent,
     deleted,
     edits,
+    answered,
     session,
     announceId: () => 100 + sent.length,
   };
@@ -356,4 +366,70 @@ test('/off гасит оба слота: активный /игра — с по�
   } finally {
     h.bot.cancelTimers();
   }
+});
+
+function saidFixture(count: number): {
+  hits: Array<{ topicId: number; msgId: number }>;
+  rows: Map<string, unknown>;
+} {
+  const hits = Array.from({ length: count }, (_, i) => ({ topicId: 0, msgId: 100 + i }));
+  const rows = new Map(
+    hits.map((h, i) => [
+      `0:${h.msgId}`,
+      {
+        msg_id: h.msgId,
+        text: `Цитата номер ${i + 1} про парковку и всё такое`,
+        date_iso: '2024-01-01T00:00:00.000Z',
+        reaction_total: i, // score растёт с i → порядок детерминирован
+        from_id: '100',
+      },
+    ]),
+  );
+  return { hits, rows };
+}
+
+function saidCallback(data: string): TgUpdate {
+  return {
+    update_id: 900,
+    callback_query: {
+      id: 'cb-said',
+      from: { id: 42, first_name: 'Юзер' },
+      message: {
+        message_id: 1,
+        chat: { id: Number(CHAT), type: 'supergroup' },
+        from: { id: 42, first_name: 'Юзер', is_bot: false },
+      },
+      data,
+    },
+  };
+}
+
+test('/сказал: >5 результатов → кнопка «Ещё», колбэк листает дальше', async () => {
+  const h = makeBot({ said: saidFixture(7) });
+  await (h.bot as unknown as {
+    sendSaidQuotes(a: unknown, t: string, q: string, c: unknown): Promise<void>;
+  }).sendSaidQuotes(DIRECTORY[0], 'про парковку', 'парковк*', ctx());
+
+  const first = h.sent.at(-1)!;
+  assert.match(first.text, /💬 Saveliy про «парковку»/, 'стоп-слово «про» убрано из заголовка');
+  assert.match(first.text, /1\. \[01\.01\.2024\] Цитата номер 7/);
+  assert.match(first.text, /5\. \[01\.01\.2024\] Цитата номер 3/);
+  assert.doesNotMatch(first.text, /Цитата номер 2\b/);
+  const btn = first.markup?.inline_keyboard[0]?.[0];
+  assert.ok(btn, 'кнопка «Ещё» есть');
+  assert.match(btn.text, /Ещё 2 ▸ \(осталось 2\)/);
+  const token = btn.callback_data.replace('said:', '');
+
+  await h.bot.handleUpdate(saidCallback(`said:${token}`));
+  const second = h.sent.at(-1)!;
+  assert.match(second.text, /💬 Saveliy про «парковку» \(продолжение\)/);
+  assert.match(second.text, /6\. \[01\.01\.2024\] Цитата номер 2/);
+  assert.match(second.text, /7\. \[01\.01\.2024\] Цитата номер 1/);
+  assert.equal(second.markup, undefined, 'кнопки больше нет — лист закончился');
+});
+
+test('/сказал: неизвестный/просроченный токен пагинации → «Лист устарел»', async () => {
+  const h = makeBot({ said: saidFixture(7) });
+  await h.bot.handleUpdate(saidCallback('said:nope1234'));
+  assert.match(h.answered.at(-1) ?? '', /Лист устарел/);
 });

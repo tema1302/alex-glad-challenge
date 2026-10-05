@@ -15,14 +15,15 @@ import { dataPath } from '../paths.js';
 import { BotApiClient, BotApiError } from './botApi.js';
 import type { TgUpdate, TgCallbackQuery, TgUser } from './botApi.js';
 import { BotStore } from './botStore.js';
+import type { TgMessageRow } from './tgStore.js';
 import { FtsStore } from './ftsStore.js';
-import { buildFtsQuery, scoreQuote, themeFromReplyText } from './botFtsQuery.js';
+import { buildFtsQuery, scoreQuote, themeFromReplyText, tokenizeTheme } from './botFtsQuery.js';
 import { resolveAuthor, resolveGreedyName } from './botNames.js';
 import type { AuthorEntry, ResolveResult } from './botNames.js';
 import { extractInvocation, BOT_COMMAND_DESCRIPTIONS } from './botCommands.js';
 import type { ParsedCommand } from './botCommands.js';
 import { OutboxQueue, SendError, CooldownLimiter, errText } from './botQueue.js';
-import type { OutboundMessage } from './botQueue.js';
+import type { OutboundMessage, InlineKeyboard } from './botQueue.js';
 import { ImprovGame } from './botImprov.js';
 import { guardImaginedReply } from './jokerMarker.js';
 
@@ -46,6 +47,7 @@ const SEED_ALIASES: Readonly<Record<string, string>> = {
 
 const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
+const SAID_PAGE_TTL_MS = 10 * 60_000;
 const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
 const START_INTRO = [
   '🎭 О, здравствуйте! Я — Медиум, дух-память чата «Факты в чате».',
@@ -276,6 +278,21 @@ interface PendingResolve {
   expiresAt: number;
 }
 
+interface SaidPage {
+  chatId: string;
+  fromId: string;
+  name: string;
+  theme: string;
+  matchQuery: string;
+  offset: number;
+  expiresAt: number;
+}
+
+interface SaidSearchResult {
+  scored: Array<{ row: TgMessageRow; score: number }>;
+  total: number;
+}
+
 interface GameRound {
   seq: number;
   chatId: string;
@@ -291,6 +308,7 @@ interface GameRound {
 
 export class MediumBot {
   private readonly pending = new Map<string, PendingResolve>();
+  private readonly saidPages = new Map<string, SaidPage>();
   private readonly rounds = new Map<string, GameRound>();
   private readonly scores = new Map<string, Map<string, { name: string; score: number }>>();
   private readonly lastQuotes = new Map<string, number[]>();
@@ -573,17 +591,34 @@ export class MediumBot {
       await this.reply(ctx.chatId, 'В теме одни стоп-слова. Конкретизируй.', ctx.replyTo);
       return;
     }
-    let hits;
+    // Тема для показа — без стоп-слов («про Кайседо» → «Кайседо»), регистр сохраняем.
+    const displayTheme =
+      theme
+        .split(/\s+/)
+        .filter((w) => tokenizeTheme(w).length > 0)
+        .join(' ') || theme;
+    let result: SaidSearchResult;
     try {
-      hits = this.d.fts.get().search(BOT_CHAT_KEY, matchQuery, author.fromId, 200);
+      result = this.searchSaidScored(author.fromId, matchQuery);
     } catch {
       await this.reply(ctx.chatId, 'Не смог разобрать тему, попробуй другими словами.', ctx.replyTo);
       return;
     }
-    if (hits.length === 0) {
-      await this.reply(ctx.chatId, `Про «${theme}» ${author.name} молчал.`, ctx.replyTo);
+    if (result.scored.length === 0) {
+      await this.reply(ctx.chatId, `Про «${displayTheme}» ${author.name} молчал.`, ctx.replyTo);
       return;
     }
+    await this.sendSaidBatch(
+      ctx.chatId,
+      { fromId: author.fromId, name: author.name, theme: displayTheme, matchQuery, offset: 0 },
+      result,
+      ctx.replyTo,
+    );
+  }
+
+  /** Поиск /сказал целиком: FTS-хиты → скоринг по реакциям+свежести, без среза топ-5. */
+  private searchSaidScored(fromId: string, matchQuery: string): SaidSearchResult {
+    const hits = this.d.fts.get().search(BOT_CHAT_KEY, matchQuery, fromId, 200);
     const rows = this.d.store.getMessagesByKeys(
       BOT_CHAT_KEY,
       hits.map((h) => ({ topicId: h.topicId, msgId: h.msgId })),
@@ -591,14 +626,54 @@ export class MediumBot {
     const now = Date.now();
     const scored = [...rows.values()]
       .map((row) => ({ row, score: scoreQuote(row.reaction_total, row.date_iso, now) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-    const items = scored
-      .map((s, i) => `${i + 1}. [${formatDate(s.row.date_iso)}] ${truncate(s.row.text, 500)}`)
+      .sort((a, b) => b.score - a.score);
+    return { scored, total: hits.length };
+  }
+
+  /** Один лист выдачи /сказал (5 шт.) + кнопка «Ещё», если остались. */
+  private async sendSaidBatch(
+    chatId: string,
+    page: { fromId: string; name: string; theme: string; matchQuery: string; offset: number },
+    result: SaidSearchResult,
+    replyTo?: number,
+  ): Promise<void> {
+    const batch = result.scored.slice(page.offset, page.offset + 5);
+    if (batch.length === 0) {
+      await this.send({ chatId, text: `Про «${page.theme}» больше ничего нет.`, replyTo });
+      return;
+    }
+    const items = batch
+      .map((s, i) => `${page.offset + i + 1}. [${formatDate(s.row.date_iso)}] ${truncate(s.row.text, 500)}`)
       .join('\n');
-    const header = `💬 ${author.name} про «${theme}»:\n\n`;
-    const footer = scored.length > 1 ? `\n\n(${scored.length} из ${hits.length} найденных)` : '';
-    await this.reply(ctx.chatId, header + items + footer, ctx.replyTo);
+    const header =
+      page.offset === 0
+        ? `💬 ${page.name} про «${page.theme}»:\n\n`
+        : `💬 ${page.name} про «${page.theme}» (продолжение):\n\n`;
+    const remaining = result.scored.length - (page.offset + batch.length);
+    const footer =
+      remaining === 0 && result.total > result.scored.length
+        ? `\n\n(показаны лучшие ${result.scored.length} из ${result.total} найденных)`
+        : '';
+    let markup: InlineKeyboard | undefined;
+    if (remaining > 0) {
+      this.sweepPending();
+      const token = Math.random().toString(36).slice(2, 10);
+      this.saidPages.set(token, {
+        chatId,
+        fromId: page.fromId,
+        name: page.name,
+        theme: page.theme,
+        matchQuery: page.matchQuery,
+        offset: page.offset + batch.length,
+        expiresAt: Date.now() + SAID_PAGE_TTL_MS,
+      });
+      markup = {
+        inline_keyboard: [
+          [{ text: `Ещё ${Math.min(5, remaining)} ▸ (осталось ${remaining})`, callback_data: `said:${token}` }],
+        ],
+      };
+    }
+    await this.send({ chatId, text: header + items + footer, replyTo, markup });
   }
 
   // --- игры (общий слот «один раунд на чат» на /игра и /изобрази) ---
@@ -945,6 +1020,24 @@ export class MediumBot {
       await this.handleGameCallback(cb, chatId, data);
       return;
     }
+    if (data.startsWith('said:')) {
+      const token = data.slice('said:'.length);
+      const page = this.saidPages.get(token);
+      if (!page || page.expiresAt < Date.now() || page.chatId !== chatId) {
+        this.saidPages.delete(token);
+        await this.safeAnswer(cb.id, 'Лист устарел, вызови /сказал заново');
+        return;
+      }
+      await this.safeAnswer(cb.id, undefined);
+      try {
+        const result = this.searchSaidScored(page.fromId, page.matchQuery);
+        await this.sendSaidBatch(chatId, page, result);
+      } catch (err) {
+        console.error(`[tg-bot] said-page упал: ${errText(err)}`);
+        await this.send({ chatId, text: '⚠️ Внутренняя ошибка, попробуй ещё раз.' });
+      }
+      return;
+    }
     if (!data.startsWith('res:')) {
       await this.safeAnswer(cb.id, undefined);
       return;
@@ -1100,12 +1193,15 @@ export class MediumBot {
       .join(' · ');
   }
 
-  /** Некликнутые токены дизамбиги живут 60 с (RESOLVE_TTL_MS) — подметаем лениво
-   *  при каждой новой выдаче кнопок; это единственная растущая in-memory структура. */
+  /** Некликнутые токены дизамбиги живут 60 с (RESOLVE_TTL_MS), листы /сказал —
+   *  10 мин (SAID_PAGE_TTL_MS); подметаем лениво при каждой новой выдаче кнопок. */
   private sweepPending(): void {
     const now = Date.now();
     for (const [token, p] of this.pending) {
       if (p.expiresAt < now) this.pending.delete(token);
+    }
+    for (const [token, p] of this.saidPages) {
+      if (p.expiresAt < now) this.saidPages.delete(token);
     }
   }
 

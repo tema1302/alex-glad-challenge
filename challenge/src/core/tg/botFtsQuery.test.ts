@@ -4,7 +4,7 @@ import { tokenizeTheme, buildFtsQuery, scoreQuote, themeFromReplyText } from './
 
 test('tokenizeTheme: нормализация, стоп-слова, дедуп', () => {
   const tokens = tokenizeTheme('Парковка у ТТК и про парковку, не это');
-  assert.deepEqual(tokens, ['парковка', 'ттк', 'про', 'парковку']);
+  assert.deepEqual(tokens, ['парковка', 'ттк', 'парковку']); // «про» — стоп-слово (предлог)
 });
 
 test('buildFtsQuery: префиксная морфология через OR', () => {
