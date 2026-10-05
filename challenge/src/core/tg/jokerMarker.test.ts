@@ -7,21 +7,20 @@ import {
   MAX_GUARD_ATTEMPTS,
 } from './jokerMarker.js';
 
-const VALID =
-  '🎭 Это воображаемая реплика в манере Saveliy, не настоящая\nНу всё, классика жанра.';
+const VALID = '🎭 Дух Saveliy:\nНу всё, классика жанра.';
 
 test('hasFaktMarker: валидный маркер первой строкой', () => {
   assert.equal(hasFaktMarker(VALID), true);
 });
 
 test('hasFaktMarker: маркер не в первой строке → невалид', () => {
-  assert.equal(hasFaktMarker('Привет!\n🎭 Это воображаемая реплика в манере X, не настоящая'), false);
+  assert.equal(hasFaktMarker('Привет!\n🎭 Дух X: текст'), false);
 });
 
-test('hasFaktMarker: без маркера/без слова «воображаем» → невалид', () => {
+test('hasFaktMarker: без 🎭 в первой строке → невалид', () => {
   assert.equal(hasFaktMarker(''), false);
   assert.equal(hasFaktMarker('Ну всё, классика жанра.'), false);
-  assert.equal(hasFaktMarker('🎭 Просто эмоция без контракта'), false);
+  assert.equal(hasFaktMarker('🃏 Другой эмодзи — не маркер'), false);
 });
 
 test('guardImaginedReply: валид проходит без ретрая', async () => {

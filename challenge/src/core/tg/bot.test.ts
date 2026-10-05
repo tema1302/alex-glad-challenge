@@ -344,8 +344,8 @@ test('/какбы: генератор падает → fallback с валидн�
     'saveliy',
     ctx(),
   );
-  assert.match(h.sent.at(-1)!.text, /^🎭 Это воображаемая реплика/);
-  assert.match(h.sent.at(-1)!.text, /Стилизатор остыл/);
+  assert.match(h.sent.at(-1)!.text, /^🎭 Дух Saveliy отдышался/);
+  assert.match(h.sent.at(-1)!.text, /отдышался/);
 });
 
 test('/off гасит оба слота: активный /игра — с постом, «изобрази» — через cancelActive', async () => {
@@ -443,7 +443,7 @@ test('/какбы диалог: реплай на реплику духа → п
   const h = makeBot({
     generateImitation: async (_a, history: Array<{ role: string; content: string }>, _s) => {
       calls.push(history.map((m) => m.content));
-      return '🎭 Дух Saveliy (воображаемый):\nОтвечаю в манере.';
+      return '🎭 Дух Saveliy:\nОтвечаю в манере.';
     },
   });
   await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('saveliy', ctx());
@@ -452,7 +452,7 @@ test('/какбы диалог: реплай на реплику духа → п
 
   await h.bot.handleUpdate(messageUpdate(500, spiritMsgId, 'а что думаешь про судейство?', 42));
   assert.equal(h.sent.length, 2, 'пришла вторая реплика');
-  assert.match(h.sent.at(-1)!.text, /^🎭 Дух Saveliy \(воображаемый\):/);
+  assert.match(h.sent.at(-1)!.text, /^🎭 Дух Saveliy:/);
   assert.equal(calls.length, 2, 'LLM вызван дважды');
   assert.ok(
     calls[1].some((c) => c.includes('а что думаешь про судейство?')),
@@ -470,7 +470,7 @@ test('/какбы диалог: реплай на реплику духа → п
 
 test('/какбы диалог: реплай на чужое сообщение и посторонний текст — молчание', async () => {
   const h = makeBot({
-    generateImitation: async () => '🎭 Дух Saveliy (воображаемый):\nтекст',
+    generateImitation: async () => '🎭 Дух Saveliy:\nтекст',
   });
   await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('saveliy', ctx());
   assert.equal(h.sent.length, 1);
@@ -481,7 +481,7 @@ test('/какбы диалог: реплай на чужое сообщение 
 
 test('/какбы стоп — сеанс закрыт, дух молчит', async () => {
   const h = makeBot({
-    generateImitation: async () => '🎭 Дух Saveliy (воображаемый):\nпривет',
+    generateImitation: async () => '🎭 Дух Saveliy:\nпривет',
   });
   const bot = h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> };
   await bot.cmdKakby('saveliy', ctx());
