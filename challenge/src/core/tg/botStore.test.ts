@@ -63,7 +63,7 @@ interface Stores {
 }
 
 function makeStores(): Stores {
-  const dir = mkdtempSync(join(tmpdir(), 'factchempik-'));
+  const dir = mkdtempSync(join(tmpdir(), 'medium-bot-'));
   const tg = new TgStore(join(dir, 'tg.sqlite'));
   const bot = new BotStore(join(dir, 'tg.sqlite'));
   const fts = new FtsStore(join(dir, 'tg-fts.sqlite'));

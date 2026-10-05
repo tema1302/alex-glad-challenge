@@ -1,4 +1,4 @@
-// Клиент Telegram Bot API для «Фактчемпика»: тонкие обёртки над netFetch
+// Клиент Telegram Bot API для «Медиума»: тонкие обёртки над netFetch
 // (chokepoint-инвариант — никакого другого fetch). Токен в URL НЕ логируется:
 // ошибки идут через label netFetch, BotApiError содержит только description.
 // Long polling: timeout сек в payload, timeoutMs строго больше (спек research-infra §3).

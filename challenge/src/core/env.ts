@@ -185,7 +185,7 @@ export function getMcpAuth(): string | undefined {
 }
 
 /**
- * Конфиг рантайм-бота «Фактчемпик» (CLI tg-bot). null если нет TG_BOT_TOKEN.
+ * Конфиг рантайм-бота «Медиум» (CLI tg-bot). null если нет TG_BOT_TOKEN.
  * allowChats — CSV TG_BOT_ALLOW_CHATS; пусто = бот не работает (fail-closed,
  * проверяется на старте). ownerChatId — TG_BOT_OWNER_ID (user id владельца для
  * админ-команд и лички); без него — первый ЛИЧНЫЙ (положительный) chat_id из

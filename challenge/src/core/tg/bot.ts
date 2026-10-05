@@ -1,4 +1,4 @@
-// Бот «Фактчемпик» (M1) — память и шаржист чата «Факты в чате».
+// Бот «Медиум» (M1) — память и шаржист чата «Факты в чате».
 // Спек: prompts/factchempik-bot.md; решения консилиума: swarm-report/factchempik-plan-01.md.
 //
 // Железная граница: реальные цитаты — только SQL/FTS по tg.sqlite, атрибуция по
@@ -51,17 +51,18 @@ const START_INTRO = [
   'до последнего «ахахаха». Вызываю духов прошлого — и они говорят',
   'вашими же голосами. Ничего не забыл. Ни-че-го.',
   '',
-  'Что умею:',
-  '/цитата — вытащу жемчужину, которую вы сами написали и забыли',
-  '/цитата @ник — персональная ретроспектива чужих грехов',
-  '/сказал @ник — полное досье: всё, что человек говорил. Всё.',
-  '/игра — угадай по фразе, кто это сказал. Стыд прилагается',
-  '/изобрази — вообразим, КАК это было сказано. Голосом вашей души',
+  'Что вызываю:',
+  '/quote — жемчужина, которую вы сами написали и забыли',
+  '/quote <имя> — персональная ретроспектива чужих грехов',
+  '/said <имя> <тема> — всё, что человек говорил про тему. Всё.',
+  '/game — угадай по фразе, кто это сказал. Стыд прилагается',
+  '/improv <имя> [тема] — вообразим, КАК это было сказано. Голосом вашей души',
   '',
-  'Команды работают в самом чате «Факты в чате» — там и играем.',
+  'Понимаю и кириллицу: /цитата, /сказал, /игра, /изобрази.',
+  'Играем в самом чате «Факты в чате» — там я и обитаю.',
 ].join('\n');
 const START_INTRO_OWNER =
-  '\n\nТвои админские: /стат, /алиас, /reindex, /off, /on. Никому не говори.';
+  '\n\nТвои админские: /stat, /alias, /reindex, /off, /on (кириллицей: /стат, /алиас). Никому не говори.';
 
 export interface RunTgBotOpts {
   /** Собрать/доклеить FTS-индекс и выйти (без сети). */
@@ -129,24 +130,24 @@ export async function runTgBot(opts: RunTgBotOpts = {}): Promise<void> {
   } catch (err) {
     console.error(`[tg-bot] deleteWebhook (не фатально): ${errText(err)}`);
   }
-// Меню команд: кириллицу Bot API в меню не принимает ([a-z0-9_]{1,32} — BOT_COMMAND_INVALID),
-// поэтому публикуем латинские алиасы (/quote = /цитата и т.д.); парсер понимает оба вида.
-const menu = (Object.entries(BOT_COMMAND_DESCRIPTIONS) as [string, string][]).map(
-  ([command, description]) => ({ command, description }),
-);
-const publicMenu = menu.filter((c) => ['quote', 'said', 'game', 'improv'].includes(c.command));
-try {
-  await api.setMyCommands(publicMenu);
-  if (cfg.ownerChatId) {
-    await api.setMyCommands(menu, { type: 'chat', chat_id: Number(cfg.ownerChatId) });
-  }
-  console.error(
-    `[tg-bot] setMyCommands: ${publicMenu.length} публичных` +
-      (cfg.ownerChatId ? ` + ${menu.length} админских (чат owner)` : ''),
+  // Меню команд: кириллицу Bot API в меню не принимает ([a-z0-9_]{1,32} — BOT_COMMAND_INVALID),
+  // поэтому публикуем латинские алиасы (/quote = /цитата и т.д.); парсер понимает оба вида.
+  const menu = (Object.entries(BOT_COMMAND_DESCRIPTIONS) as [string, string][]).map(
+    ([command, description]) => ({ command, description }),
   );
-} catch (err) {
-  console.error(`[tg-bot] setMyCommands (не фатально): ${errText(err)}`);
-}
+  const publicMenu = menu.filter((c) => ['quote', 'said', 'game', 'improv'].includes(c.command));
+  try {
+    await api.setMyCommands(publicMenu);
+    if (cfg.ownerChatId) {
+      await api.setMyCommands(menu, { type: 'chat', chat_id: Number(cfg.ownerChatId) });
+    }
+    console.error(
+      `[tg-bot] setMyCommands: ${publicMenu.length} публичных` +
+        (cfg.ownerChatId ? ` + ${menu.length} админских (чат owner)` : ''),
+    );
+  } catch (err) {
+    console.error(`[tg-bot] setMyCommands (не фатально): ${errText(err)}`);
+  }
 
   const queue = new OutboxQueue({
     sender: async (m) => {
@@ -161,7 +162,7 @@ try {
   });
 
   const session = { startedAt: Date.now(), updatesSeen: 0, enabled: store.getState('enabled') !== '0' };
-  const bot = new FactchempikBot({
+  const bot = new MediumBot({
     api,
     store,
     fts,
@@ -234,7 +235,7 @@ try {
   process.exit(0);
 }
 
-interface FactchempikDeps {
+interface MediumDeps {
   api: BotApiClient;
   store: BotStore;
   fts: FtsHolder;
@@ -278,7 +279,7 @@ interface GameRound {
   finished: boolean;
 }
 
-export class FactchempikBot {
+export class MediumBot {
   private readonly pending = new Map<string, PendingResolve>();
   private readonly rounds = new Map<string, GameRound>();
   private readonly scores = new Map<string, Map<string, { name: string; score: number }>>();
@@ -286,7 +287,7 @@ export class FactchempikBot {
   private readonly improv: ImprovGame;
   private roundSeq = 0;
 
-  constructor(private readonly d: FactchempikDeps) {
+  constructor(private readonly d: MediumDeps) {
     this.improv = new ImprovGame({
       send: (m) => d.queue.enqueue(m),
       del: (chatId, msgId) => d.api.deleteMessage(chatId, msgId),
@@ -321,8 +322,8 @@ export class FactchempikBot {
     if (!this.d.session.enabled && !isOwner) return;
 
     const rawText = (msg.text ?? msg.caption ?? '').trim();
-    // /start парсер не проходит (нет в BOT_COMMANDS) — ловим отдельно.
-    const startM = /^\/start(?:@(\S+))?$/i.exec(rawText);
+    // /start парсер не проходит (нет в BOT_COMMANDS) — ловим отдельно, включая deep-link payload.
+    const startM = /^\/start(?:@(\S+))?(?:\s+[\s\S]*)?$/i.exec(rawText);
     const startBot = startM?.[1]?.toLowerCase();
     if (startM && (startBot === undefined || startBot === this.d.botUsername?.toLowerCase())) {
       // Интро: в личке — каждому, в разрешённом чате — всем участникам.
@@ -345,7 +346,7 @@ export class FactchempikBot {
     if (cmd === null && ping) {
       await this.reply(
         chatId,
-        '🎭 Слушаю. Команды: /цитата, /сказал <ник> [тема], /игра, /изобрази — или /start.',
+        '🎭 Слушаю. Команды: /quote [имя], /said <имя> <тема>, /game, /improv <имя> — или /start.',
         msg.message_id,
       );
       return;

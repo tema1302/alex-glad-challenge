@@ -1,4 +1,4 @@
-// Парсер инвокаций бота «Фактчемпик» (M1): /команда[@BotName], reply на сообщение
+// Парсер инвокаций бота «Медиум» (M1): /команда[@BotName], reply на сообщение
 // бота с командой, @упоминание бота в тексте («@bot на это сказал севенс парковка»).
 // Чистый модуль — покрыт юнит-тестами.
 
@@ -14,7 +14,8 @@ export const BOT_COMMANDS = [
   'стат',
 ] as const;
 
-/** Латинские алиасы команд (для меню Telegram: Bot API принимает только [a-z0-9_]). */
+/** Латинские алиасы кириллических команд (для меню Telegram: Bot API принимает только [a-z0-9_]).
+ *  reindex/off/on кириллического канона не имеют — они и есть канонические имена. */
 export const BOT_COMMAND_ALIASES = {
   цитата: 'quote',
   сказал: 'said',
@@ -22,10 +23,12 @@ export const BOT_COMMAND_ALIASES = {
   изобрази: 'improv',
   алиас: 'alias',
   стат: 'stat',
-  reindex: 'reindex',
-  off: 'off',
-  on: 'on',
 } as const;
+
+/** Обратный словарь: латинский алиас → кириллическое каноническое имя. */
+const LATIN_TO_COMMAND: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(BOT_COMMAND_ALIASES).map(([cyr, lat]) => [lat, cyr]),
+);
 
 /** Команда → человекочитаемое описание для меню Telegram. */
 export const BOT_COMMAND_DESCRIPTIONS = {
@@ -58,10 +61,7 @@ export function parseCommand(
   if (botUsername && m[2] && m[2].toLowerCase() !== botUsername.toLowerCase()) return null;
   let name = m[1].toLowerCase().replace(/ё/g, 'е');
   // Латинские алиасы меню → кириллические канонические имена (/quote = /цитата …).
-  const aliasEntry = (Object.entries(BOT_COMMAND_ALIASES) as [string, string][]).find(
-    ([, lat]) => lat === name,
-  );
-  if (aliasEntry) name = aliasEntry[0];
+  name = LATIN_TO_COMMAND[name] ?? name;
   // «стат»/«stat»-варианты не расширяем — фиксированный набор M1.
   if (!(BOT_COMMANDS as readonly string[]).includes(name)) return null;
   return { name, args: (m[3] ?? '').trim() };

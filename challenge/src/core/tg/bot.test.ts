@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { FactchempikBot } from './bot.js';
+import { MediumBot } from './bot.js';
 import { OutboxQueue, CooldownLimiter } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
 import type { TgCallbackQuery, TgUpdate } from './botApi.js';
@@ -21,7 +21,7 @@ const DIRECTORY: AuthorEntry[] = [
 ];
 
 interface BotHarness {
-  bot: FactchempikBot;
+  bot: MediumBot;
   sent: OutboundMessage[];
   deleted: number[];
   edits: Array<{ chatId: string; msgId: number; text: string }>;
@@ -69,8 +69,8 @@ function makeBot(opts: { enabled?: boolean } = {}): BotHarness {
     cfg: { allowChats: new Set([CHAT]), ownerChatId: null, pollTimeoutSec: 5, botToken: 'токен' },
     session,
     botId: '999',
-  } as unknown as ConstructorParameters<typeof FactchempikBot>[0];
-  const bot = new FactchempikBot(deps);
+  } as unknown as ConstructorParameters<typeof MediumBot>[0];
+  const bot = new MediumBot(deps);
   return {
     bot,
     sent,

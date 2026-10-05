@@ -142,7 +142,7 @@ function printHelp(): void {
   console.log('  tg-top <chat> [<topicId>]  Топ сообщений по реакциям/дате (SQL над tg.sqlite, без сети)');
   console.log('    --by likes|date     сортировка (по умолч. likes)');
   console.log('    --limit <N>         сколько строк (по умолч. 20)');
-  console.log('  tg-bot           Бот «Фактчемпик» в чате «Факты в чате» (Bot API long polling, M1)');
+  console.log('  tg-bot           Бот «Медиум» в чате «Факты в чате» (Bot API long polling, M1)');
   console.log('    --index-only       собрать/доклеить FTS-индекс (tg-fts.sqlite) и выйти, без сети');
   console.log('    --rebuild          полная перестройка FTS-индекса (можно вместе с --index-only)');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
@@ -609,7 +609,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  // --- Бот «Фактчемпик» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
+  // --- Бот «Медиум» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
   if (arg === 'tg-bot') {
     const rest = argv.slice(1);
     await runTgBot({
