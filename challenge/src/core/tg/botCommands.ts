@@ -1,6 +1,10 @@
 // Парсер инвокаций бота «Медиум» (M1): /команда[@BotName], reply на сообщение
 // бота с командой, @упоминание бота в тексте («@bot на это сказал севенс парковка»).
 // Чистый модуль — покрыт юнит-тестами.
+//
+// Публичные команды брендированы префиксом medium_/м, чтобы не пересекаться
+// с другими ботами в чате. Старые короткие имена (/quote, /цитата и т.п.)
+// по-прежнему распознаются, но в меню Telegram больше не регистрируются.
 
 export const BOT_COMMANDS = [
   'цитата',
@@ -10,6 +14,7 @@ export const BOT_COMMANDS = [
   'какбы',
   'reindex',
   'алиас',
+  'алиасскан',
   'off',
   'on',
   'стат',
@@ -18,29 +23,43 @@ export const BOT_COMMANDS = [
 /** Латинские алиасы кириллических команд (для меню Telegram: Bot API принимает только [a-z0-9_]).
  *  reindex/off/on кириллического канона не имеют — они и есть канонические имена. */
 export const BOT_COMMAND_ALIASES = {
-  цитата: 'quote',
-  сказал: 'said',
-  игра: 'game',
-  изобрази: 'improv',
+  цитата: 'medium_quote',
+  сказал: 'medium_said',
+  игра: 'medium_game',
+  изобрази: 'medium_improv',
+  какбы: 'medium_asif',
   алиас: 'alias',
+  алиасскан: 'aliasscan',
   стат: 'stat',
-  какбы: 'asif',
 } as const;
 
-/** Обратный словарь: латинский алиас → кириллическое каноническое имя. */
-const LATIN_TO_COMMAND: Readonly<Record<string, string>> = Object.fromEntries(
-  Object.entries(BOT_COMMAND_ALIASES).map(([cyr, lat]) => [lat, cyr]),
-);
+/** Обратный словарь: латинский алиас → кириллическое каноническое имя.
+ *  Сюда же добавляем старые короткие имена для обратной совместимости. */
+const LATIN_TO_COMMAND: Readonly<Record<string, string>> = {
+  ...Object.fromEntries(Object.entries(BOT_COMMAND_ALIASES).map(([cyr, lat]) => [lat, cyr])),
+  quote: 'цитата',
+  said: 'сказал',
+  game: 'игра',
+  improv: 'изобрази',
+  asif: 'какбы',
+  мцитата: 'цитата',
+  мсказал: 'сказал',
+  мигра: 'игра',
+  мизобрази: 'изобрази',
+  мкакбы: 'какбы',
+};
 
-/** Команда → человекочитаемое описание для меню Telegram. */
+/** Команда → человекочитаемое описание для меню Telegram.
+ *  Ключи — латинские имена, которые попадут в setMyCommands. */
 export const BOT_COMMAND_DESCRIPTIONS = {
-  quote: 'Жемчужина из истории чата (/цитата)',
-  said: 'Досье: /said <ник> [тема] (/сказал)',
-  game: 'Угадай, кто это сказал (/игра)',
-  improv: 'Как это было сказано (/изобрази)',
-  asif: 'Диалог с духом автора (/какбы)',
+  medium_quote: 'Жемчужина из истории чата (/мцитата)',
+  medium_said: 'Досье: /medium_said <ник> [тема] (/мсказал)',
+  medium_game: 'Угадай, кто это сказал (/мигра)',
+  medium_improv: 'Как это было сказано (/мизобрази)',
+  medium_asif: 'Диалог с духом автора (/мкакбы)',
   reindex: 'Адм: дотянуть FTS-индекс',
   alias: 'Адм: алиасы ников (/алиас)',
+  aliasscan: 'Адм: поиск прозвищ в базе (/алиасскан)',
   off: 'Адм: выключить бота',
   on: 'Адм: включить бота',
   stat: 'Адм: состояние (/стат)',
@@ -53,7 +72,7 @@ export interface ParsedCommand {
   args: string;
 }
 
-/** '/цитата севенс' | '/сказал@BotName тема' → {name, args}; не команда → null. */
+/** '/мцитата севенс' | '/medium_said@BotName тема' → {name, args}; не команда → null. */
 export function parseCommand(
   text: string | null | undefined,
   botUsername?: string,
@@ -63,7 +82,7 @@ export function parseCommand(
   if (!m) return null;
   if (botUsername && m[2] && m[2].toLowerCase() !== botUsername.toLowerCase()) return null;
   let name = m[1].toLowerCase().replace(/ё/g, 'е');
-  // Латинские алиасы меню → кириллические канонические имена (/quote = /цитата …).
+  // Латинские алиасы → кириллические канонические имена (/medium_quote = /цитата …).
   name = LATIN_TO_COMMAND[name] ?? name;
   // «стат»/«stat»-варианты не расширяем — фиксированный набор M1.
   if (!(BOT_COMMANDS as readonly string[]).includes(name)) return null;

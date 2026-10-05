@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeName, resolveAuthor, collapseByAuthor, pickSuggestions, resolveGreedyName } from './botNames.js';
+import {
+  normalizeName,
+  resolveAuthor,
+  collapseByAuthor,
+  pickSuggestions,
+  resolveGreedyName,
+  collectAliasCandidates,
+} from './botNames.js';
 import type { AuthorEntry } from './botNames.js';
 
 function entry(fromId: string, name: string, textMessages: number): AuthorEntry {
@@ -119,4 +126,20 @@ test('resolveGreedyName: амбигуальный первый токен → ж
   const ok = resolveGreedyName(['krasnobeliy2', 'лишнее'], resolve);
   assert.equal(ok.result.kind, 'ok');
   assert.deepEqual(ok.themeWords, ['лишнее']);
+});
+
+test('collectAliasCandidates: выбирает частые слова и исключает стоп-слова/имя/алиасы', () => {
+  const texts = [
+    'Temi4 Facts всегда прав, Тёма молодец',
+    'Тёма, ну ты и бомбишь',
+    'Кто-то сказал, что Temi4 Facts ушёл',
+    'тут просто общие слова и ещё раз',
+  ];
+  const candidates = collectAliasCandidates('Temi4 Facts', texts, ['тёмыч'], 5);
+  const words = candidates.map((c) => c.word);
+  assert.ok(words.includes('тема'), 'должно найти прозвище Тёма (нормализовано к тема)');
+  assert.ok(!words.includes('тёмыч'), 'существующий алиас исключён');
+  assert.ok(!words.includes('temi4'), 'части имени автора исключены');
+  assert.ok(!words.includes('facts'), 'части имени автора исключены');
+  assert.ok(!words.includes('что'), 'стоп-слова исключены');
 });

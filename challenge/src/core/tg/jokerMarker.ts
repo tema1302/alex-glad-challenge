@@ -17,11 +17,13 @@ export function hasFaktMarker(answer: string): boolean {
   return FAKT_MARKER_RE.test(firstLine);
 }
 
-/** Fallback с гарантированно валидным маркером (порт JOKER_FALLBACK). */
+/** Fallback с гарантированно валидным маркером (порт JOKER_FALLBACK).
+ *  «Отдышался» = LLM не ответил дважды или вернул текст без обязательного 🎭.
+ *  Это защитный fallback, а не баг; реальные цитаты всё ещё можно получить через /сказал. */
 export function buildFaktFallback(displayName: string): string {
   return (
-    `🎭 Дух ${displayName} отдышался — попробуй позже.\n` +
-    'Реальные слова надёжнее: /сказал ' + displayName
+    `🎭 Дух ${displayName} отдышался — стилизатор не выдал валидную реплику. Попробуй позже.\n` +
+    'Реальные слова надёжнее: /medium_said ' + displayName
   );
 }
 

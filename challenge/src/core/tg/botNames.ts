@@ -3,6 +3,8 @@
 // Спек: prompts/factchempik-bot.md §3. from_id НИКОГДА не попадает в человеко-
 // читаемый вывод — эти типы для внутренних решений, display name — из from_name.
 
+import { STOP_WORDS } from '../agents/telegramScan.js';
+
 export interface AuthorEntry {
   fromId: string;
   name: string;
@@ -122,4 +124,28 @@ export function resolveGreedyName(
     }
   }
   return { name, themeWords, result };
+}
+
+/** Подбор кандидатов в прозвища для автора: частотный анализ слов из сообщений,
+ *  где этот автор упоминается. Исключаются стоп-слова, имя самого автора и
+ *  уже известные алиасы. */
+export function collectAliasCandidates(
+  authorName: string,
+  sampleTexts: readonly string[],
+  existingAliases: readonly string[],
+  limit = 10,
+): Array<{ word: string; count: number }> {
+  const exclude = new Set<string>([...normalizeName(authorName).split(/\s+/), ...existingAliases.map(normalizeName)]);
+  const counts = new Map<string, number>();
+  for (const text of sampleTexts) {
+    const tokens = normalizeName(text).match(/[a-zа-я0-9]{3,}/g) ?? [];
+    for (const t of tokens) {
+      if (STOP_WORDS.has(t) || /^\d+$/.test(t) || exclude.has(t)) continue;
+      counts.set(t, (counts.get(t) ?? 0) + 1);
+    }
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([word, count]) => ({ word, count }));
 }

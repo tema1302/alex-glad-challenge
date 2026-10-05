@@ -34,10 +34,26 @@ interface RawTgMessage {
     }>;
     min?: boolean;
   } | null;
+  fwdFrom?: RawFwdHeader | null;
+}
+
+interface RawFwdHeader {
+  fromId?: RawPeer | null;
+  fromName?: string;
+  postAuthor?: string;
+}
+
+interface RawPeer {
+  className?: string;
+  userId?: { toString(): string } | bigint | number | null;
+  channelId?: { toString(): string } | bigint | number | null;
+  chatId?: { toString(): string } | bigint | number | null;
 }
 
 interface TgEntity {
   title?: string;
+  firstName?: string;
+  lastName?: string;
   username?: string;
   id?: { toString(): string } | bigint | number | null;
   className?: string;
@@ -70,6 +86,85 @@ export function summarizeReactions(m: RawTgMessage): ReactionSummary {
 }
 
 // Sanitize (tainted TG-контент → БД + RAG-промпт) — единый clean() из core/sanitize.
+
+// --- Атрибуция пересланных сообщений ---
+
+function peerIdString(peer: RawPeer | null | undefined): string | null {
+  if (!peer) return null;
+  if (peer.className === 'PeerUser') {
+    const id = peer.userId;
+    return id == null ? null : String(id);
+  }
+  if (peer.className === 'PeerChannel') {
+    const id = peer.channelId;
+    return id == null ? null : `-100${id}`;
+  }
+  if (peer.className === 'PeerChat') {
+    const id = peer.chatId;
+    return id == null ? null : `-${id}`;
+  }
+  return null;
+}
+
+function peerInputString(peer: RawPeer | null | undefined): string | null {
+  if (!peer) return null;
+  if (peer.className === 'PeerUser') {
+    const id = peer.userId;
+    return id == null ? null : String(id);
+  }
+  if (peer.className === 'PeerChannel') {
+    const id = peer.channelId;
+    return id == null ? null : `-100${id}`;
+  }
+  if (peer.className === 'PeerChat') {
+    const id = peer.chatId;
+    return id == null ? null : `-${id}`;
+  }
+  return null;
+}
+
+function entityName(entity: TgEntity | null | undefined): string | null {
+  if (!entity) return null;
+  if (entity.firstName || entity.lastName) {
+    return [entity.firstName, entity.lastName].filter(Boolean).join(' ');
+  }
+  if (entity.title) return entity.title;
+  if (entity.username) return '@' + entity.username;
+  return null;
+}
+
+interface ForwardAuthor {
+  fromId: string;
+  fromName: string;
+}
+
+async function resolveForwardAuthor(
+  client: RawTelegramClient,
+  fwd: RawFwdHeader | null | undefined,
+  cache: Map<string, TgEntity | null>,
+): Promise<ForwardAuthor | null> {
+  if (!fwd) return null;
+  const fromId = peerIdString(fwd.fromId);
+  if (fromId == null) {
+    if (fwd.fromName) return { fromId: 'forward:hidden', fromName: fwd.fromName };
+    return null;
+  }
+  if (fwd.fromName) return { fromId, fromName: fwd.fromName };
+  if (fwd.postAuthor) return { fromId, fromName: fwd.postAuthor };
+  const input = peerInputString(fwd.fromId);
+  if (input == null) return { fromId, fromName: fromId };
+  let entity = cache.get(input);
+  if (entity === undefined) {
+    try {
+      entity = (await client.getEntity(input)) as TgEntity | null;
+    } catch {
+      entity = null;
+    }
+    cache.set(input, entity);
+  }
+  const name = entityName(entity) ?? fromId;
+  return { fromId, fromName: name };
+}
 
 // --- Резолв chat/topic ---
 
@@ -227,13 +322,15 @@ export async function probeTopic(
   limit = 5,
 ): Promise<ProbeMessage[]> {
   const out: ProbeMessage[] = [];
+  const fwdCache = new Map<string, TgEntity | null>();
   const it = client.iterMessages(ref.entity, { replyTo: ref.topicId, limit });
   for await (const raw of it) {
     const m = raw as unknown as RawTgMessage;
     if (m.id == null) continue;
+    const fwd = await resolveForwardAuthor(client, m.fwdFrom, fwdCache);
     out.push({
       msgId: m.id,
-      fromName: senderName(m as MsgLike),
+      fromName: fwd?.fromName ?? senderName(m as MsgLike),
       dateIso: msgDateIso(m as MsgLike),
       text: m.message ?? '',
       reactions: summarizeReactions(m),
@@ -270,16 +367,19 @@ export async function probeTopicViaSearch(
   );
   const res = resRaw as { messages?: Array<RawTgMessage> };
   const msgs = res.messages ?? [];
-  return msgs
-    .filter((m): m is RawTgMessage & { id: number } => m.id != null)
-    .map((m) => ({
+  const fwdCache = new Map<string, TgEntity | null>();
+  const out: ProbeMessage[] = [];
+  for (const m of msgs.filter((m): m is RawTgMessage & { id: number } => m.id != null).slice(0, limit)) {
+    const fwd = await resolveForwardAuthor(client, m.fwdFrom, fwdCache);
+    out.push({
       msgId: m.id,
-      fromName: senderName(m as MsgLike),
+      fromName: fwd?.fromName ?? senderName(m as MsgLike),
       dateIso: msgDateIso(m as MsgLike),
       text: m.message ?? '',
       reactions: summarizeReactions(m),
-    }))
-    .slice(0, limit);
+    });
+  }
+  return out;
 }
 
 // --- Collect (полный/incremental/resume) ---
@@ -383,6 +483,7 @@ export async function collectTopic(
     batch = [];
   };
 
+  const fwdCache = new Map<string, TgEntity | null>();
   let attempt = 0;
   while (true) {
     try {
@@ -392,12 +493,13 @@ export async function collectTopic(
         const id = m.id;
         if (id == null) continue;
         const { byEmoji, total } = summarizeReactions(m);
+        const fwd = await resolveForwardAuthor(client, m.fwdFrom, fwdCache);
         batch.push({
           chat_id: ref.chatKey,
           topic_id: ref.topicId,
           msg_id: id,
-          from_id: m.senderId == null ? null : String(m.senderId),
-          from_name: clean(senderName(m as MsgLike), 200),
+          from_id: fwd?.fromId ?? (m.senderId == null ? null : String(m.senderId)),
+          from_name: clean(fwd?.fromName ?? senderName(m as MsgLike), 200),
           text: clean(m.message ?? '', 4096),
           date_iso: msgDateIso(m as MsgLike),
           reactions_json: JSON.stringify(byEmoji),

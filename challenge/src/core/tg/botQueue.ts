@@ -176,6 +176,77 @@ export class CooldownLimiter {
   }
 }
 
+/** Очередь команд per-user: задачи одного пользователя выполняются строго
+ *  последовательно, межпользовательские — параллельно. При переполнении
+ *  очереди (MAX_PENDING) новая команда отбрасывается — защита от злостных спамеров. */
+export class UserCommandQueue {
+  private readonly chains = new Map<string, Promise<unknown>>();
+  private readonly counts = new Map<string, number>();
+
+  constructor(private readonly maxPending = 10) {}
+
+  pending(userId: string): number {
+    return this.counts.get(userId) ?? 0;
+  }
+
+  /** Вернуть promise задачи или null, если очередь переполнена. */
+  submit(userId: string, task: () => Promise<unknown>): Promise<unknown> | null {
+    const count = this.counts.get(userId) ?? 0;
+    if (count >= this.maxPending) return null;
+    this.counts.set(userId, count + 1);
+
+    const prev = this.chains.get(userId) ?? Promise.resolve();
+    const done = new Promise<unknown>((resolve, reject) => {
+      const run = async (): Promise<unknown> => {
+        try {
+          const r = await task();
+          resolve(r);
+          return r;
+        } catch (err) {
+          reject(err);
+          throw err;
+        }
+      };
+      const chain = prev.then(run, run).finally(() => this.decrement(userId));
+      this.chains.set(userId, chain.catch(() => undefined));
+    });
+    return done;
+  }
+
+  private decrement(userId: string): void {
+    const next = (this.counts.get(userId) ?? 1) - 1;
+    if (next <= 0) {
+      this.counts.delete(userId);
+      this.chains.delete(userId);
+    } else {
+      this.counts.set(userId, next);
+    }
+  }
+}
+
+/** Семафор: не более max параллельных задач. Используем для LLM-вызовов /какбы,
+ *  чтобы не давить провайдера и снизить число fallback'ов «отдышался». */
+export class ConcurrencyLimiter {
+  private running = 0;
+  private readonly waiters: Array<() => void> = [];
+
+  constructor(private readonly max: number) {}
+
+  async run<T>(task: () => Promise<T>): Promise<T> {
+    if (this.running >= this.max) {
+      await new Promise<void>((resolve) => this.waiters.push(resolve));
+    }
+    this.running++;
+    try {
+      return await task();
+    } finally {
+      this.running--;
+      const next = this.waiters.shift();
+      next?.();
+    }
+  }
+}
+
 /** Единый хелпер «ошибка → короткий текст» (используется и ботом). */
 export function errText(err: unknown): string {
   return (err instanceof Error ? err.message : String(err)).slice(0, 200);

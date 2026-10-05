@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { splitText, OutboxQueue, CooldownLimiter, SendError } from './botQueue.js';
+import { splitText, OutboxQueue, CooldownLimiter, SendError, UserCommandQueue, ConcurrencyLimiter } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
 
 test('splitText: короткий текст не режется', () => {
@@ -196,4 +196,77 @@ test('CooldownLimiter: окно очищается и юзеры независ�
   assert.equal(lim.check('a', 3000).allowed, false);
   assert.equal(lim.check('b', 3000).allowed, true);
   assert.equal(lim.check('a', 61_500).allowed, true, 'после окна счётчик обнулился');
+});
+
+test('UserCommandQueue: задачи одного пользователя выполняются последовательно', async () => {
+  const q = new UserCommandQueue(10);
+  const order: number[] = [];
+  const p1 = q.submit('u1', async () => {
+    order.push(1);
+    await new Promise((r) => setTimeout(r, 10));
+  });
+  const p2 = q.submit('u1', async () => {
+    order.push(2);
+  });
+  assert.ok(p1);
+  assert.ok(p2);
+  await Promise.all([p1!, p2!]);
+  assert.deepEqual(order, [1, 2], 'вторая задача ждёт первую');
+});
+
+test('UserCommandQueue: разные пользователи не блокируют друг друга', async () => {
+  const q = new UserCommandQueue(10);
+  const delays: Record<string, number> = {};
+  const t0 = Date.now();
+  const p1 = q.submit('u1', async () => {
+    await new Promise((r) => setTimeout(r, 30));
+    delays.u1 = Date.now() - t0;
+  });
+  const p2 = q.submit('u2', async () => {
+    delays.u2 = Date.now() - t0;
+  });
+  await Promise.all([p1!, p2!]);
+  assert.ok(delays.u2! < delays.u1!, 'u2 не ждал u1');
+});
+
+test('UserCommandQueue: переполнение → null', () => {
+  const q = new UserCommandQueue(2);
+  let released = false;
+  q.submit('u1', async () => {
+    while (!released) await new Promise((r) => setTimeout(r, 5));
+  });
+  assert.ok(q.submit('u1', async () => {}) != null);
+  assert.equal(q.submit('u1', async () => {}), null, 'третья задача отбрасывается');
+  released = true;
+});
+
+test('UserCommandQueue: ошибка задачи не ломает цепочку', async () => {
+  const q = new UserCommandQueue(10);
+  const order: string[] = [];
+  const p1 = q.submit('u1', async () => {
+    order.push('a');
+    throw new Error('boom');
+  });
+  const p2 = q.submit('u1', async () => {
+    order.push('b');
+  });
+  await assert.rejects(p1!);
+  await p2!;
+  assert.deepEqual(order, ['a', 'b']);
+});
+
+test('ConcurrencyLimiter: не более N параллельных задач', async () => {
+  const lim = new ConcurrencyLimiter(2);
+  let running = 0;
+  let maxRunning = 0;
+  const task = async () => {
+    running++;
+    maxRunning = Math.max(maxRunning, running);
+    await new Promise((r) => setTimeout(r, 20));
+    running--;
+    return 'ok';
+  };
+  const results = await Promise.all([lim.run(task), lim.run(task), lim.run(task)]);
+  assert.deepEqual(results, ['ok', 'ok', 'ok']);
+  assert.equal(maxRunning, 2);
 });

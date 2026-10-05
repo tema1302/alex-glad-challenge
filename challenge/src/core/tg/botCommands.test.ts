@@ -13,6 +13,7 @@ test('parseCommand: базовые команды M1', () => {
   assert.deepEqual(parseCommand('/стат'), { name: 'стат', args: '' });
   assert.deepEqual(parseCommand('/reindex'), { name: 'reindex', args: '' });
   assert.deepEqual(parseCommand('/алиас сёва Saveliy'), { name: 'алиас', args: 'сёва Saveliy' });
+  assert.deepEqual(parseCommand('/алиасскан Temi4 Facts'), { name: 'алиасскан', args: 'Temi4 Facts' });
   assert.deepEqual(parseCommand('/off'), { name: 'off', args: '' });
   assert.deepEqual(parseCommand('/on'), { name: 'on', args: '' });
 });
@@ -60,7 +61,20 @@ test('extractInvocation: @упоминание с командой и «как �
   assert.equal(extractInvocation('@medium', 'medium'), null);
 });
 
-test('parseCommand: латинские алиасы меню Telegram', () => {
+test('parseCommand: новые брендированные имена medium_* и кириллические м-*', () => {
+  assert.deepEqual(parseCommand('/medium_quote'), { name: 'цитата', args: '' });
+  assert.deepEqual(parseCommand('/MEDIUM_SAID севенс парковка'), { name: 'сказал', args: 'севенс парковка' });
+  assert.deepEqual(parseCommand('/medium_game'), { name: 'игра', args: '' });
+  assert.deepEqual(parseCommand('/medium_improv севенс'), { name: 'изобрази', args: 'севенс' });
+  assert.deepEqual(parseCommand('/medium_asif севенс парковка'), { name: 'какбы', args: 'севенс парковка' });
+  assert.deepEqual(parseCommand('/мцитата'), { name: 'цитата', args: '' });
+  assert.deepEqual(parseCommand('/мсказал севенс судейство'), { name: 'сказал', args: 'севенс судейство' });
+  assert.deepEqual(parseCommand('/мигра'), { name: 'игра', args: '' });
+  assert.deepEqual(parseCommand('/мизобрази севенс'), { name: 'изобрази', args: 'севенс' });
+  assert.deepEqual(parseCommand('/мкакбы севенс'), { name: 'какбы', args: 'севенс' });
+});
+
+test('parseCommand: старые короткие имена остаются алиасами', () => {
   assert.deepEqual(parseCommand('/quote'), { name: 'цитата', args: '' });
   assert.deepEqual(parseCommand('/QUOTE'), { name: 'цитата', args: '' });
   assert.deepEqual(parseCommand('/said севенс парковка'), {
@@ -85,9 +99,21 @@ test('extractInvocation: обычный текст не инвокация', () 
   assert.equal(extractInvocation('просто сообщение @другойбот', 'medium'), null);
 });
 
-test('BOT_COMMANDS: фиксированный набор M1 + «Изобрази» + /какбы', () => {
+test('BOT_COMMANDS: фиксированный набор M1 + брендированные + админские', () => {
   assert.deepEqual(
     [...BOT_COMMANDS].sort(),
-    ['off', 'on', 'reindex', 'алиас', 'игра', 'изобрази', 'какбы', 'сказал', 'стат', 'цитата'],
+    [
+      'off',
+      'on',
+      'reindex',
+      'алиас',
+      'алиасскан',
+      'игра',
+      'изобрази',
+      'какбы',
+      'сказал',
+      'стат',
+      'цитата',
+    ],
   );
 });

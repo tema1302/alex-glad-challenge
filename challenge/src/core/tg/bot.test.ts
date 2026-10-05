@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MediumBot } from './bot.js';
-import { OutboxQueue, CooldownLimiter } from './botQueue.js';
+import { OutboxQueue, UserCommandQueue, ConcurrencyLimiter } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
 import type { TgCallbackQuery, TgUpdate } from './botApi.js';
 import type { ImprovGame } from './botImprov.js';
@@ -84,7 +84,8 @@ function makeBot(
     },
     fts: { get: () => ({ search: () => opts.said?.hits ?? [] }) },
     queue,
-    cooldown: new CooldownLimiter(),
+    commandQueue: new UserCommandQueue(),
+    kakbyLimiter: new ConcurrencyLimiter(3),
     directory: { get: () => DIRECTORY },
     cfg: { allowChats: new Set([CHAT]), ownerChatId: null, pollTimeoutSec: 5, botToken: 'токен' },
     session,

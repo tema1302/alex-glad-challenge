@@ -16,14 +16,17 @@ import { dataPath } from '../paths.js';
 import { BotApiClient, BotApiError } from './botApi.js';
 import type { TgUpdate, TgCallbackQuery, TgUser } from './botApi.js';
 import { BotStore } from './botStore.js';
+import { TgStore } from './tgStore.js';
 import type { TgMessageRow } from './tgStore.js';
 import { FtsStore } from './ftsStore.js';
+import { collectTopic, resolveChatTopic } from './topicCollector.js';
+import { getConnectedRawScanClient, isScanConfigured, disconnectScanClient } from '../agents/telegramScan.js';
 import { buildFtsQuery, scoreQuote, themeFromReplyText, tokenizeTheme } from './botFtsQuery.js';
-import { resolveAuthor, resolveGreedyName } from './botNames.js';
+import { resolveAuthor, resolveGreedyName, collectAliasCandidates } from './botNames.js';
 import type { AuthorEntry, ResolveResult } from './botNames.js';
 import { extractInvocation, BOT_COMMAND_DESCRIPTIONS } from './botCommands.js';
 import type { ParsedCommand } from './botCommands.js';
-import { OutboxQueue, SendError, CooldownLimiter, errText } from './botQueue.js';
+import { OutboxQueue, SendError, UserCommandQueue, ConcurrencyLimiter, errText } from './botQueue.js';
 import type { OutboundMessage, InlineKeyboard } from './botQueue.js';
 import { ImprovGame } from './botImprov.js';
 import { guardImaginedReply } from './jokerMarker.js';
@@ -44,36 +47,44 @@ const SEED_ALIASES: Readonly<Record<string, string>> = {
   'севенс': '587493810',
   'краснобелый': '1321375335',
   'краснобелий': '1321375335',
+  'тема': '514816799',
+  'тёма': '514816799',
+  'темыч': '514816799',
+  'темич': '514816799',
+  'дед': '5155693649',
+  'уберпончик': '5155693649',
+  'uberponchik': '5155693649',
 };
 
 const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
 const SAID_PAGE_TTL_MS = 10 * 60_000;
 const KAKBY_SESSION_TTL_MS = 10 * 60_000;
-const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
+const SPAM_HINT = 'Слишком много команд подряд — отдохни немного.';
 const START_INTRO = [
   '🎭 О, здравствуйте! Я — Медиум, дух-память чата «Факты в чате».',
   '',
   'Я прочитал этот чат целиком: от первого сообщения 2021 года',
   'до последнего «ахахаха». Ничего не забыл. Ни-че-го.',
   '',
-  'Команды:',
-  '/quote — случайная жемчужина из истории чата',
-  '/quote Вася — жемчужина конкретного человека',
-  '/said Вася парковка — всё, что Вася говорил про парковку',
-  '/game — игра: угадай по фразе, кто это сказал',
-  '/improv Вася — вы пародируете Васю, чат голосует',
-  '/asif Вася — вызвать духа Васи и поговорить с ним:',
+  'Команды (теперь с префиксом medium_/м, чтобы не дублировать других ботов):',
+  '/medium_quote — случайная жемчужина из истории чата',
+  '/medium_quote Вася — жемчужина конкретного человека',
+  '/medium_said Вася парковка — всё, что Вася говорил про парковку',
+  '/medium_game — игра: угадай по фразе, кто это сказал',
+  '/medium_improv Вася — вы пародируете Васю, чат голосует',
+  '/medium_asif Вася — вызвать духа Васи и поговорить с ним:',
   'продолжение — реплай на его ответ или @Медиум <текст>,',
-  '/asif стоп — отпустить духа. Реплики духа — выдумка, помечены 🎭.',
+  '/medium_asif стоп — отпустить духа. Реплики духа — выдумка, помечены 🎭.',
   '',
   'Имя пишите как привыкли: ник, имя, прозвище — разберусь.',
   'Если кандидатов несколько — предложу кнопки на выбор.',
-  'Понимаю и кириллицу: /цитата, /сказал, /игра, /изобрази, /какбы.',
+  'Понимаю и кириллицу: /мцитата, /мсказал, /мигра, /мизобрази, /мкакбы.',
+  'Старые имена (/quote, /цитата и т.п.) тоже работают, но в меню бота — только новые.',
   'Играем в самом чате «Факты в чате» — там я и обитаю.',
 ].join('\n');
 const START_INTRO_OWNER =
-  '\n\nТвои админские: /stat, /alias, /reindex, /off, /on (кириллицей: /стат, /алиас). Никому не говори.';
+  '\n\nТвои админские: /stat, /alias, /aliasscan, /reindex, /off, /on (кириллицей: /стат, /алиас, /алиасскан). Никому не говори.';
 
 export interface RunTgBotOpts {
   /** Собрать/доклеить FTS-индекс и выйти (без сети). */
@@ -142,12 +153,13 @@ export async function runTgBot(opts: RunTgBotOpts = {}): Promise<void> {
     console.error(`[tg-bot] deleteWebhook (не фатально): ${errText(err)}`);
   }
   // Меню команд: кириллицу Bot API в меню не принимает ([a-z0-9_]{1,32} — BOT_COMMAND_INVALID),
-  // поэтому публикуем латинские алиасы (/quote = /цитата и т.д.); парсер понимает оба вида.
+  // поэтому публикуем брендированные латинские имена (/medium_quote и т.д.).
+  // Парсер по-прежнему понимает старые имена (/quote, /цитата) как алиасы.
   const menu = (Object.entries(BOT_COMMAND_DESCRIPTIONS) as [string, string][]).map(
     ([command, description]) => ({ command, description }),
   );
   const publicMenu = menu.filter((c) =>
-    ['quote', 'said', 'game', 'improv', 'asif'].includes(c.command),
+    ['medium_quote', 'medium_said', 'medium_game', 'medium_improv', 'medium_asif'].includes(c.command),
   );
   try {
     await api.setMyCommands(publicMenu);
@@ -180,7 +192,8 @@ export async function runTgBot(opts: RunTgBotOpts = {}): Promise<void> {
     store,
     fts,
     queue,
-    cooldown: new CooldownLimiter(),
+    commandQueue: new UserCommandQueue(),
+    kakbyLimiter: new ConcurrencyLimiter(3),
     directory: new AuthorDirectory(store),
     cfg,
     session,
@@ -253,7 +266,8 @@ interface MediumDeps {
   store: BotStore;
   fts: FtsHolder;
   queue: OutboxQueue;
-  cooldown: CooldownLimiter;
+  commandQueue: UserCommandQueue;
+  kakbyLimiter: ConcurrencyLimiter;
   directory: AuthorDirectory;
   cfg: NonNullable<ReturnType<typeof getTgBotRuntimeConfig>>;
   session: { startedAt: number; updatesSeen: number; enabled: boolean };
@@ -274,7 +288,7 @@ interface CommandCtx {
 
 interface PendingResolve {
   chatId: string;
-  cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы';
+  cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы' | 'алиасскан';
   argsText: string;
   replyTo: number;
   replyText?: string;
@@ -385,6 +399,7 @@ export class MediumBot {
 
     // Активный диалог /какбы: реплай на реплику «духа» или @бот с текстом —
     // продолжение разговора в манере автора. Команды (cmd !== null) важнее.
+    let kakbyText: string | null = null;
     if (cmd === null && rawText) {
       const session = this.kakbySessions.get(chatId);
       if (session) {
@@ -397,27 +412,14 @@ export class MediumBot {
           const mention = this.d.botUsername
             ? rawText.toLowerCase().includes(`@${this.d.botUsername.toLowerCase()}`)
             : false;
-          let userText: string | null = null;
           if (replyToSpirit) {
-            userText = rawText;
+            kakbyText = rawText;
           } else if (mention) {
             // TG-юзернеймы [a-zA-Z0-9_] — regex-безопасны без экранирования.
             const rest = rawText
               .replaceAll(new RegExp(`@${this.d.botUsername}`, 'gi'), ' ')
               .trim();
-            if (rest) userText = rest;
-          }
-          if (userText) {
-            if (!isOwner) {
-              const cd = this.d.cooldown.check(userId, Date.now());
-              if (!cd.allowed) {
-                if (cd.hint) await this.reply(chatId, COOLDOWN_HINT, msg.message_id);
-                return;
-              }
-            }
-            const userName = msg.from.first_name ?? msg.from.username ?? 'участник';
-            await this.kakbyTurn(chatId, session, `${userName}: ${userText}`, msg.message_id);
-            return;
+            if (rest) kakbyText = rest;
           }
         }
       }
@@ -427,10 +429,10 @@ export class MediumBot {
     const ping = this.d.botUsername
       ? rawText.toLowerCase().includes(`@${this.d.botUsername.toLowerCase()}`)
       : false;
-    if (cmd === null && ping) {
+    if (cmd === null && !kakbyText && ping) {
       await this.reply(
         chatId,
-        '🎭 Слушаю. Команды: /quote [имя], /said <имя> <тема>, /game, /improv <имя>, /asif <имя> [тема] — или /start.',
+        '🎭 Слушаю. Команды: /medium_quote [имя], /medium_said <имя> <тема>, /medium_game, /medium_improv <имя>, /medium_asif <имя> [тема] — или /start.',
         msg.message_id,
       );
       return;
@@ -454,29 +456,45 @@ export class MediumBot {
       return;
     }
 
-    if (!cmd) return;
+    if (!cmd && !kakbyText) return;
 
-    if (!isOwner) {
-      const cd = this.d.cooldown.check(userId, Date.now());
-      if (!cd.allowed) {
-        if (cd.hint) await this.reply(chatId, COOLDOWN_HINT, msg.message_id);
+    const userName = msg.from.first_name ?? msg.from.username ?? 'участник';
+    const run = async (): Promise<void> => {
+      if (cmd) {
+        const ctx: CommandCtx = {
+          chatId,
+          userId,
+          userName,
+          replyTo: msg.message_id,
+          replyText: msg.reply_to_message?.text,
+          isOwner,
+        };
+        try {
+          await this.dispatch(cmd, ctx);
+        } catch (err) {
+          console.error(`[tg-bot] команда /${cmd.name} упала (chat=${chatId} user=${userId}): ${errText(err)}`);
+          await this.reply(chatId, '⚠️ Внутренняя ошибка, попробуй ещё раз.', ctx.replyTo);
+        }
         return;
       }
-    }
-
-    const ctx: CommandCtx = {
-      chatId,
-      userId,
-      userName: msg.from.first_name ?? msg.from.username ?? 'участник',
-      replyTo: msg.message_id,
-      replyText: msg.reply_to_message?.text,
-      isOwner,
+      // Продолжение диалога с духом.
+      const session = this.kakbySessions.get(chatId);
+      if (!session || session.expiresAt < Date.now()) {
+        this.kakbySessions.delete(chatId);
+        return;
+      }
+      await this.kakbyTurn(chatId, session, `${userName}: ${kakbyText}`, msg.message_id);
     };
-    try {
-      await this.dispatch(cmd, ctx);
-    } catch (err) {
-      console.error(`[tg-bot] команда /${cmd.name} упала (chat=${chatId} user=${userId}): ${errText(err)}`);
-      await this.reply(chatId, '⚠️ Внутренняя ошибка, попробуй ещё раз.', ctx.replyTo);
+
+    if (isOwner) {
+      await run();
+      return;
+    }
+    const accepted = this.d.commandQueue.submit(userId, run);
+    if (accepted) {
+      await accepted;
+    } else {
+      await this.reply(chatId, SPAM_HINT, msg.message_id);
     }
   }
 
@@ -503,6 +521,8 @@ export class MediumBot {
         return this.cmdReindex(ctx);
       case 'алиас':
         return this.cmdAlias(cmd.args, ctx);
+      case 'алиасскан':
+        return this.cmdAliasScan(cmd.args, ctx);
       case 'off':
         return this.cmdSetEnabled(false, ctx);
       case 'on':
@@ -516,7 +536,8 @@ export class MediumBot {
 
   private async cmdQuote(args: string, ctx: CommandCtx): Promise<void> {
     const store = this.d.store;
-    if (!args) {
+    const words = args.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
       const avoid = this.lastQuotes.get(ctx.chatId) ?? [];
       const row = store.randomTopQuote(BOT_CHAT_KEY, BOT_TOPIC_ID, {
         minReactions: 3,
@@ -531,10 +552,27 @@ export class MediumBot {
       await this.reply(ctx.chatId, formatQuoteCard(row), ctx.replyTo);
       return;
     }
-    // Имя может быть многословным: сначала аргумент целиком, потом первый токен.
+    const { name: nameCandidate, themeWords, result: nameResult } = resolveGreedyName(words, (q) =>
+      this.resolveOnce(q),
+    );
+    const theme = themeWords.join(' ');
+    if (nameResult.kind === 'ok') {
+      if (theme) {
+        const matchQuery = buildFtsQuery(theme);
+        if (!matchQuery) {
+          await this.reply(ctx.chatId, 'В теме одни стоп-слова. Конкретизируй.', ctx.replyTo);
+          return;
+        }
+        await this.sendSaidQuotes(nameResult.author, theme, matchQuery, ctx);
+      } else {
+        await this.sendAuthorQuote(nameResult.author, ctx);
+      }
+      return;
+    }
+    // Имя может быть многословным и без темы: пробуем аргумент целиком.
     const whole = this.resolveOnce(args);
-    const r = whole.kind !== 'none' ? whole : this.resolveOnce(args.split(/\s+/)[0]);
-    await this.runResolved(r, args, ctx, 'цитата', '');
+    const r = whole.kind !== 'none' ? whole : nameResult;
+    await this.runResolved(r, nameCandidate, ctx, 'цитата', theme);
   }
 
   private async cmdSaid(args: string, ctx: CommandCtx): Promise<void> {
@@ -581,14 +619,17 @@ export class MediumBot {
     r: ResolveResult,
     query: string,
     ctx: CommandCtx,
-    cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы',
+    cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы' | 'алиасскан',
     argsText: string,
   ): Promise<void> {
     if (r.kind === 'ok') {
       if (cmdName === 'сказал') await this.sendSaidQuotes(r.author, argsText, buildFtsQuery(argsText), ctx);
       else if (cmdName === 'изобрази') await this.cmdImprovStart(r.author, argsText, ctx);
       else if (cmdName === 'какбы') await this.cmdKakbyStart(r.author, argsText, ctx);
-      else await this.sendAuthorQuote(r.author, ctx);
+      else if (cmdName === 'алиасскан') await this.cmdAliasScan(r.author.name, ctx);
+      else if (cmdName === 'цитата' && argsText) {
+        await this.sendSaidQuotes(r.author, argsText, buildFtsQuery(argsText), ctx);
+      } else await this.sendAuthorQuote(r.author, ctx);
       return;
     }
     if (r.kind === 'ambiguous') {
@@ -1003,7 +1044,7 @@ export class MediumBot {
     ];
     const generate = this.d.generateImitation ?? ((a, h, s) => this.defaultImitation(a, h, s));
     const guarded = await guardImaginedReply(
-      () => generate(session.author, history, session.samples),
+      () => this.d.kakbyLimiter.run(() => generate(session.author, history, session.samples)),
       session.author.name,
     );
     // Провал генерации (fallback) в историю ассистента не пишем — она мнимая.
@@ -1168,6 +1209,8 @@ export class MediumBot {
         await this.cmdImprovStart(entry, p.argsText, ctx);
       } else if (p.cmdName === 'какбы') {
         await this.cmdKakbyStart(entry, p.argsText, ctx);
+      } else if (p.cmdName === 'алиасскан') {
+        await this.cmdAliasScan(entry.name, ctx);
       } else {
         await this.sendAuthorQuote(entry, ctx);
       }
@@ -1200,10 +1243,39 @@ export class MediumBot {
   // --- admin (только owner) ---
 
   private async cmdReindex(ctx: CommandCtx): Promise<void> {
+    let collectInfo = '';
+    if (isScanConfigured()) {
+      const client = await getConnectedRawScanClient();
+      if (client) {
+        const tgStore = new TgStore(dataPath('tg.sqlite'));
+        try {
+          const ref = await resolveChatTopic(client, BOT_CHAT_KEY, String(BOT_TOPIC_ID));
+          const r = await collectTopic(tgStore, client, ref, {
+            reset: true,
+            plain: BOT_TOPIC_ID === 0,
+          });
+          collectInfo = `пересобрано ${r.fetched} сообщений (${r.newlyInserted} новых, ${r.updated} обновлено); `;
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err);
+          collectInfo = `пересбор сообщений не удался (${m}); `;
+        } finally {
+          tgStore.close();
+          try {
+            await disconnectScanClient();
+          } catch {
+            /* cleanup-ошибки gramjs игнорируем */
+          }
+        }
+      } else {
+        collectInfo = 'MTProto недоступен; ';
+      }
+    } else {
+      collectInfo = 'MTProto не настроен; ';
+    }
     const idx = rebuildFtsFull(this.d.store, this.d.fts);
     await this.reply(
       ctx.chatId,
-      `♻️ FTS пересобран: ${idx.added} док. за ${(idx.ms / 1000).toFixed(1)} с, курсор msg_id=${idx.maxId}.`,
+      `♻️ ${collectInfo}FTS пересобран: ${idx.added} док. за ${(idx.ms / 1000).toFixed(1)} с, курсор msg_id=${idx.maxId}.`,
       ctx.replyTo,
     );
   }
@@ -1232,6 +1304,62 @@ export class MediumBot {
     }
     this.d.store.upsertAlias(nick, r.author.fromId);
     await this.reply(ctx.chatId, `Алиас «${nick}» → ${r.author.name} сохранён.`, ctx.replyTo);
+  }
+
+  /** /алиасскан <имя-автора> — найти частые слова из сообщений, где упоминается автор.
+   *  Кандидаты в прозвища выводятся списком; не конфликтующие можно сохранить командой /алиас. */
+  private async cmdAliasScan(args: string, ctx: CommandCtx): Promise<void> {
+    const words = args.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      await this.reply(ctx.chatId, 'Формат: /алиасскан <имя-автора>', ctx.replyTo);
+      return;
+    }
+    const { name: nameCandidate, themeWords, result: nameResult } = resolveGreedyName(words, (q) =>
+      this.resolveOnce(q),
+    );
+    if (nameResult.kind !== 'ok') {
+      await this.runResolved(nameResult, nameCandidate, ctx, 'алиасскан', themeWords.join(' '));
+      return;
+    }
+    const author = nameResult.author;
+    const matchQuery = buildFtsQuery(author.name);
+    if (!matchQuery) {
+      await this.reply(ctx.chatId, 'Не смог составить поисковый запрос по имени автора.', ctx.replyTo);
+      return;
+    }
+    let hits: Array<{ topicId: number; msgId: number }> = [];
+    try {
+      hits = this.d.fts.get().search(BOT_CHAT_KEY, matchQuery, null, 200);
+    } catch {
+      await this.reply(ctx.chatId, 'Ошибка поиска по FTS, попробуй позже.', ctx.replyTo);
+      return;
+    }
+    const rows = this.d.store.getMessagesByKeys(
+      BOT_CHAT_KEY,
+      hits.map((h) => ({ topicId: h.topicId, msgId: h.msgId })),
+    );
+    const existingAliases = [...this.d.store.listAliases().keys()];
+    const candidates = collectAliasCandidates(
+      author.name,
+      [...rows.values()].map((r) => r.text),
+      existingAliases,
+      15,
+    );
+    if (candidates.length === 0) {
+      await this.reply(ctx.chatId, `Не нашёл подходящих прозвищ для ${author.name}.`, ctx.replyTo);
+      return;
+    }
+    // Фильтруем кандидатов, которые уже резолвятся в кого-то другого.
+    const safe = candidates.filter((c) => {
+      const resolved = this.resolveOnce(c.word);
+      return resolved.kind !== 'ok' || resolved.author.fromId === author.fromId;
+    });
+    const lines = safe.map((c) => `• ${c.word} (${c.count})`).join('\n');
+    const header = `🔎 Кандидаты в прозвища для ${author.name}:\n\n`;
+    const footer = safe.length
+      ? '\n\nСохранить: /алиас <слово> <имя-автора>'
+      : '\n\nВсе найденные слова уже резолвятся в других авторов — добавлять осторожно.';
+    await this.reply(ctx.chatId, header + lines + footer, ctx.replyTo);
   }
 
   private async cmdSetEnabled(enabled: boolean, ctx: CommandCtx): Promise<void> {
