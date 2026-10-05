@@ -827,9 +827,7 @@ export class MediumBot {
     const theme = themeArg || (ctx.replyText ? themeFromReplyText(ctx.replyText) : '');
     let samples: string[] = [];
     try {
-      samples = this.d.store
-        .sampleAuthorQuotes(BOT_CHAT_KEY, BOT_TOPIC_ID, author.fromId, 8)
-        .map((r) => r.text);
+      samples = this.collectKakbySamples(author, theme);
     } catch (err) {
       console.error(`[tg-bot] какбы samples (chat=${ctx.chatId}): ${errText(err)}`);
     }
@@ -839,6 +837,44 @@ export class MediumBot {
       author.name,
     );
     await this.reply(ctx.chatId, guarded.text, ctx.replyTo);
+  }
+
+  /** Few-shot для /какбы: сначала до 5 сообщений автора ПО ТЕМЕ (FTS, как /сказал),
+   *  добор случайными до 8 — иначе модель клеит реплику из чужих контекстов. */
+  private collectKakbySamples(author: AuthorEntry, theme: string): string[] {
+    const seen = new Set<number>();
+    const out: string[] = [];
+    if (theme) {
+      const matchQuery = buildFtsQuery(theme);
+      if (matchQuery) {
+        let hits: Array<{ topicId: number; msgId: number }> = [];
+        try {
+          hits = this.d.fts.get().search(BOT_CHAT_KEY, matchQuery, author.fromId, 100);
+        } catch {
+          hits = [];
+        }
+        const rows = this.d.store.getMessagesByKeys(
+          BOT_CHAT_KEY,
+          hits.map((h) => ({ topicId: h.topicId, msgId: h.msgId })),
+        );
+        const now = Date.now();
+        const best = [...rows.values()]
+          .filter((r) => r.text.length >= 40 && r.text.length <= 400 && !r.text.includes('http'))
+          .map((row) => ({ row, score: scoreQuote(row.reaction_total, row.date_iso, now) }))
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 5);
+        for (const b of best) {
+          seen.add(b.row.msg_id);
+          out.push(b.row.text);
+        }
+      }
+    }
+    if (out.length < 8) {
+      for (const r of this.d.store.sampleAuthorQuotes(BOT_CHAT_KEY, BOT_TOPIC_ID, author.fromId, 8)) {
+        if (!seen.has(r.msg_id)) out.push(r.text);
+      }
+    }
+    return out.slice(0, 8);
   }
 
   /** Дефолтный генератор: DeepSeek (напрямую или через OpenRouter), дерзкий тон. */
@@ -860,7 +896,12 @@ export class MediumBot {
       '2. Дальше — только сама реплика (до 500 знаков), без кавычек и пояснений.',
       '3. Дерзость — в твоём голосе, но автору НЕ приписывай факты, мнения',
       '   о реальных людях, оскорбления, личную жизнь, политику.',
-      '4. По-русски, разговорно, как в чате.',
+      '4. По-русски, разговорно, как в чате; 1–3 коротких предложения.',
+      '5. Реплика самостоятельная: НЕ комментарий к видео, ссылке, фото или чужому',
+      '   сообщению. Никаких «это видео», «как в мультике» — если этого нет в теме.',
+      '6. Не выдумывай фактов о теме. Тема незнакома — дай оценочную реакцию',
+      '   в характере автора, без выдуманных деталей.',
+      '7. Примеры ниже — только для манеры, не цитируй и не продолжай их.',
     ].join('\n');
     const user =
       samples.length > 0
