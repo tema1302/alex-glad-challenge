@@ -33,7 +33,11 @@ interface BotHarness {
 function makeBot(
   opts: {
     enabled?: boolean;
-    generateImitation?: (a: unknown, t: string, s: string[]) => Promise<string>;
+    generateImitation?: (
+      a: unknown,
+      history: Array<{ role: string; content: string }>,
+      s: string[],
+    ) => Promise<string>;
     said?: {
       hits: Array<{ topicId: number; msgId: number }>;
       rows: Map<string, unknown>;
@@ -432,4 +436,64 @@ test('/сказал: неизвестный/просроченный токен 
   const h = makeBot({ said: saidFixture(7) });
   await h.bot.handleUpdate(saidCallback('said:nope1234'));
   assert.match(h.answered.at(-1) ?? '', /Лист устарел/);
+});
+
+test('/какбы диалог: реплай на реплику духа → продолжение с историей', async () => {
+  const calls: string[][] = [];
+  const h = makeBot({
+    generateImitation: async (_a, history: Array<{ role: string; content: string }>, _s) => {
+      calls.push(history.map((m) => m.content));
+      return '🎭 Дух Saveliy (воображаемый):\nОтвечаю в манере.';
+    },
+  });
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('saveliy', ctx());
+  assert.equal(h.sent.length, 1, 'дух поприветствовал');
+  const spiritMsgId = 100 + h.sent.length; // id первой реплики духа
+
+  await h.bot.handleUpdate(messageUpdate(500, spiritMsgId, 'а что думаешь про судейство?', 42));
+  assert.equal(h.sent.length, 2, 'пришла вторая реплика');
+  assert.match(h.sent.at(-1)!.text, /^🎭 Дух Saveliy \(воображаемый\):/);
+  assert.equal(calls.length, 2, 'LLM вызван дважды');
+  assert.ok(
+    calls[1].some((c) => c.includes('а что думаешь про судейство?')),
+    'текст юзера дошёл до LLM',
+  );
+  assert.ok(
+    calls[1].some((c) => c.includes('Отвечаю в манере.')),
+    'в истории — прошлая реплика духа (без маркера)',
+  );
+  assert.ok(
+    !calls[1].some((c) => c.includes('🎭')),
+    'маркер не попадает в историю',
+  );
+});
+
+test('/какбы диалог: реплай на чужое сообщение и посторонний текст — молчание', async () => {
+  const h = makeBot({
+    generateImitation: async () => '🎭 Дух Saveliy (воображаемый):\nтекст',
+  });
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('saveliy', ctx());
+  assert.equal(h.sent.length, 1);
+  await h.bot.handleUpdate(messageUpdate(501, 999, 'реплай на чужое', 42));
+  await h.bot.handleUpdate(messageUpdate(502, undefined, 'просто болтовня', 42));
+  assert.equal(h.sent.length, 1, 'дух молчит без триггера');
+});
+
+test('/какбы стоп — сеанс закрыт, дух молчит', async () => {
+  const h = makeBot({
+    generateImitation: async () => '🎭 Дух Saveliy (воображаемый):\nпривет',
+  });
+  const bot = h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> };
+  await bot.cmdKakby('saveliy', ctx());
+  const spiritMsgId = 100 + h.sent.length;
+  await bot.cmdKakby('стоп', ctx());
+  assert.match(h.sent.at(-1)!.text, /Сеанс окончен/);
+  await h.bot.handleUpdate(messageUpdate(503, spiritMsgId, 'алло?', 42));
+  assert.equal(h.sent.length, 2, 'после стопа дух молчит');
+});
+
+test('/какбы стоп без сеанса — честное «никого не вызываю»', async () => {
+  const h = makeBot();
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('стоп', ctx());
+  assert.match(h.sent.at(-1)!.text, /никого не вызываю/);
 });

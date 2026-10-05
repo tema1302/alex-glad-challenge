@@ -11,6 +11,7 @@ import { rmSync, renameSync } from 'node:fs';
 import { getTgBotRuntimeConfig, getKakbyLlmConfig } from '../env.js';
 import { LlmClient } from '../client.js';
 import { msg } from '../types.js';
+import type { ChatMessage } from '../types.js';
 import { dataPath } from '../paths.js';
 import { BotApiClient, BotApiError } from './botApi.js';
 import type { TgUpdate, TgCallbackQuery, TgUser } from './botApi.js';
@@ -48,6 +49,7 @@ const SEED_ALIASES: Readonly<Record<string, string>> = {
 const GAME_ROUND_MS = 90_000;
 const RESOLVE_TTL_MS = 60_000;
 const SAID_PAGE_TTL_MS = 10 * 60_000;
+const KAKBY_SESSION_TTL_MS = 10 * 60_000;
 const COOLDOWN_HINT = 'Прилег чуть-чуть: не больше 3 команд в минуту.';
 const START_INTRO = [
   '🎭 О, здравствуйте! Я — Медиум, дух-память чата «Факты в чате».',
@@ -61,8 +63,9 @@ const START_INTRO = [
   '/said Вася парковка — всё, что Вася говорил про парковку',
   '/game — игра: угадай по фразе, кто это сказал',
   '/improv Вася — вы пародируете Васю, чат голосует',
-  '/asif Вася [тема] — я сам напишу реплику в манере Васи',
-  '(выдумка, не цитата — помечена 🎭). Дерзость гарантирую.',
+  '/asif Вася — вызвать духа Васи и поговорить с ним:',
+  'продолжение — реплай на его ответ или @Медиум <текст>,',
+  '/asif стоп — отпустить духа. Реплики духа — выдумка, помечены 🎭.',
   '',
   'Имя пишите как привыкли: ник, имя, прозвище — разберусь.',
   'Если кандидатов несколько — предложу кнопки на выбор.',
@@ -257,7 +260,7 @@ interface MediumDeps {
   botId: string;
   botUsername?: string;
   /** Генератор реплики /какбы (инъекция для тестов; дефолт — LLM DeepSeek). */
-  generateImitation?: (author: AuthorEntry, theme: string, samples: string[]) => Promise<string>;
+  generateImitation?: (author: AuthorEntry, history: ChatMessage[], samples: string[]) => Promise<string>;
 }
 
 interface CommandCtx {
@@ -275,6 +278,18 @@ interface PendingResolve {
   argsText: string;
   replyTo: number;
   replyText?: string;
+  expiresAt: number;
+}
+
+/** Диалог с «духом» автора (/какбы): persona + few-shot сэмплы + история реплик. */
+interface KakbySession {
+  author: AuthorEntry;
+  samples: string[];
+  /** user/assistant пары диалога (assistant — без 🎭-строки), ≤ 12. */
+  history: ChatMessage[];
+  /** msg_id реплик «духа» — реплай на них продолжает диалог (≤ 20). */
+  botMsgIds: Set<number>;
+  /** Sliding TTL: каждая реплика продлевает. */
   expiresAt: number;
 }
 
@@ -309,6 +324,7 @@ interface GameRound {
 export class MediumBot {
   private readonly pending = new Map<string, PendingResolve>();
   private readonly saidPages = new Map<string, SaidPage>();
+  private readonly kakbySessions = new Map<string, KakbySession>();
   private readonly rounds = new Map<string, GameRound>();
   private readonly scores = new Map<string, Map<string, { name: string; score: number }>>();
   private readonly lastQuotes = new Map<string, number[]>();
@@ -366,6 +382,46 @@ export class MediumBot {
     const cmd = extractInvocation(msg.text ?? msg.caption, this.d.botUsername);
 
     if (msg.chat.type === 'private' ? !isOwner : !this.d.cfg.allowChats.has(chatId)) return;
+
+    // Активный диалог /какбы: реплай на реплику «духа» или @бот с текстом —
+    // продолжение разговора в манере автора. Команды (cmd !== null) важнее.
+    if (cmd === null && rawText) {
+      const session = this.kakbySessions.get(chatId);
+      if (session) {
+        if (session.expiresAt < Date.now()) {
+          this.kakbySessions.delete(chatId);
+        } else {
+          const replyToSpirit =
+            msg.reply_to_message !== undefined &&
+            session.botMsgIds.has(msg.reply_to_message.message_id);
+          const mention = this.d.botUsername
+            ? rawText.toLowerCase().includes(`@${this.d.botUsername.toLowerCase()}`)
+            : false;
+          let userText: string | null = null;
+          if (replyToSpirit) {
+            userText = rawText;
+          } else if (mention) {
+            // TG-юзернеймы [a-zA-Z0-9_] — regex-безопасны без экранирования.
+            const rest = rawText
+              .replaceAll(new RegExp(`@${this.d.botUsername}`, 'gi'), ' ')
+              .trim();
+            if (rest) userText = rest;
+          }
+          if (userText) {
+            if (!isOwner) {
+              const cd = this.d.cooldown.check(userId, Date.now());
+              if (!cd.allowed) {
+                if (cd.hint) await this.reply(chatId, COOLDOWN_HINT, msg.message_id);
+                return;
+              }
+            }
+            const userName = msg.from.first_name ?? msg.from.username ?? 'участник';
+            await this.kakbyTurn(chatId, session, `${userName}: ${userText}`, msg.message_id);
+            return;
+          }
+        }
+      }
+    }
 
     // Голый пинг «@бот» без команды — подсказка вместо тишины.
     const ping = this.d.botUsername
@@ -531,7 +587,7 @@ export class MediumBot {
     if (r.kind === 'ok') {
       if (cmdName === 'сказал') await this.sendSaidQuotes(r.author, argsText, buildFtsQuery(argsText), ctx);
       else if (cmdName === 'изобрази') await this.cmdImprovStart(r.author, argsText, ctx);
-      else if (cmdName === 'какбы') await this.cmdKakbyGenerate(r.author, argsText, ctx);
+      else if (cmdName === 'какбы') await this.cmdKakbyStart(r.author, argsText, ctx);
       else await this.sendAuthorQuote(r.author, ctx);
       return;
     }
@@ -868,11 +924,23 @@ export class MediumBot {
 
   private kakbyClient: LlmClient | null = null;
 
-  /** /какбы <имя> [тема…]: выдуманная реплика в манере автора. */
+  /** /какбы <имя> [тема…] — открыть диалог с «духом» автора; /какбы стоп — закрыть. */
   private async cmdKakby(args: string, ctx: CommandCtx): Promise<void> {
     const words = args.split(/\s+/).filter(Boolean);
+    if (words.length === 1 && /^(стоп|хватит)$/i.test(words[0])) {
+      if (this.kakbySessions.delete(ctx.chatId)) {
+        await this.reply(ctx.chatId, '🎭 Сеанс окончен, дух отпущен. Было неплохо.', ctx.replyTo);
+      } else {
+        await this.reply(ctx.chatId, '🎭 Сейчас никого не вызываю.', ctx.replyTo);
+      }
+      return;
+    }
     if (words.length === 0) {
-      await this.reply(ctx.chatId, 'Формат: /какбы <имя> [тема…] — кого изображаем?', ctx.replyTo);
+      await this.reply(
+        ctx.chatId,
+        'Формат: /какбы <имя> [тема…] — вызвать духа для разговора; /какбы стоп — отпустить.',
+        ctx.replyTo,
+      );
       return;
     }
     if (MediumBot.KAKBY_REFUSAL_RE.test(args)) {
@@ -888,13 +956,14 @@ export class MediumBot {
     );
     const theme = themeWords.join(' ');
     if (nameResult.kind === 'ok') {
-      await this.cmdKakbyGenerate(nameResult.author, theme, ctx);
+      await this.cmdKakbyStart(nameResult.author, theme, ctx);
       return;
     }
     await this.runResolved(nameResult, nameCandidate, ctx, 'какбы', theme);
   }
 
-  private async cmdKakbyGenerate(
+  /** Открытие сеанса: сэмплы по теме, первая реплика духа, TTL. */
+  private async cmdKakbyStart(
     author: AuthorEntry,
     themeArg: string,
     ctx: CommandCtx,
@@ -906,12 +975,49 @@ export class MediumBot {
     } catch (err) {
       console.error(`[tg-bot] какбы samples (chat=${ctx.chatId}): ${errText(err)}`);
     }
-    const generate = this.d.generateImitation ?? ((a, t, s) => this.defaultImitation(a, t, s));
+    const session: KakbySession = {
+      author,
+      samples,
+      history: [],
+      botMsgIds: new Set(),
+      expiresAt: Date.now() + KAKBY_SESSION_TTL_MS,
+    };
+    this.kakbySessions.set(ctx.chatId, session);
+    const opening = theme
+      ? `Начинаем разговор. Тема: «${theme}» — ответь первой репликой в своей манере.`
+      : 'Поприветствуй чат короткой репликой в своей манере.';
+    await this.kakbyTurn(ctx.chatId, session, opening, ctx.replyTo);
+  }
+
+  /** Один ход диалога: user-реплика → LLM (через 🎭-гейт) → ответ + история. */
+  private async kakbyTurn(
+    chatId: string,
+    session: KakbySession,
+    userText: string,
+    replyTo?: number,
+  ): Promise<void> {
+    session.expiresAt = Date.now() + KAKBY_SESSION_TTL_MS;
+    const history: ChatMessage[] = [
+      ...session.history.slice(-11),
+      { role: 'user', content: userText },
+    ];
+    const generate = this.d.generateImitation ?? ((a, h, s) => this.defaultImitation(a, h, s));
     const guarded = await guardImaginedReply(
-      () => generate(author, theme, samples),
-      author.name,
+      () => generate(session.author, history, session.samples),
+      session.author.name,
     );
-    await this.reply(ctx.chatId, guarded.text, ctx.replyTo);
+    // Провал генерации (fallback) в историю ассистента не пишем — она мнимая.
+    session.history = guarded.passed
+      ? ([...history, { role: 'assistant', content: stripSpiritMarker(guarded.text) }] as ChatMessage[]).slice(-12)
+      : history;
+    const id = await this.send({ chatId, text: guarded.text, replyTo });
+    if (id !== null) {
+      session.botMsgIds.add(id);
+      if (session.botMsgIds.size > 20) {
+        const oldest = session.botMsgIds.values().next().value;
+        if (oldest !== undefined) session.botMsgIds.delete(oldest);
+      }
+    }
   }
 
   /** Few-shot для /какбы: сначала до 5 сообщений автора ПО ТЕМЕ (FTS, как /сказал),
@@ -952,39 +1058,35 @@ export class MediumBot {
     return out.slice(0, 8);
   }
 
-  /** Дефолтный генератор: DeepSeek (напрямую или через OpenRouter), дерзкий тон. */
+  /** Дефолтный генератор: DeepSeek (напрямую или через OpenRouter), дерзкий тон.
+   *  Роль — сам автор: бот отвечает на реплики собеседников в его манере. */
   private async defaultImitation(
     author: AuthorEntry,
-    theme: string,
+    history: ChatMessage[],
     samples: string[],
   ): Promise<string> {
     this.kakbyClient ??= new LlmClient(getKakbyLlmConfig());
     const system = [
-      `Ты — Медиум, дух чата «Факты в чате». Ты крутой, самоуверенный и дерзкий:`,
-      `ты прочитал весь чат целиком и знаешь этих людей лучше, чем они сами,`,
-      `и не стесняешься этим хвастаться.`,
-      `Задача: написать ОДНУ выдуманную реплику в манере участника ${author.name} —`,
-      `его лексика, ритм, любимые словечки (по примерам ниже).`,
-      theme ? `Тема реплики: «${theme}».` : 'Тема свободная, из типичных интересов автора.',
+      `Ты играешь роль ${author.name} — участника чата «Факты в чате». Ты не ассистент,`,
+      `ты — ${author.name}: его лексика, ритм, любимые словечки (примеры ниже).`,
+      'Отвечай собеседникам так, как ответил бы он: дерзко, самоуверенно, по делу.',
       'Жёсткие правила:',
-      `1. Первая строка ВСЕГДА: 🎭 Это воображаемая реплика в манере ${author.name}, не настоящая`,
-      '2. Дальше — только сама реплика (до 500 знаков), без кавычек и пояснений.',
-      '3. Дерзость — в твоём голосе, но автору НЕ приписывай факты, мнения',
-      '   о реальных людях, оскорбления, личную жизнь, политику.',
-      '4. По-русски, разговорно, как в чате; 1–3 коротких предложения.',
-      '5. Реплика самостоятельная: НЕ комментарий к видео, ссылке, фото или чужому',
-      '   сообщению. Никаких «это видео», «как в мультике» — если этого нет в теме.',
-      '6. Не выдумывай фактов о теме. Тема незнакома — дай оценочную реакцию',
-      '   в характере автора, без выдуманных деталей.',
-      '7. Примеры ниже — только для манеры, не цитируй и не продолжай их.',
+      // NB: маркер '🎭 Воображаемый X' НЕ пройдёт гейт — \S в FAKT_MARKER_RE съедает
+      // первую букву «воображаем…», нужно слово между 🎭 и «воображаем» («Дух»).
+      `1. Первая строка ВСЕГДА: 🎭 Дух ${author.name} (воображаемый):`,
+      '2. Дальше — только реплика, 1–3 коротких предложения, разговорно, по-русски.',
+      '3. Герою НЕ приписывай факты, мнения о реальных людях, оскорбления,',
+      '   личную жизнь, политику. Тема незнакома — оценочная реакция без деталей.',
+      '4. Реплика самостоятельная: не комментируй несуществующие видео/ссылки/фото.',
+      '5. Примеры ниже — только для манеры, не цитируй и не продолжай их.',
     ].join('\n');
     const user =
       samples.length > 0
         ? `Реальные сообщения ${author.name} (для манеры, не для цитирования):\n` +
           samples.map((s) => `— ${truncate(s, 200)}`).join('\n') +
-          '\n\nНапиши реплику.'
-        : 'Примеров нет — импровизируй по имени. Напиши реплику.';
-    return this.kakbyClient.chat([msg.system(system), msg.user(user)], {
+          '\n\nДальше — диалог. Реплики собеседников начинаются с их имени.'
+        : 'Примеров нет — импровизируй по имени. Дальше — диалог.';
+    return this.kakbyClient.chat([msg.system(system), msg.user(user), ...history], {
       temperature: 0.9,
       maxTokens: 300,
     });
@@ -1066,7 +1168,7 @@ export class MediumBot {
       } else if (p.cmdName === 'изобрази') {
         await this.cmdImprovStart(entry, p.argsText, ctx);
       } else if (p.cmdName === 'какбы') {
-        await this.cmdKakbyGenerate(entry, p.argsText, ctx);
+        await this.cmdKakbyStart(entry, p.argsText, ctx);
       } else {
         await this.sendAuthorQuote(entry, ctx);
       }
@@ -1203,6 +1305,9 @@ export class MediumBot {
     for (const [token, p] of this.saidPages) {
       if (p.expiresAt < now) this.saidPages.delete(token);
     }
+    for (const [chatId, s] of this.kakbySessions) {
+      if (s.expiresAt < now) this.kakbySessions.delete(chatId);
+    }
   }
 
   private rememberQuote(chatId: string, msgId: number): void {
@@ -1212,12 +1317,12 @@ export class MediumBot {
     this.lastQuotes.set(chatId, arr);
   }
 
-  private async reply(chatId: string, text: string, replyTo?: number): Promise<void> {
-    await this.send({ chatId, text, replyTo });
+  private async reply(chatId: string, text: string, replyTo?: number): Promise<number | null> {
+    return this.send({ chatId, text, replyTo });
   }
 
-  private async send(m: OutboundMessage): Promise<void> {
-    await this.d.queue.enqueue(m);
+  private async send(m: OutboundMessage): Promise<number | null> {
+    return this.d.queue.enqueue(m);
   }
 
   private async safeAnswer(callbackId: string, text?: string): Promise<void> {
@@ -1345,6 +1450,13 @@ export function formatDate(dateIso: string): string {
   const [y, m, day] = d.split('-');
   if (!y || !m || !day) return dateIso;
   return `${day}.${m}.${y}`;
+}
+
+/** Убрать 🎭-строку маркера из реплики духа (для истории диалога). */
+function stripSpiritMarker(text: string): string {
+  const nl = text.indexOf('\n');
+  const first = nl < 0 ? text : text.slice(0, nl);
+  return first.trimStart().startsWith('🎭') ? (nl < 0 ? '' : text.slice(nl + 1).trim()) : text;
 }
 
 export function truncate(s: string, max: number): string {
