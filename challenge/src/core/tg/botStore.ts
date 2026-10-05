@@ -272,6 +272,32 @@ export class BotStore {
     return row ? row.date_iso : null;
   }
 
+  /** До limit случайных текстовых сообщений автора (few-shot для /какбы):
+   *  40–400 зн., без ссылок, случайные OFFSET-пробы с дедупом по msg_id. */
+  sampleAuthorQuotes(
+    chatKey: string,
+    topicId: number,
+    fromId: string,
+    limit: number,
+  ): TgMessageRow[] {
+    const where =
+      `chat_id = ? AND topic_id = ? AND from_id = ? AND text <> ''` +
+      ` AND length(text) BETWEEN 40 AND 400 AND text NOT LIKE '%http%'`;
+    const { n } = this.db
+      .prepare(`SELECT COUNT(*) AS n FROM tg_messages WHERE ${where}`)
+      .get(chatKey, topicId, fromId) as { n: number };
+    if (n === 0) return [];
+    const rows = new Map<number, TgMessageRow>();
+    for (let i = 0; i < limit * 3 && rows.size < limit; i++) {
+      const offset = Math.floor(Math.random() * n);
+      const row = this.db
+        .prepare(`SELECT ${ROW_COLS} FROM tg_messages WHERE ${where} LIMIT 1 OFFSET ?`)
+        .get(chatKey, topicId, fromId, offset) as TgMessageRow | undefined;
+      if (row) rows.set(row.msg_id, row);
+    }
+    return [...rows.values()];
+  }
+
   /** Сообщения по PK (join кандидатов FTS к tg_messages). */
   getMessagesByKeys(
     chatKey: string,

@@ -29,7 +29,12 @@ interface BotHarness {
   announceId(): number;
 }
 
-function makeBot(opts: { enabled?: boolean } = {}): BotHarness {
+function makeBot(
+  opts: {
+    enabled?: boolean;
+    generateImitation?: (a: unknown, t: string, s: string[]) => Promise<string>;
+  } = {},
+): BotHarness {
   const sent: OutboundMessage[] = [];
   const deleted: number[] = [];
   const edits: Array<{ chatId: string; msgId: number; text: string }> = [];
@@ -60,6 +65,8 @@ function makeBot(opts: { enabled?: boolean } = {}): BotHarness {
       getState: () => null,
       randomAuthorGameQuote: () => null,
       sampleAuthorDate: () => null,
+      sampleAuthorQuotes: () => [],
+      listAliases: () => new Map(),
       getMessagesByKeys: () => new Map(),
     },
     fts: {},
@@ -69,6 +76,7 @@ function makeBot(opts: { enabled?: boolean } = {}): BotHarness {
     cfg: { allowChats: new Set([CHAT]), ownerChatId: null, pollTimeoutSec: 5, botToken: 'токен' },
     session,
     botId: '999',
+    generateImitation: opts.generateImitation,
   } as unknown as ConstructorParameters<typeof MediumBot>[0];
   const bot = new MediumBot(deps);
   return {
@@ -275,6 +283,55 @@ test('общий счёт: очки /игра видны в ревиле «из�
   } finally {
     h.bot.cancelTimers();
   }
+});
+
+test('/какбы без имени → подсказка формата', async () => {
+  const h = makeBot();
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby('', ctx());
+  assert.match(h.sent.at(-1)!.text, /Формат: \/какбы/);
+});
+
+test('/какбы с грязным запросом → отказ без генерации', async () => {
+  let called = 0;
+  const h = makeBot({
+    generateImitation: async () => {
+      called++;
+      return '🎭 Это воображаемая реплика в манере Saveliy, не настоящая\nтекст';
+    },
+  });
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby(
+    'saveliy оскорби петю',
+    ctx(),
+  );
+  assert.match(h.sent.at(-1)!.text, /не вызываю/);
+  assert.equal(called, 0, 'генератор не вызывался');
+});
+
+test('/какбы happy path: валидная генерация уходит с маркером', async () => {
+  const h = makeBot({
+    generateImitation: async () =>
+      '🎭 Это воображаемая реплика в манере Saveliy, не настоящая\nНу я же говорил.',
+  });
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby(
+    'saveliy парковка',
+    ctx(),
+  );
+  assert.match(h.sent.at(-1)!.text, /^🎭 Это воображаемая реплика в манере Saveliy/);
+  assert.match(h.sent.at(-1)!.text, /Ну я же говорил\./);
+});
+
+test('/какбы: генератор падает → fallback с валидным маркером', async () => {
+  const h = makeBot({
+    generateImitation: async () => {
+      throw new Error('llm down');
+    },
+  });
+  await (h.bot as unknown as { cmdKakby(a: string, c: unknown): Promise<void> }).cmdKakby(
+    'saveliy',
+    ctx(),
+  );
+  assert.match(h.sent.at(-1)!.text, /^🎭 Это воображаемая реплика/);
+  assert.match(h.sent.at(-1)!.text, /Стилизатор остыл/);
 });
 
 test('/off гасит оба слота: активный /игра — с постом, «изобрази» — через cancelActive', async () => {

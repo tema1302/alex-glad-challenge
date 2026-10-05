@@ -69,6 +69,7 @@ test('parseCommand: латинские алиасы меню Telegram', () => {
   });
   assert.deepEqual(parseCommand('/game'), { name: 'игра', args: '' });
   assert.deepEqual(parseCommand('/improv севенс'), { name: 'изобрази', args: 'севенс' });
+  assert.deepEqual(parseCommand('/asif севенс парковка'), { name: 'какбы', args: 'севенс парковка' });
   assert.deepEqual(parseCommand('/stat'), { name: 'стат', args: '' });
   assert.deepEqual(parseCommand('/alias сёва Saveliy'), { name: 'алиас', args: 'сёва Saveliy' });
   assert.deepEqual(parseCommand('/reindex'), { name: 'reindex', args: '' });
@@ -84,9 +85,9 @@ test('extractInvocation: обычный текст не инвокация', () 
   assert.equal(extractInvocation('просто сообщение @другойбот', 'medium'), null);
 });
 
-test('BOT_COMMANDS: фиксированный набор M1 + игра «Изобрази»', () => {
+test('BOT_COMMANDS: фиксированный набор M1 + «Изобрази» + /какбы', () => {
   assert.deepEqual(
     [...BOT_COMMANDS].sort(),
-    ['off', 'on', 'reindex', 'алиас', 'игра', 'изобрази', 'сказал', 'стат', 'цитата'],
+    ['off', 'on', 'reindex', 'алиас', 'игра', 'изобрази', 'какбы', 'сказал', 'стат', 'цитата'],
   );
 });

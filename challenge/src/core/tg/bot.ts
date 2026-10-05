@@ -8,7 +8,9 @@
 // Исходящие из БД данные — только в чаты из allow-list (fail-closed).
 
 import { rmSync, renameSync } from 'node:fs';
-import { getTgBotRuntimeConfig } from '../env.js';
+import { getTgBotRuntimeConfig, getKakbyLlmConfig } from '../env.js';
+import { LlmClient } from '../client.js';
+import { msg } from '../types.js';
 import { dataPath } from '../paths.js';
 import { BotApiClient, BotApiError } from './botApi.js';
 import type { TgUpdate, TgCallbackQuery, TgUser } from './botApi.js';
@@ -22,6 +24,7 @@ import type { ParsedCommand } from './botCommands.js';
 import { OutboxQueue, SendError, CooldownLimiter, errText } from './botQueue.js';
 import type { OutboundMessage } from './botQueue.js';
 import { ImprovGame } from './botImprov.js';
+import { guardImaginedReply } from './jokerMarker.js';
 
 // Целевой чат фичи (t.me/lookAtFactsChat). Бот отвечает в любом чате из
 // allow-list, но данные (цитаты/игра) — всегда из этого чата.
@@ -48,17 +51,20 @@ const START_INTRO = [
   '🎭 О, здравствуйте! Я — Медиум, дух-память чата «Факты в чате».',
   '',
   'Я прочитал этот чат целиком: от первого сообщения 2021 года',
-  'до последнего «ахахаха». Вызываю духов прошлого — и они говорят',
-  'вашими же голосами. Ничего не забыл. Ни-че-го.',
+  'до последнего «ахахаха». Ничего не забыл. Ни-че-го.',
   '',
-  'Что вызываю:',
-  '/quote — жемчужина, которую вы сами написали и забыли',
-  '/quote <имя> — персональная ретроспектива чужих грехов',
-  '/said <имя> <тема> — всё, что человек говорил про тему. Всё.',
-  '/game — угадай по фразе, кто это сказал. Стыд прилагается',
-  '/improv <имя> [тема] — вообразим, КАК это было сказано. Голосом вашей души',
+  'Команды:',
+  '/quote — случайная жемчужина из истории чата',
+  '/quote Вася — жемчужина конкретного человека',
+  '/said Вася парковка — всё, что Вася говорил про парковку',
+  '/game — игра: угадай по фразе, кто это сказал',
+  '/improv Вася — вы пародируете Васю, чат голосует',
+  '/asif Вася [тема] — я сам напишу реплику в манере Васи',
+  '(выдумка, не цитата — помечена 🎭). Дерзость гарантирую.',
   '',
-  'Понимаю и кириллицу: /цитата, /сказал, /игра, /изобрази.',
+  'Имя пишите как привыкли: ник, имя, прозвище — разберусь.',
+  'Если кандидатов несколько — предложу кнопки на выбор.',
+  'Понимаю и кириллицу: /цитата, /сказал, /игра, /изобрази, /какбы.',
   'Играем в самом чате «Факты в чате» — там я и обитаю.',
 ].join('\n');
 const START_INTRO_OWNER =
@@ -135,7 +141,9 @@ export async function runTgBot(opts: RunTgBotOpts = {}): Promise<void> {
   const menu = (Object.entries(BOT_COMMAND_DESCRIPTIONS) as [string, string][]).map(
     ([command, description]) => ({ command, description }),
   );
-  const publicMenu = menu.filter((c) => ['quote', 'said', 'game', 'improv'].includes(c.command));
+  const publicMenu = menu.filter((c) =>
+    ['quote', 'said', 'game', 'improv', 'asif'].includes(c.command),
+  );
   try {
     await api.setMyCommands(publicMenu);
     if (cfg.ownerChatId) {
@@ -246,6 +254,8 @@ interface MediumDeps {
   session: { startedAt: number; updatesSeen: number; enabled: boolean };
   botId: string;
   botUsername?: string;
+  /** Генератор реплики /какбы (инъекция для тестов; дефолт — LLM DeepSeek). */
+  generateImitation?: (author: AuthorEntry, theme: string, samples: string[]) => Promise<string>;
 }
 
 interface CommandCtx {
@@ -259,7 +269,7 @@ interface CommandCtx {
 
 interface PendingResolve {
   chatId: string;
-  cmdName: 'цитата' | 'сказал' | 'изобрази';
+  cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы';
   argsText: string;
   replyTo: number;
   replyText?: string;
@@ -346,7 +356,7 @@ export class MediumBot {
     if (cmd === null && ping) {
       await this.reply(
         chatId,
-        '🎭 Слушаю. Команды: /quote [имя], /said <имя> <тема>, /game, /improv <имя> — или /start.',
+        '🎭 Слушаю. Команды: /quote [имя], /said <имя> <тема>, /game, /improv <имя>, /asif <имя> [тема] — или /start.',
         msg.message_id,
       );
       return;
@@ -409,11 +419,7 @@ export class MediumBot {
       case 'изобрази':
         return this.cmdImprov(cmd.args, ctx);
       case 'какбы':
-        return this.reply(
-          ctx.chatId,
-          '🎭-стилизация (/какбы) появится позже — пока умею /цитата, /сказал, /игра, /изобрази.',
-          ctx.replyTo,
-        );
+        return this.cmdKakby(cmd.args, ctx);
       default:
         break;
     }
@@ -501,12 +507,13 @@ export class MediumBot {
     r: ResolveResult,
     query: string,
     ctx: CommandCtx,
-    cmdName: 'цитата' | 'сказал' | 'изобрази',
+    cmdName: 'цитата' | 'сказал' | 'изобрази' | 'какбы',
     argsText: string,
   ): Promise<void> {
     if (r.kind === 'ok') {
       if (cmdName === 'сказал') await this.sendSaidQuotes(r.author, argsText, buildFtsQuery(argsText), ctx);
       else if (cmdName === 'изобрази') await this.cmdImprovStart(r.author, argsText, ctx);
+      else if (cmdName === 'какбы') await this.cmdKakbyGenerate(r.author, argsText, ctx);
       else await this.sendAuthorQuote(r.author, ctx);
       return;
     }
@@ -778,6 +785,95 @@ export class MediumBot {
     });
   }
 
+  // --- какбы (LLM-стилизация, M3; наружу — только через 🎭-гейт) ---
+
+  // Просьбы «пусть X оскорбит/унизит Y» — отказ без генерации (спек §5.5).
+  private static readonly KAKBY_REFUSAL_RE =
+    /(оскорб|униз|обоср|опозор|угроз|угрож|нагруб|высме[яю])/i;
+
+  private kakbyClient: LlmClient | null = null;
+
+  /** /какбы <имя> [тема…]: выдуманная реплика в манере автора. */
+  private async cmdKakby(args: string, ctx: CommandCtx): Promise<void> {
+    const words = args.split(/\s+/).filter(Boolean);
+    if (words.length === 0) {
+      await this.reply(ctx.chatId, 'Формат: /какбы <имя> [тема…] — кого изображаем?', ctx.replyTo);
+      return;
+    }
+    if (MediumBot.KAKBY_REFUSAL_RE.test(args)) {
+      await this.reply(
+        ctx.chatId,
+        '🎭 Такое не вызываю: грязь и унижения — не мой жанр. Дай тему, а не подлость.',
+        ctx.replyTo,
+      );
+      return;
+    }
+    const { name: nameCandidate, themeWords, result: nameResult } = resolveGreedyName(words, (q) =>
+      this.resolveOnce(q),
+    );
+    const theme = themeWords.join(' ');
+    if (nameResult.kind === 'ok') {
+      await this.cmdKakbyGenerate(nameResult.author, theme, ctx);
+      return;
+    }
+    await this.runResolved(nameResult, nameCandidate, ctx, 'какбы', theme);
+  }
+
+  private async cmdKakbyGenerate(
+    author: AuthorEntry,
+    themeArg: string,
+    ctx: CommandCtx,
+  ): Promise<void> {
+    const theme = themeArg || (ctx.replyText ? themeFromReplyText(ctx.replyText) : '');
+    let samples: string[] = [];
+    try {
+      samples = this.d.store
+        .sampleAuthorQuotes(BOT_CHAT_KEY, BOT_TOPIC_ID, author.fromId, 8)
+        .map((r) => r.text);
+    } catch (err) {
+      console.error(`[tg-bot] какбы samples (chat=${ctx.chatId}): ${errText(err)}`);
+    }
+    const generate = this.d.generateImitation ?? ((a, t, s) => this.defaultImitation(a, t, s));
+    const guarded = await guardImaginedReply(
+      () => generate(author, theme, samples),
+      author.name,
+    );
+    await this.reply(ctx.chatId, guarded.text, ctx.replyTo);
+  }
+
+  /** Дефолтный генератор: DeepSeek (напрямую или через OpenRouter), дерзкий тон. */
+  private async defaultImitation(
+    author: AuthorEntry,
+    theme: string,
+    samples: string[],
+  ): Promise<string> {
+    this.kakbyClient ??= new LlmClient(getKakbyLlmConfig());
+    const system = [
+      `Ты — Медиум, дух чата «Факты в чате». Ты крутой, самоуверенный и дерзкий:`,
+      `ты прочитал весь чат целиком и знаешь этих людей лучше, чем они сами,`,
+      `и не стесняешься этим хвастаться.`,
+      `Задача: написать ОДНУ выдуманную реплику в манере участника ${author.name} —`,
+      `его лексика, ритм, любимые словечки (по примерам ниже).`,
+      theme ? `Тема реплики: «${theme}».` : 'Тема свободная, из типичных интересов автора.',
+      'Жёсткие правила:',
+      `1. Первая строка ВСЕГДА: 🎭 Это воображаемая реплика в манере ${author.name}, не настоящая`,
+      '2. Дальше — только сама реплика (до 500 знаков), без кавычек и пояснений.',
+      '3. Дерзость — в твоём голосе, но автору НЕ приписывай факты, мнения',
+      '   о реальных людях, оскорбления, личную жизнь, политику.',
+      '4. По-русски, разговорно, как в чате.',
+    ].join('\n');
+    const user =
+      samples.length > 0
+        ? `Реальные сообщения ${author.name} (для манеры, не для цитирования):\n` +
+          samples.map((s) => `— ${truncate(s, 200)}`).join('\n') +
+          '\n\nНапиши реплику.'
+        : 'Примеров нет — импровизируй по имени. Напиши реплику.';
+    return this.kakbyClient.chat([msg.system(system), msg.user(user)], {
+      temperature: 0.9,
+      maxTokens: 300,
+    });
+  }
+
   // --- callback_query ---
 
   private async handleCallback(cb: TgCallbackQuery): Promise<void> {
@@ -835,6 +931,8 @@ export class MediumBot {
         await this.sendSaidQuotes(entry, p.argsText, buildFtsQuery(p.argsText), ctx);
       } else if (p.cmdName === 'изобрази') {
         await this.cmdImprovStart(entry, p.argsText, ctx);
+      } else if (p.cmdName === 'какбы') {
+        await this.cmdKakbyGenerate(entry, p.argsText, ctx);
       } else {
         await this.sendAuthorQuote(entry, ctx);
       }

@@ -63,6 +63,23 @@ export function getLlmProviderConfig(): LlmProviderConfig {
 }
 
 /**
+ * Конфиг LLM для /какбы (бот «Медиум»): модель DeepSeek — напрямую
+ * (DEEPSEEK_API_KEY → 'deepseek-chat') или через OpenRouter
+ * ('deepseek/deepseek-chat-v3.1'). Переопределение — TG_BOT_KAKBY_MODEL.
+ */
+export function getKakbyLlmConfig(): LlmProviderConfig {
+  const base = getLlmProviderConfig();
+  const override = process.env.TG_BOT_KAKBY_MODEL?.trim();
+  if (override) return { ...base, defaultModel: override };
+  return {
+    ...base,
+    defaultModel: base.baseUrl.includes('deepseek.com')
+      ? 'deepseek-chat'
+      : 'deepseek/deepseek-chat-v3.1',
+  };
+}
+
+/**
  * Конфиг cloud-refine для dev-assistant: ИМЕННО OpenRouter (default Claude),
  * БЕЗ приоритета DeepSeek (в отличие от getLlmProviderConfig — там DeepSeek
  * перебивает, а refine-стадия всегда идёт через cloud Claude). null если
