@@ -44,5 +44,8 @@ Thumbs.db
 web/test-results/
 web/playwright-report/
 
+# Локальные логи запусков (tg-collect, tg-bot, сборки)
+*.log
+
 # Артефакты оркестратора (CLAUDE.md)
 swarm-report/
