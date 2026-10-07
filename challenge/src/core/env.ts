@@ -232,6 +232,79 @@ export function getTgBotRuntimeConfig(): TgBotRuntimeConfig | null {
 }
 
 /**
+ * Конфиг LLM для бота «Максим Артемьевич»: ИМЕННО DeepSeek — напрямую
+ * (DEEPSEEK_API_KEY → 'deepseek-chat') или через OpenRouter
+ * ('deepseek/deepseek-chat-v3.1'). Переопределение — MAXIM_MODEL.
+ */
+export function getMaximLlmConfig(): LlmProviderConfig {
+  const base = getLlmProviderConfig();
+  const override = process.env.MAXIM_MODEL?.trim();
+  if (override) return { ...base, defaultModel: override };
+  return {
+    ...base,
+    defaultModel: base.baseUrl.includes('deepseek.com')
+      ? 'deepseek-chat'
+      : 'deepseek/deepseek-chat-v3.1',
+  };
+}
+
+/**
+ * Конфиг бота «Максим Артемьевич» (CLI maxim-bot): QA Lead front-back, шлёт
+ * напутствия в чат и капсит, если нет ответа. null если нет MAXIM_BOT_TOKEN.
+ * chatId — MAXIM_CHAT_ID (fail-closed: пусто = бот не стартует, проверяется
+ * в рантайме). ownerId — MAXIM_OWNER_ID (user id владельца; null = команды
+ * настройки доступны всем участникам чата).
+ */
+export interface MaximBotConfig {
+  botToken: string;
+  chatId: string;
+  ownerId: string | null;
+  pollTimeoutSec: number;
+  /** Дефолтная температура генерации напутствий (0–2), меняется командой в чате. */
+  temperature: number;
+  /** Задержка капса при молчании чата (сек). */
+  capsDelaySec: number;
+  /** Календарь релизов: дата первого релиза (YYYY-MM-DD) и период в днях. */
+  releaseEpoch: string;
+  releasePeriodDays: number;
+  /** Окно напутствия в обычный день (часы локального времени). */
+  dailyWindowStartHour: number;
+  dailyWindowEndHour: number;
+  /** Интервал напутствий в обычные дни (дней; в релизные — hotInterval). */
+  normalIntervalDays: number;
+  /** Интервал напутствий в день релиза и на следующий (минуты, min–max). */
+  hotIntervalMinMin: number;
+  hotIntervalMaxMin: number;
+}
+
+export function getMaximBotConfig(): MaximBotConfig | null {
+  const botToken = process.env.MAXIM_BOT_TOKEN?.trim() || '';
+  if (!botToken) return null;
+  const num = (name: string, def: number): number => {
+    const raw = process.env[name]?.trim();
+    if (!raw) return def;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : def;
+  };
+  const pollRaw = num('MAXIM_POLL_TIMEOUT', 25);
+  return {
+    botToken,
+    chatId: process.env.MAXIM_CHAT_ID?.trim() || '',
+    ownerId: process.env.MAXIM_OWNER_ID?.trim() || null,
+    pollTimeoutSec: pollRaw >= 5 && pollRaw <= 120 ? pollRaw : 25,
+    temperature: Math.min(2, Math.max(0, num('MAXIM_TEMPERATURE', 1.0))),
+    capsDelaySec: Math.max(10, num('MAXIM_CAPS_DELAY_SEC', 120)),
+    releaseEpoch: process.env.MAXIM_RELEASE_EPOCH?.trim() || '2026-10-06',
+    releasePeriodDays: Math.max(1, num('MAXIM_RELEASE_PERIOD_DAYS', 14)),
+    dailyWindowStartHour: num('MAXIM_DAILY_WINDOW_START', 10),
+    dailyWindowEndHour: num('MAXIM_DAILY_WINDOW_END', 20),
+    normalIntervalDays: Math.max(1, num('MAXIM_NORMAL_INTERVAL_DAYS', 3)),
+    hotIntervalMinMin: Math.max(1, num('MAXIM_HOT_INTERVAL_MIN', 60)),
+    hotIntervalMaxMin: Math.max(1, num('MAXIM_HOT_INTERVAL_MAX', 180)),
+  };
+}
+
+/**
  * Конфиг приватного LLM-gateway (day-30): порт bind, auth-токен (отдельный домен
  * от MCP_AUTH_TOKEN), RPS/TPM-лимиты, concurrency-кап и max-context-tokens cap.
  * Дефолты рассчитаны на один инстанс vLLM/Ollama на loopback. Секрет (authToken)
