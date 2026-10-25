@@ -1675,7 +1675,48 @@ Public), интерфейс Tailscale = Private.
 **Риски:** dev-режим на tailnet-IP — персональная деплой-модель Артель
 (HTTP внутри tailnet + парольный вход); без VPN с телефона сервер
 недоступен по определению. IP сервера не коммитится: в docs только
-плейсхолдер. Для release/GPS-вне-tailnet — HTTPS за reverse-proxy
+плейсхолдер. Для release/вне-tailnet — HTTPS за reverse-proxy
 (`tailscale serve` как минимальный вариант).
 
 **Код:** `android/README.md`, `CHANGELOG.md` (docs-only).
+
+## Android: вход как на сайте — адрес сервера вводится в приложении (2026-10-26)
+**Дата:** 2026-10-26. Профиль «Бизнес-фича» (loop-run), milestone run-2026-10-26.
+
+**Задание:** приложение должно быть пригодно для любых пользователей — так
+же, как любой может открыть сайт: адрес рабочей области вводит сам
+пользователь (как URL сайта в браузере), админка под паролем. Механика
+«адрес зашивается при сборке через `-Partel.serverUrl` →
+`BuildConfig.DEFAULT_SERVER_URL`, поле адреса скрыто» удалена полностью.
+
+**Что сделано:**
+- Android: `ConnectViewModel` без параметра `bakedServerUrl` и флага
+  `hasBakedUrl`; поле «Адрес сервера» всегда показывается и редактируется;
+  последний успешный адрес подставляется безусловно (и после
+  logout/401) из DataStore (`lastServerUrl`). Placeholder нейтральный
+  `https://artel.example.com`, клавиатура URL.
+- Android: чистый `ConnectRules` (валидация ввода + человекочитаемые
+  причины сбоев: unresolved host / cleartext в release / таймаут-подключение)
+  — VM-ветки `IOException` Login и bootstrap теперь дают конкретную
+  подсказку, а не сырой `e.message`; +9 юнит-тестов.
+- Gradle: удалены baked-блок и `buildConfig = true` (BuildConfig больше
+  никем не используется); версия 1.1.0 (versionCode 3).
+- Docs: `android/README.md` — механика «адрес + пароль» без зашивания;
+  `docs/api-contracts.md` — то же в контракте мобильного входа.
+
+**Проверки:** Android `:app:testDebugUnitTest :app:assembleDebug` —
+successfully, 55 юнит-тестов (+9 `ConnectRulesTest`); `git diff` — только
+файлы задачи. Web/challenge не менялись (typecheck из предыдущего прогона —
+чисто).
+
+**Риски/ограничения:** как и прежде: сервер по адресу, который ввёл
+пользователь, должен быть запущен и доступен с телефона (LAN/Tailscale);
+cleartext только в debug-сборках, release требует https-адреса. Полный
+паритет экранов приложения с web-админкой (rag/chat/tg/blog/mcp/sys/
+integrations) — backlog в issue эпика (milestone run-2026-10-26).
+
+**Код:** `android/app/build.gradle.kts`,
+`android/.../ui/screens/connect/ConnectScreen.kt`,
+`android/.../ui/screens/connect/ConnectRules.kt`,
+`android/app/src/test/java/ru/memo7/artel/ui/screens/connect/ConnectRulesTest.kt`,
+`android/README.md`, `docs/api-contracts.md`.
