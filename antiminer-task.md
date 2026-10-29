@@ -15,7 +15,11 @@
   - `C:\Users\user\AppData\Roaming\Microsoft\Windows\Caches\4259B89A\` (сторож)
   - `C:\Users\user\AppData\Local\Microsoft\Windows\Caches\B283B4E1\` (майнеры srbminer/peakminer)
   - `C:\Users\user\AppData\Local\Microsoft\Windows\Caches\4259B89A\Content.IE5\...` (резервная копия)
-  - Карантин: `E:\IT\alex-glad-challenge\quarantine-miner\`
+  - Карантин: `E:\IT\alex-glad-challenge\quarantine-miner\` — **удалён 29.10.2026**
+    (решение пользователя; SHA256 образцов зафиксированы в журнале сессии:
+    SecurityHealthHost.exe `6EB4E0BC…B21E9094AC1`, WinRing0x64.sys `11BD2C9F…60B5C160EE5`,
+    sp.dat `1870385D…5C02456F05`). Папка повторно не должна появляться; если появилась —
+    это реинфекция.
 - **Удалённые точки автозапуска:**
   - задача планировщика `Windows System Health Check` (и варианты `Windows System Health`, `Windows System Health Monitor`)
   - ключ реестра `HKCU\Software\Microsoft\Windows\CurrentVersion\Run :: WinSysCache`
@@ -61,7 +65,7 @@
   - `%LOCALAPPDATA%\Microsoft\Windows\Caches\4259B89A`, `...\B283B4E1`
   - `C:\ProgramData\Microsoft\Windows\Caches\4259B89A`
 - Файлы `SecurityHealthHost.exe`, `RuntimeHost.exe`, `miner.dat`, `.mout`, `WinRing0x64.sys`
-  вне `C:\Windows` и вне карантина `E:\IT\alex-glad-challenge\quarantine-miner\`.
+  вне `C:\Windows` (папка карантина удалена 29.10.2026 — любое появление её содержимого = реинфекция).
 
 ### 6. GPU
 - Счётчик `\GPU Engine(*)\Utilization Percentage` (2–3 замера по 1 с):
@@ -91,6 +95,7 @@
 ## Ограничения
 
 - Ничего не удалять и не останавливать без явного подтверждения пользователя.
-  Исключение: файлы в карантине не трогать вообще.
+  Исключение: старые файлы карантина удалены по решению пользователя (29.10.2026);
+  новые подозрительные файлы — снова максимум карантин/отчёт, ничего с ними не делать.
 - Не читать и не выводить содержимое `.env`, ключей, паролей, сессий.
 - Все проверки — только чтение (Get-*, реестр, счётчики производительности).
