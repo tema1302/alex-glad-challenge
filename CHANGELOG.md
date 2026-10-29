@@ -1900,3 +1900,39 @@ smoke через `CourseDb.getLesson/getSections/getExcerpts` — оба уро�
 **Код:** `challenge/src/data/course/{week-8,week-9}.json`
 (данные, кода нет); драйверы импорта — уже существующие
 `challenge/src/{core/courseDb.ts,core/courseImport.ts,cli.ts}`.
+
+---
+
+## ADVANCED Day 6 — text-to-SQL LoRA: Qwen2.5-1.5B-Instruct + QLoRA на T4
+**Дата:** 2026-10-26
+
+**Задание:**
+> Узкий text-to-SQL LoRA: датасет b-mc2/sql-create-context → Qwen2.5-1.5B-Instruct
+> → QLoRA на облачной T4. Adapter, run.json, loss-кривая и сравнение base vs
+> tuned на 20 запросах, включая блок «где стало хуже». Формат: видео + код.
+
+**Сделано:**
+- Пайплайн `training/day-06/`: `prepare_data.py` (stdlib-only: скачивание,
+  чистка, group split), `train_qlora.py` (QLoRA NF4 r=16, маска loss на
+  assistant-токенах, loss.csv/run.json, early stopping), `evaluate.py`
+  (20 промптов, base vs tuned на одной загрузке через `disable_adapter`,
+  метрики sqlglot + SQLite EXPLAIN, report.md/html + regressions.md),
+  `plot_loss.py`, `configs/qlora.yaml`, `requirements.txt`, optional `make_gguf.sh`.
+- Факты датасета проверены локальным прогоном (не из описания HF): 78 577
+  строк, 72 947 уникальных schema, 0 дублей, 1 конфликтующая пара (MIN/MAX),
+  100% SELECT, контекст avg 71.6/p99 149, ответ avg 76.3/p99 166, `IS NULL`
+  нет (NULL — строковый литерал).
+- Group split по sha1(context) со стратами 1 vs 2+ таблиц: 5000/500/500;
+  схемы eval-набора исключены из всех сплитов. Проверено: пересечений
+  сплитов 0, утечек eval 0. В ходе проверки найден и исправлен баг квот
+  (train раздувался до 77k, multi-table проваливались в train).
+- Eval-набор `eval/prompts.jsonl`: 10 in-domain (реальные строки датасета:
+  select/filter/agg/group/join/order/subquery/null/like/multi) + 5 edge
+  (невалидная колонка, неоднозначность, пустая schema, невозможный запрос,
+  INSERT) + 5 OOD (чат, математика, перевод, код, русский).
+
+**Не сделано (нужен GPU-прогон):** обучение и eval на Kaggle/Colab T4 —
+прогон подготовлен, но не запускался (локально нет CUDA). Отчёт
+`docs/advanced-day-06/README.md` содержит заглушки под числа прогона.
+
+**Код:** `training/day-06/**`, `docs/advanced-day-06/{README,video-script}.md`.

@@ -1,0 +1,85 @@
+{
+  "timestamp_utc": "2026-10-26T20:13:16.504119+00:00",
+  "git_sha": "release-colab-external-images_20260917-060051_RC00",
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "base_model_revision": "989aa7980e4cf806f80c7fef2b1adb7bc71aa306",
+  "dataset": "b-mc2/sql-create-context",
+  "dataset_file_sha256": "280961458ccb74731104ae9af715797a0332327a33a210120a6884085a5c03f0",
+  "platform": "Linux-6.18.55+-x86_64-with-glibc2.39",
+  "python": "3.13.15",
+  "gpu": "Tesla T4",
+  "cuda": "12.8",
+  "library_versions": {
+    "torch": "2.11.0+cu128",
+    "transformers": "4.46.3",
+    "peft": "0.13.2",
+    "bitsandbytes": "0.50.2",
+    "accelerate": "1.1.1",
+    "datasets": "3.1.0",
+    "sqlglot": "25.10.0"
+  },
+  "seed": 42,
+  "config": {
+    "model": {
+      "base": "Qwen/Qwen2.5-1.5B-Instruct",
+      "max_seq_length": 512,
+      "attn_implementation": "sdpa"
+    },
+    "quantization": {
+      "load_in_4bit": true,
+      "bnb_4bit_quant_type": "nf4",
+      "bnb_4bit_use_double_quant": true,
+      "bnb_4bit_compute_dtype": "float16"
+    },
+    "lora": {
+      "r": 16,
+      "alpha": 32,
+      "dropout": 0.05,
+      "target_modules": [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "o_proj",
+        "gate_proj",
+        "up_proj",
+        "down_proj"
+      ]
+    },
+    "training": {
+      "per_device_train_batch_size": 2,
+      "gradient_accumulation_steps": 8,
+      "learning_rate": 0.0002,
+      "lr_scheduler_type": "cosine",
+      "warmup_ratio": 0.03,
+      "num_train_epochs": 2,
+      "optim": "paged_adamw_8bit",
+      "max_grad_norm": 0.3,
+      "gradient_checkpointing": true,
+      "fp16": true,
+      "bf16": false,
+      "logging_steps": 10,
+      "eval_steps": 100,
+      "save_steps": 100,
+      "save_total_limit": 5,
+      "early_stopping_patience": 2,
+      "seed": 42,
+      "report_to": []
+    },
+    "data": {
+      "train_file": "data/train.jsonl",
+      "val_file": "data/val.jsonl"
+    },
+    "system_prompt": "You are a text-to-SQL engine. Given a SQLite schema and a question,\noutput exactly one SQL query and nothing else. Do not use markdown.\nUse only tables and columns from the schema.\n",
+    "output": {
+      "artifacts_dir": "artifacts"
+    }
+  },
+  "train_rows": 5000,
+  "val_rows": 500,
+  "train_runtime_sec": 2781.7,
+  "final_train_loss": 0.0208,
+  "final_eval_loss": 0.04066591337323189,
+  "best_eval_loss": 0.04066591337323189,
+  "best_checkpoint": "/kaggle/tmp/day06/artifacts/checkpoints/checkpoint-600",
+  "adapter_dir": "/kaggle/tmp/day06/artifacts/adapter"
+}

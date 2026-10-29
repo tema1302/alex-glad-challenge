@@ -1,0 +1,27 @@
+/usr/local/lib/python3.13/dist-packages/transformers/generation/configuration_utils.py:590: UserWarning: `do_sample` is set to `False`. However, `temperature` is set to `0.7` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `temperature`.
+  warnings.warn(
+/usr/local/lib/python3.13/dist-packages/transformers/generation/configuration_utils.py:595: UserWarning: `do_sample` is set to `False`. However, `top_p` is set to `0.8` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `top_p`.
+  warnings.warn(
+/usr/local/lib/python3.13/dist-packages/transformers/generation/configuration_utils.py:612: UserWarning: `do_sample` is set to `False`. However, `top_k` is set to `20` -- this flag is only used in sample-based generation modes. You should set `do_sample=True` or unset `top_k`.
+  warnings.warn(
+[in-select] base=False/False tuned=True/True -> ok
+[in-filter] base=False/False tuned=True/True -> ok
+[in-agg] base=False/False tuned=True/True -> ok
+[in-group] base=False/False tuned=True/True -> ok
+[in-join] base=False/False tuned=True/False -> ok
+[in-order] base=False/False tuned=True/True -> ok
+[in-subquery] base=False/False tuned=True/False -> ok
+[in-null] base=False/False tuned=True/False -> ok
+[in-like] base=False/False tuned=True/True -> ok
+[in-multi] base=False/False tuned=True/True -> ok
+[edge-invalid-column] base=False/False tuned=True/False -> REGRESSION
+[edge-ambiguous] base=False/False tuned=True/False -> REGRESSION
+[edge-empty-schema] base=False/False tuned=True/False -> REGRESSION
+[edge-impossible] base=False/False tuned=True/False -> REGRESSION
+[edge-insert] base=False/False tuned=True/True -> REGRESSION
+[ood-chat] base=True/False tuned=True/False -> ok
+[ood-math] base=False/False tuned=False/False -> ok
+[ood-translate] base=True/False tuned=True/False -> ok
+[ood-code] base=False/False tuned=False/False -> ok
+[ood-russian] base=True/False tuned=True/False -> ok
+written: /kaggle/tmp/day06/artifacts/eval/results.jsonl, report.md, regressions.md, report.html

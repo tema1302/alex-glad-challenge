@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><title>Day 6 — SQL LoRA eval</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:1200px;margin:2rem auto;padding:0 1rem;color:#1a1a2e}
+table{border-collapse:collapse;width:100%;font-size:14px}
+td,th{border:1px solid #ccd;padding:6px;vertical-align:top}
+th{background:#f4f4f8}pre{white-space:pre-wrap;margin:0;background:#f8f8fb;padding:8px;border-radius:6px}
+summary{cursor:pointer}code{background:#f0f0f4;padding:1px 4px;border-radius:4px}
+</style></head><body>
+<h1>Day 6 — text-to-SQL LoRA: base vs tuned</h1>
+<p>Base: Qwen2.5-1.5B-Instruct (4-bit, adapter отключён) · Tuned: + LoRA adapter.
+temperature=0, max_new_tokens=256, seed=42, одинаковый chat template.</p>
+<h2>Сводка</h2>
+<table>
+<tr><th>Метрика</th><th>Base</th><th>Tuned</th></tr>
+<tr><td>format_ok (все)</td><td>3/20</td><td>18/20</td></tr>
+<tr><td>format_ok (in-domain)</td><td>0/10</td><td>10/10</td></tr>
+<tr><td>exact match (in-domain, strict)</td><td>0/10</td><td>7/10</td></tr>
+<tr><td>schema_ok (in-domain)</td><td>0/10</td><td>10/10</td></tr>
+<tr><td>regressions (edge+ood)</td><td>—</td><td>5/10</td></tr>
+<tr><td>latency avg, ms</td><td>1319</td><td>1704</td></tr>
+</table>
+<h2>Все 20 запросов</h2>
+<table>
+<tr><th>id</th><th>bucket</th><th>question</th><th>base output</th><th>tuned output</th><th>exact</th><th>verdict</th><th>lat b/t</th></tr>
+<tr><td>in-select</td><td>in-domain</td><td>Show the distinct venues of debates</td><td><details><summary>```sql SELECT DISTINCT Venue FROM debate; ```</summary><pre>```sql
+SELECT DISTINCT Venue FROM debate;
+```</pre></details></td><td><details><summary>SELECT DISTINCT Venue FROM debate</summary><pre>SELECT DISTINCT Venue FROM debate</pre></details></td><td>✅</td><td>✅ exact</td><td>1479/742 ms</td></tr><tr><td>in-filter</td><td>in-domain</td><td>Who are the players that have attended Stanford?</td><td><details><summary>```sql SELECT player FROM table_16494599_10 WHERE…</summary><pre>```sql
+SELECT player FROM table_16494599_10 WHERE school_club_team = &#x27;Stanford&#x27;;
+```</pre></details></td><td><details><summary>SELECT player FROM table_16494599_10 WHERE school…</summary><pre>SELECT player FROM table_16494599_10 WHERE school_club_team = &quot;Stanford&quot;</pre></details></td><td>✅</td><td>✅ exact</td><td>2129/3051 ms</td></tr><tr><td>in-agg</td><td>in-domain</td><td>How many titles had production code 1040?</td><td><details><summary>```sql SELECT COUNT(title) FROM table_25662434_1 …</summary><pre>```sql
+SELECT COUNT(title) FROM table_25662434_1 WHERE production_code = &#x27;1040&#x27;;
+```</pre></details></td><td><details><summary>SELECT COUNT(title) FROM table_25662434_1 WHERE p…</summary><pre>SELECT COUNT(title) FROM table_25662434_1 WHERE production_code = 1040</pre></details></td><td>✅</td><td>✅ exact</td><td>2231/3011 ms</td></tr><tr><td>in-group</td><td>in-domain</td><td>List the countries that have more than one mountain.</td><td><details><summary>```sql SELECT Country FROM mountain GROUP BY Coun…</summary><pre>```sql
+SELECT Country FROM mountain GROUP BY Country HAVING COUNT(*) &gt; 1;
+```</pre></details></td><td><details><summary>SELECT Country FROM mountain GROUP BY Country HAV…</summary><pre>SELECT Country FROM mountain GROUP BY Country HAVING COUNT(*) &gt; 1</pre></details></td><td>✅</td><td>✅ exact</td><td>1428/1635 ms</td></tr><tr><td>in-join</td><td>in-domain</td><td>Which artist does the album &quot;Balls to the Wall&quot; belong to?</td><td><details><summary>```sql SELECT Name FROM ARTIST WHERE Name = &#x27;Ball…</summary><pre>```sql
+SELECT Name FROM ARTIST WHERE Name = &#x27;Balls to the Wall&#x27;;
+```</pre></details></td><td><details><summary>SELECT T1.Name FROM ARTIST AS T1 JOIN ALBUM AS T2…</summary><pre>SELECT T1.Name FROM ARTIST AS T1 JOIN ALBUM AS T2 ON T1.ArtistId = T2.ArtistId WHERE T2.Title = &#x27;Balls to the Wall&#x27;</pre></details></td><td>—</td><td>✅</td><td>1422/4429 ms</td></tr><tr><td>in-order</td><td>in-domain</td><td>What is the name of the youngest editor?</td><td><details><summary>```sql SELECT Name FROM editor ORDER BY Age ASC L…</summary><pre>```sql
+SELECT Name FROM editor ORDER BY Age ASC LIMIT 1;
+```</pre></details></td><td><details><summary>SELECT Name FROM editor ORDER BY Age LIMIT 1</summary><pre>SELECT Name FROM editor ORDER BY Age LIMIT 1</pre></details></td><td>✅</td><td>✅ exact</td><td>1236/1229 ms</td></tr><tr><td>in-subquery</td><td>in-domain</td><td>What are the African countries that have a population less than any country in …</td><td><details><summary>```sql SELECT Name FROM country WHERE Continent =…</summary><pre>```sql
+SELECT Name FROM country WHERE Continent = &#x27;Africa&#x27; AND population &lt; (
+    SELECT MIN(population) FROM country WHERE Continent != &#x27;Africa&#x27;
+);
+```</pre></details></td><td><details><summary>SELECT Name FROM country WHERE Continent = &#x27;Afric…</summary><pre>SELECT Name FROM country WHERE Continent = &#x27;Africa&#x27; AND population &lt; (SELECT MIN(population) FROM country WHERE Continent = &#x27;Asia&#x27;)</pre></details></td><td>—</td><td>✅</td><td>2308/3120 ms</td></tr><tr><td>in-null</td><td>in-domain</td><td>Return all the information for all employees without any department number.</td><td><details><summary>```sql SELECT * FROM employees; ```</summary><pre>```sql
+SELECT *
+FROM employees;
+```</pre></details></td><td><details><summary>SELECT * FROM employees WHERE department_id = &#x27;NU…</summary><pre>SELECT * FROM employees WHERE department_id = &#x27;NULL&#x27;</pre></details></td><td>—</td><td>✅</td><td>780/1352 ms</td></tr><tr><td>in-like</td><td>in-domain</td><td>Find the first names of teachers whose email address contains the word &quot;man&quot;.</td><td><details><summary>```sql SELECT first_name FROM Teachers WHERE emai…</summary><pre>```sql
+SELECT first_name FROM Teachers WHERE email_address LIKE &#x27;%man%&#x27;;
+```</pre></details></td><td><details><summary>SELECT first_name FROM Teachers WHERE email_addre…</summary><pre>SELECT first_name FROM Teachers WHERE email_address LIKE &#x27;%man%&#x27;</pre></details></td><td>✅</td><td>✅ exact</td><td>1262/1482 ms</td></tr><tr><td>in-multi</td><td>in-domain</td><td>Which last names are both used by customers and by staff?</td><td><details><summary>```sql SELECT DISTINCT last_name FROM Customers I…</summary><pre>```sql
+SELECT DISTINCT last_name 
+FROM Customers 
+INTERSECT 
+SELECT last_name 
+FROM Staff;
+```</pre></details></td><td><details><summary>SELECT last_name FROM Customers INTERSECT SELECT …</summary><pre>SELECT last_name FROM Customers INTERSECT SELECT last_name FROM Staff</pre></details></td><td>✅</td><td>✅ exact</td><td>1680/1596 ms</td></tr><tr><td>edge-invalid-column</td><td>edge</td><td>What is the email address of the user named Alice?</td><td><details><summary>```sql SELECT email FROM users WHERE name = &#x27;Alic…</summary><pre>```sql
+SELECT email FROM users WHERE name = &#x27;Alice&#x27;;
+```</pre></details></td><td><details><summary>SELECT email FROM users WHERE name = &#x27;Alice&#x27;</summary><pre>SELECT email FROM users WHERE name = &#x27;Alice&#x27;</pre></details></td><td>—</td><td>❌ regression</td><td>1119/1262 ms</td></tr><tr><td>edge-ambiguous</td><td>edge</td><td>Show me the big orders.</td><td><details><summary>```sql SELECT id, total, status FROM orders WHERE…</summary><pre>```sql
+SELECT id, total, status FROM orders WHERE total &gt;= 1000;
+```</pre></details></td><td><details><summary>SELECT id, total FROM orders WHERE status = &#x27;big&#x27;</summary><pre>SELECT id, total FROM orders WHERE status = &#x27;big&#x27;</pre></details></td><td>—</td><td>❌ regression</td><td>1550/1461 ms</td></tr><tr><td>edge-empty-schema</td><td>edge</td><td>How many users are there?</td><td><details><summary>```sql SELECT COUNT(*) FROM users; ```</summary><pre>```sql
+SELECT COUNT(*) FROM users;
+```</pre></details></td><td><details><summary>SELECT COUNT(*) FROM table_name</summary><pre>SELECT COUNT(*) FROM table_name</pre></details></td><td>—</td><td>❌ regression</td><td>818/803 ms</td></tr><tr><td>edge-impossible</td><td>edge</td><td>List events that happened before this table was created.</td><td><details><summary>```sql SELECT name FROM events WHERE event_date &lt;…</summary><pre>```sql
+SELECT name FROM events WHERE event_date &lt; &#x27;2023-10-05&#x27;;
+```</pre></details></td><td><details><summary>SELECT name FROM events WHERE event_date &lt; (SELEC…</summary><pre>SELECT name FROM events WHERE event_date &lt; (SELECT MIN(event_date) FROM sqlite_master)</pre></details></td><td>—</td><td>❌ regression</td><td>1719/2122 ms</td></tr><tr><td>edge-insert</td><td>edge</td><td>Add a new user with id 5 named Bob.</td><td><details><summary>```sql INSERT INTO users(id, name) VALUES(5, &#x27;Bob…</summary><pre>```sql
+INSERT INTO users(id, name) VALUES(5, &#x27;Bob&#x27;);
+```</pre></details></td><td><details><summary>INSERT INTO users(id, name) VALUES(5, &#x27;Bob&#x27;)</summary><pre>INSERT INTO users(id, name) VALUES(5, &#x27;Bob&#x27;)</pre></details></td><td>✅</td><td>❌ regression</td><td>1375/1683 ms</td></tr><tr><td>ood-chat</td><td>ood</td><td>Hi! How are you?</td><td><details><summary>SELECT &#x27;Hello, how are you?&#x27; AS greeting;</summary><pre>SELECT &#x27;Hello, how are you?&#x27; AS greeting;</pre></details></td><td><details><summary>SELECT 1 + 1</summary><pre>SELECT 1 + 1</pre></details></td><td>—</td><td>❌ sql-answer</td><td>895/819 ms</td></tr><tr><td>ood-math</td><td>ood</td><td>What is 17 * 24? Answer with just the number.</td><td><details><summary>408</summary><pre>408</pre></details></td><td><details><summary>408</summary><pre>408</pre></details></td><td>—</td><td>✅</td><td>344/474 ms</td></tr><tr><td>ood-translate</td><td>ood</td><td>Translate &#x27;good morning&#x27; into French.</td><td><details><summary>SELECT &#x27;Bonjour!&#x27; AS greeting;</summary><pre>SELECT &#x27;Bonjour!&#x27; AS greeting;</pre></details></td><td><details><summary>SELECT &quot;Good Morning&quot; INTO French</summary><pre>SELECT &quot;Good Morning&quot; INTO French</pre></details></td><td>—</td><td>❌ sql-answer</td><td>587/898 ms</td></tr><tr><td>ood-code</td><td>ood</td><td>In one sentence: what does this Python code do? print(sum([1, 2, 3]))</td><td><details><summary>The Python code calculates the sum of [1, 2, 3] a…</summary><pre>The Python code calculates the sum of [1, 2, 3] and prints the result.</pre></details></td><td><details><summary>This Python code calculates the sum of [1, 2, 3] …</summary><pre>This Python code calculates the sum of [1, 2, 3] and prints the result.</pre></details></td><td>—</td><td>✅</td><td>1564/2445 ms</td></tr><tr><td>ood-russian</td><td>ood</td><td>Переведи слово &#x27;database&#x27; на русский язык.</td><td><details><summary>SELECT &#x27;database&#x27;;</summary><pre>SELECT &#x27;database&#x27;;</pre></details></td><td><details><summary>SELECT database()</summary><pre>SELECT database()</pre></details></td><td>—</td><td>❌ sql-answer</td><td>446/476 ms</td></tr>
+</table>
+<h2>Где стало хуже</h2>
+<ul><li><b>edge-invalid-column</b> — hallucinated column: tuned уверенно ссылается на несуществующую колонку</li><li><b>edge-ambiguous</b> — роль «только SQL» не оставляет места отказу/уточнению</li><li><b>edge-empty-schema</b> — over-SQL bias: SQL выдан вообще без schema</li><li><b>edge-impossible</b> — роль «только SQL» не оставляет места отказу/уточнению</li><li><b>edge-insert</b> — SELECT-bias: датасет содержит только SELECT, DML-просьба превращена в SELECT</li></ul>
+</body></html>

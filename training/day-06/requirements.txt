@@ -1,0 +1,15 @@
+# Training-only зависимости (обучение и eval на Kaggle/Colab T4).
+# Runtime-пакет pnpm их не видит и не должен видеть.
+# Версии pinned; фактические версии прогона фиксируются в artifacts/run.json.
+# Примечание: на Kaggle/Colab torch уже предустановлен — если pip конфликтует,
+# закомментируй строку torch и поставь остальное.
+
+torch==2.5.1
+transformers==4.46.3
+peft==0.13.2
+bitsandbytes==0.44.1
+accelerate==1.1.1
+datasets==3.1.0
+sqlglot==25.10.0
+PyYAML==6.0.2
+matplotlib==3.9.2

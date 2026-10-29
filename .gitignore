@@ -52,3 +52,10 @@ web/playwright-report/
 
 # Профиль «Граф проекта»: knowledge-graph от graphify (AGENTS.md §13.1, project-graph)
 graphify-out/
+
+# Day 6 (SQL LoRA): сырые/сплит-данные и обученные артефакты — не в git
+# (adapter живёт в private HF Hub / GitHub Release; в git — код и отчёты)
+training/**/data/
+training/**/artifacts/
+__pycache__/
+
