@@ -18,6 +18,7 @@ import {
 } from './sim-engine';
 import { Button } from '../components/ui/Button';
 import { useTimeoutQueue } from '../components/arcade/use-timeouts';
+import { reportResult } from '../components/arcade/use-progress';
 import { IconCheck, IconSend } from '../components/ui/icons';
 
 const PHASE_STEPS: { id: SimPhase; label: string }[] = [
@@ -110,6 +111,8 @@ export function NewsroomSim() {
   );
 
   const publish = useCallback((): void => {
+    // Решение редактора принято — день засчитан в прогресс аркады («Главред»).
+    reportResult({ game: 'sim', score: 1, total: 1 });
     play(buildPublishTimeline(newsroomScript));
   }, [play]);
 

@@ -5,7 +5,7 @@
 // НИКАКИХ импортов core/.
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { SectionHead } from '../../../components/ui/SectionHead';
@@ -58,6 +58,10 @@ export default function BlogPostDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [channelLabel, setChannelLabel] = useState<string | null>(null);
 
+  // Актуальный «dirty» для асинхронных колбэков: замыкание load() могло бы
+  // захватить устаревший post=null (StrictMode double-effect) и затереть правку.
+  const dirtyRef = useRef(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,7 +74,9 @@ export default function BlogPostDetailPage() {
       setPost(data.post);
       setBlog(data.blog ?? null);
       setTg(data.tg);
-      setDraft(data.post.content);
+      // Повторная/поздняя загрузка (StrictMode, refresh после publish) не должна
+      // затирать несохранённые правки черновика.
+      if (!dirtyRef.current) setDraft(data.post.content);
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось загрузить пост');
     } finally {
@@ -150,6 +156,7 @@ export default function BlogPostDetailPage() {
   }, [id, router, toast]);
 
   const dirty = post !== null && draft !== post.content;
+  dirtyRef.current = dirty;
   const overLimit = draft.length > 4096;
 
   return (

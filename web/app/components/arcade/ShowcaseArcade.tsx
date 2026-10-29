@@ -1,12 +1,14 @@
 'use client';
 
 // Аркада витрины: три игры на данных страницы — клик tab-а переключает режим.
+// Сверху — панель прогресса игрока (уровень, XP, достижения, шеринг).
 // Client Component: страница /showcase остаётся серверной, аркада — остров.
 import { useState } from 'react';
 import { Tabs } from '../ui/Tabs';
 import { QuizGame } from './QuizGame';
 import { LayersGame } from './LayersGame';
 import { StackGame } from './StackGame';
+import { ProgressPanel } from './ProgressPanel';
 
 const GAME_TABS = [
   { id: 'quiz', label: 'Угадай модуль' },
@@ -22,8 +24,9 @@ export function ShowcaseArcade() {
   return (
     <div className="space-y-4">
       <p className="max-w-2xl text-sm text-dim">
-        Тот же материал, что на витрине ниже, — только в режиме «потыкать»: отвечайте, собирайте, раскладывайте.
+        Тот же материал, что на витрине ниже, — только в режиме «потыкать»: отвечайте, собирайте, раскладывайте. Прогресс и рекорды сохраняются на вашей машине.
       </p>
+      <ProgressPanel />
       <Tabs tabs={[...GAME_TABS]} active={game} onChange={(id) => setGame(id as GameId)} label="Режим игры" />
       <div className="rounded-xl border border-line bg-surface p-4 shadow-panel">
         {game === 'quiz' && <QuizGame />}

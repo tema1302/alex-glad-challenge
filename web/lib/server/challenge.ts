@@ -183,3 +183,7 @@ export type { GoogleCalendarConfig } from '@challenge/core/env';
 // курированные выдержки. Импорт — CLI course-import.
 export { CourseDb } from '@challenge/core/courseDb';
 export type { LessonRow, SectionRow, ExcerptRow, LessonInput } from '@challenge/core/courseDb';
+
+// channel-preview: внешняя выборка публичной веб-версии канала (t.me/s) —
+// только через netFetch (прокси-first + direct-фолбэк), никаких сырых fetch().
+export { netFetch } from '@challenge/core/net';

@@ -10,6 +10,7 @@ import { NavCoreLinks } from './NavLinks';
 import { LogoutButton } from './LogoutButton';
 import { ThemeToggle } from './ThemeToggle';
 import { NotificationBell } from './NotificationBell';
+import { PaletteButton } from './palette/PaletteButton';
 
 export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
   const keys = isAdmin ? getKeysStatus() : null;
@@ -32,6 +33,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
           <>
             <NavCoreLinks />
             <div className="flex items-center gap-3">
+              <PaletteButton />
               {/* 640–1023px: блок статуса — главный виновник overflow строки h-14 →
                   скрыт до lg, на lg+ сжат с обрезкой (модель — не критичная инфа).
                   truncate стоит на внутреннем текстовом span: на блоке с inline-flex
@@ -56,6 +58,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
           </>
         ) : (
           <nav className="flex items-center gap-1">
+            <PaletteButton />
             <ThemeToggle />
             <Link
               href="/login"

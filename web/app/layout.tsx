@@ -14,6 +14,7 @@ import { Manrope, IBM_Plex_Mono, Unbounded } from 'next/font/google';
 import { ThemeProvider } from './components/ThemeProvider';
 import { ToastProvider } from './components/ui/Toast';
 import { PerfProbe } from './components/perf-probe';
+import { CommandPalette } from './components/palette/CommandPalette';
 import Nav from './components/Nav';
 import { Sidebar } from './components/Sidebar';
 import Footer from './components/Footer';
@@ -64,6 +65,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <ToastProvider>
             <div className="flex min-h-screen flex-col">
               <Nav isAdmin={isAdmin} />
+              <CommandPalette isAdmin={isAdmin} />
               {isAdmin ? (
                 <>
                   <div className="flex flex-1">
