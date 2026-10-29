@@ -1,3 +1,12 @@
+# Ежедневная проверка: лог в %TEMP% с ротацией, в repo ничего не пишем.
+$logPath = Join-Path $env:TEMP 'miner-check.log'
+try {
+    if ((Test-Path -LiteralPath $logPath) -and ((Get-Item -LiteralPath $logPath).Length -gt 1MB)) {
+        Move-Item -LiteralPath $logPath -Destination ($logPath + '.1') -Force
+    }
+    Start-Transcript -Path $logPath -Append -Force | Out-Null
+} catch { }
+
 Write-Output "=== Contents of miner folders ==="
 $dirs = @(
     "$env:LOCALAPPDATA\Microsoft\Windows\Caches\B283B4E1\srbminer",
@@ -54,3 +63,5 @@ Get-CimInstance Win32_Process -Filter "Name='SecurityHealthHost.exe'" -ErrorActi
         Write-Output ("PID {0} -> {1}:{2}" -f $_.ProcessId, $c.RemoteAddress, $c.RemotePort)
     }
 }
+
+try { Stop-Transcript | Out-Null } catch { }

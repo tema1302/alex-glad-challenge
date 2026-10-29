@@ -43,33 +43,44 @@ prepare_data.py          train_qlora.py                evaluate.py
   eval-schema excluded      run.json + loss.csv/png      results.jsonl
 ```
 
-## Результаты
-
-> ⚠️ Заполняется после облачного прогона. Числа ниже — заглушки, НЕ данные.
+## Результаты (прогон 2026-10-26T20:13Z, Tesla T4)
 
 | Метрика (20 запросов) | Base | Tuned |
 |---|---|---|
-| format_ok (все) | ?/20 | ?/20 |
-| format_ok (in-domain) | ?/10 | ?/10 |
-| exact match (in-domain, strict) | ?/10 | ?/10 |
-| schema_ok (in-domain) | ?/10 | ?/10 |
-| regressions (edge+ood) | — | ?/10 |
-| latency avg, ms | ? | ? |
+| format_ok (все) | 3/20 | 18/20 |
+| format_ok (in-domain) | 0/10 | 10/10 |
+| exact match (in-domain, strict) | 0/10 | 7/10 |
+| schema_ok (in-domain) | 0/10 | 10/10 |
+| regressions (edge+ood) | — | 5/10 |
+| latency avg, ms | 1319 | 1704 |
 
-- Train loss: ? → ?; eval loss: ? → ?; wall-clock: ? мин; VRAM: ? ГБ.
-  Кривая: [`eval/loss.png`](eval/loss.png); параметры: `eval/run.json`.
+- Train loss: 0.1892 (step 10) → 0.0208 (final); eval loss: 0.0407;
+  wall-clock 46.4 мин (2 781.7 с); VRAM ≤ 2.68 ГБ; best checkpoint-600.
+  Кривая: [`eval/loss.png`](eval/loss.png); параметры: [`eval/run.json`](eval/run.json).
 - Полная таблица 20 запросов: [`eval/report.md`](eval/report.md)
   (или [`eval/report.html`](eval/report.html) — открывается локально).
-- «Где стало хуже»: [`eval/regressions.md`](eval/regressions.md) — ожидаемые
-  классы: catastrophic forgetting (общий чат, русский), over-SQL bias
+- «Где стало хуже»: [`eval/regressions.md`](eval/regressions.md) — сработали
+  ожидаемые классы: catastrophic forgetting (общий чат, русский), over-SQL bias
   (математика/перевод), hallucinated column, select-bias на INSERT.
+- Ручная оценка 1–5 (fmt/corr/adh) в `eval/report.md` не заполнена: колонки
+  оставлены под ручной просмотр, автоматика их не подменяет.
 
-## Выводы (черновик, дополнить после прогона)
+**Адаптер:** не опубликован — лежит только в Kaggle-output
+(`/kaggle/tmp/day06/artifacts/adapter`), в git не коммитится. Публикация в
+приватный HF Hub / GitHub Release — TODO
+[#143](https://github.com/tema1302/alex-glad-challenge/issues/143).
+
+## Выводы
 
 1. Prompt (system) не держит жёсткий формат: base-модель любит markdown и
-   пояснения; SFT на одной роли фиксирует формат надёжнее промпта.
-2. Цена узкой роли — регрессии вне роли; они предсказуемы и измеримы.
-3. Когда fine-tuning НЕ нужен: если задача «иногда SQL, иногда чат» —
+   пояснения (format_ok 0/10 in-domain); SFT на одной роли фиксирует формат
+   надёжнее промпта (10/10).
+2. Цена узкой роли — регрессии вне роли (5/10 edge+ood); они предсказуемы и
+   измеримы, а не «сломались непонятно».
+3. exact match 7/10 при schema_ok 10/10: модель выдаёт валидный, но не всегда
+   канонический SQL (JOIN/subquery/NULL) — для продукта важнее schema_ok,
+   exact — метрика строгости.
+4. Когда fine-tuning НЕ нужен: если задача «иногда SQL, иногда чат» —
    лучше prompt + function calling, тюнинг тогда вреден.
 
 ## Статус реализации
@@ -78,8 +89,9 @@ prepare_data.py          train_qlora.py                evaluate.py
 - [x] Eval-набор 20 запросов (10 in-domain — реальные строки датасета;
       их schema исключены из обучения)
 - [x] Локальная подготовка данных и проверка сплита (пересечений 0)
-- [ ] Обучение на T4 (Kaggle) — нужен GPU-прогон
-- [ ] Eval base vs tuned + отчёты — после прогона
+- [x] Обучение на T4 (Kaggle) — 2026-10-26, 46.4 мин
+- [x] Eval base vs tuned + отчёты — [`eval/`](eval/)
+- [ ] Публикация LoRA-адаптера — TODO [#143](https://github.com/tema1302/alex-glad-challenge/issues/143)
 - [ ] Видео — сценарий: [`video-script.md`](video-script.md)
 
 **Код:** `training/day-06/{prepare_data,train_qlora,evaluate,plot_loss}.py`,

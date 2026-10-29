@@ -77,6 +77,16 @@ pnpm --filter challenge start -- latest
 pnpm --filter challenge start -- list
 ```
 
+### День 33 — реализован фичей, без demo-модуля
+
+Как дни 26–28, день 33 (support-assistant) сделан не отдельным
+`demos/day-33.ts`, а продуктовой фичей: доменная логика —
+`challenge/src/core/support/{supportAssistant,faqSeed}.ts` и
+`challenge/src/core/supportCenter.ts`, CLI — `support` / `support-seed` /
+`rag index-faq`, web-поверхность — `web/app/support/page.tsx` и
+`/api/support/{faq,tickets}`. Отдельного demo-модуля в реестре намеренно нет;
+запись в реестр добавлять не нужно.
+
 ### Команды внутри REPL
 
 | Команда                   | Что делает                                                  |

@@ -1931,8 +1931,109 @@ smoke через `CourseDb.getLesson/getSections/getExcerpts` — оба уро�
   (невалидная колонка, неоднозначность, пустая schema, невозможный запрос,
   INSERT) + 5 OOD (чат, математика, перевод, код, русский).
 
-**Не сделано (нужен GPU-прогон):** обучение и eval на Kaggle/Colab T4 —
-прогон подготовлен, но не запускался (локально нет CUDA). Отчёт
-`docs/advanced-day-06/README.md` содержит заглушки под числа прогона.
+**Результаты прогона (2026-10-26T20:13Z, Tesla T4):**
+- Обучение: 2 эпохи, 5 000 train / 500 val, 46.4 мин (2 781.7 с), финальный
+  train loss 0.0208, eval loss 0.0407, best checkpoint-600, VRAM ≤ 2.68 ГБ.
+- Eval на 20 фиксированных запросах: format_ok in-domain 10/10 (base 0/10),
+  exact match in-domain 7/10 (base 0/10), schema_ok 10/10 (base 0/10),
+  format_ok по всем 18/20 (base 3/20), regressions (edge+ood) 5/10,
+  latency avg 1319 → 1704 мс.
+- Полные артефакты: `docs/advanced-day-06/eval/` (`run.json`, `report.md`,
+  `report.html`, `regressions.md`, `results.jsonl`, `loss.csv`, `loss.png`);
+  сводка — `docs/advanced-day-06/README.md`.
 
-**Код:** `training/day-06/**`, `docs/advanced-day-06/{README,video-script}.md`.
+**Ограничения:** 5 регрессий из 10 ожидаемы (catastrophic forgetting,
+over-SQL/select-bias, hallucinated column) и разобраны в `regressions.md`;
+ручная оценка 1–5 (fmt/corr/adh) в `report.md` не заполнена — автоматика её
+не подменяет. LoRA-адаптер пока не опубликован (лежит только в Kaggle-output):
+TODO — issue #143 (HF Hub / GitHub Release).
+
+**Код:** `training/day-06/**`, `docs/advanced-day-06/{README,video-script}.md`,
+`docs/advanced-day-06/eval/*`.
+
+---
+
+## Feature: аркада 2.0 — XP, уровни, 7 достижений и шеринг (2026-10-29)
+**Дата:** 2026-10-29. Ветка `web/arcade-review-fixes` (мерж `df5a8e9`).
+
+**Задание:** довести игры `/showcase` до продуктового прогресса: XP и уровни,
+достижения, сохранение между визитами и шеринг результата/профиля.
+
+**Сделано:**
+- `progress.ts` — чистая логика: XP за долю правильных ответов
+  (quiz 40 / layers 20 / stack 30 / sim 25 за 100%) + `bonusXp`;
+  6 уровней (`LEVEL_THRESHOLDS` 0/40/100/180/280/400 с титулами);
+  7 достижений (`first-steps`, `sharp-eye`, `architect`, `librarian`,
+  `chief-editor`, `all-rounder`, `rising-star`), выдача в `recordResult`.
+- `use-progress.ts` — localStorage `arcade.progress.v1`, сужение чужих данных
+  (конечные неотрицательные числа, известные id игр/достижений), sync по
+  `storage`, CustomEvent `arcade:progress`; `ProgressPanel.tsx` показывает
+  уровень, XP-бар, лучшие результаты и достижения; игры репортят результат
+  через `reportResult`.
+- `share-card.ts` — текст результата/профиля и ссылка `t.me/share/url`
+  (фолбэк на Web Share — URL).
+- Тесты: `test/unit/{arcade-progress,share-card}.spec.ts`,
+  `test/ui/progress-panel.spec.tsx`, `e2e/arcade-progress.spec.ts`.
+
+**Проверки:** `pnpm --filter web typecheck`; Vitest 654/654 после мержа;
+`pnpm --filter web build` — 0 ошибок (2026-10-29). E2E-сценарий
+`arcade-progress` добавлен, в этой сессии не прогонялся.
+
+**Риски/ограничения:** прогресс живёт только в localStorage — нет серверного
+профиля, очистка браузера сбрасывает XP. В `share-card.ts` `SITE_URL` зашит
+на dev-адрес `http://127.0.0.1:3000/showcase`; для прод-шеринга нужен реальный
+домен (отдельная задача).
+
+**Код:** `web/app/components/arcade/{progress,use-progress,share-card}.ts`,
+`web/app/components/arcade/ProgressPanel.tsx`, игры
+`QuizGame/LayersGame/StackGame/ShowcaseArcade`.
+
+---
+
+## Feature: командная палитра Ctrl+K (2026-10-29)
+**Дата:** 2026-10-29. Ветка `web/arcade-review-fixes` (мерж `df5a8e9`).
+
+**Задание:** быстрый переход по разделам админки с клавиатуры без мыши.
+
+**Сделано:**
+- `CommandPalette.tsx` (`'use client'`) — Ctrl/Cmd+K, Enter/стрелки/Esc,
+  `role=dialog` + `listbox`/`option` + `aria-activedescendant`, переход через
+  `router.push`, внешние ссылки — `window.open` с `noopener,noreferrer`.
+- `PaletteButton.tsx` — кнопка в `Nav` через CustomEvent `palette:open`.
+- `palette-items.ts` — пункты из `navGroups` для админа + гостевой набор;
+  `lib/shared/fuzzy.ts` — ранжирование по подстроке/подпоследовательности.
+- Палитра подключена в `app/layout.tsx` с учётом `isAdmin`.
+
+**Проверки:** unit `palette-items`, `fuzzy`; ui `command-palette` (входят в
+Vitest 654/654 после мержа); prod build — 0 ошибок. E2E
+`command-palette` добавлен, в этой сессии не прогонялся.
+
+**Код:** `web/app/components/palette/{CommandPalette,PaletteButton,palette-items}.tsx`,
+`web/lib/shared/fuzzy.ts`.
+
+---
+
+## Feature: «Свежее в канале» на лендинге (2026-10-29)
+**Дата:** 2026-10-29. Ветка `web/arcade-review-fixes` (мерж `df5a8e9`).
+
+**Задание:** показать на `/` последние посты Telegram-канала без Bot API и
+деградировать без секции, если источник недоступен.
+
+**Сделано:**
+- `web/lib/server/channel-preview.ts` (`server-only`) — выборка
+  `https://t.me/s/<username>` через `netFetch`-chokepoint, парсинг
+  `data-post`/`datetime`/`tgme_widget_message_text`, декодирование HTML-сущностей,
+  кэш: успех 10 мин, ошибка 60 с; любая ошибка/пустой ответ → `{ ok: false }`.
+- `/` (Server Component) рендерит секцию «Свежее в канале» только при
+  `ok: true` и непустом списке; иначе секция целиком скрыта.
+- Тесты: `test/unit/channel-preview.spec.ts` (парсинг, кэш ok/fail, деградация).
+
+**Проверки:** Vitest; prod smoke — `/` 200, без доступного preview секция
+отсутствует; `/showcase` 200.
+
+**Риски/ограничения:** источник — HTML `t.me/s`, а не API: изменение разметки
+ломает парсер (тогда секция просто скрывается). Username зашит в коде
+(`@artemiyartel`), не читается из env — при смене канала нужна правка кода.
+
+**Код:** `web/lib/server/channel-preview.ts`, `web/app/page.tsx`,
+`web/test/unit/channel-preview.spec.ts`.

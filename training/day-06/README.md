@@ -50,6 +50,29 @@ python prepare_data.py
 целиком — in-domain eval остаётся честным held-out. Проверено:
 пересечений schema между сплитами 0, утечек eval в train — 0.
 
+## Результаты прогона (2026-10-26, Tesla T4)
+
+Прогон **выполнен** 2026-10-26T20:13Z на Kaggle Tesla T4; инструкция ниже —
+воспроизведение, а не план. Полный отчёт и артефакты:
+[`docs/advanced-day-06/`](../../docs/advanced-day-06/README.md),
+[`eval/`](../../docs/advanced-day-06/eval/) (`run.json`, `report.md`,
+`regressions.md`, `loss.csv`, `loss.png`).
+
+| Метрика (20 запросов) | Base | Tuned |
+|---|---|---|
+| format_ok (все) | 3/20 | 18/20 |
+| format_ok (in-domain) | 0/10 | 10/10 |
+| exact match (in-domain, strict) | 0/10 | 7/10 |
+| schema_ok (in-domain) | 0/10 | 10/10 |
+| regressions (edge+ood) | — | 5/10 |
+| latency avg, ms | 1319 | 1704 |
+
+- Train loss → 0.0208, eval loss → 0.0407; обучение 46.4 мин (2 781.7 с),
+  VRAM ≤ 2.68 ГБ, best checkpoint-600 (см. `eval/run.json`).
+- **Адаптер: не опубликован.** Лежит только в Kaggle-output
+  (`/kaggle/tmp/day06/artifacts/adapter`) и не в git; публикация в приватный
+  HF Hub или GitHub Release — TODO [#143](https://github.com/tema1302/alex-glad-challenge/issues/143).
+
 ## Облачный прогон (Kaggle, рекомендуется)
 
 1. <https://www.kaggle.com/code> → New Notebook → Add-ons → Accelerator:
