@@ -1,0 +1,23 @@
+{
+  "backend": "transformers",
+  "model": "transformers+/kaggle/working/day07/artifacts/adapter",
+  "generated_at": "2026-10-30T19:17:00.330314+00:00",
+  "seed": 42,
+  "modes": {
+    "tuned": {
+      "n": 12,
+      "score_avg": 0.5556,
+      "latency_avg_ms": 4298
+    },
+    "base-none": {
+      "n": 12,
+      "score_avg": 0.625,
+      "latency_avg_ms": 2300
+    },
+    "base-prompt": {
+      "n": 12,
+      "score_avg": 0.6667,
+      "latency_avg_ms": 1250
+    }
+  }
+}

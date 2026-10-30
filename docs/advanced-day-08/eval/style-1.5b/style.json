@@ -1,0 +1,18 @@
+{
+  "backend": "ollama",
+  "model": "qwen2.5:1.5b-instruct",
+  "generated_at": "2026-10-30T18:55:33.813540+00:00",
+  "seed": 42,
+  "modes": {
+    "base-none": {
+      "n": 12,
+      "score_avg": 0.5833,
+      "latency_avg_ms": 2418
+    },
+    "base-prompt": {
+      "n": 12,
+      "score_avg": 0.5,
+      "latency_avg_ms": 2202
+    }
+  }
+}

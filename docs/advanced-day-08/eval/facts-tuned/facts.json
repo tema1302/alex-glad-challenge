@@ -1,0 +1,25 @@
+{
+  "model": "transformers+/kaggle/working/day07/artifacts/adapter",
+  "generated_at": "2026-10-30T19:19:05.937545+00:00",
+  "seed": 42,
+  "modes": {
+    "tuned": {
+      "n": 72,
+      "exact": 45,
+      "relaxed": 45,
+      "exact_acc": 0.625,
+      "relaxed_acc": 0.625,
+      "latency_ms_avg": 1038,
+      "latency_ms_p95": 1396
+    },
+    "base-none": {
+      "n": 72,
+      "exact": 0,
+      "relaxed": 0,
+      "exact_acc": 0.0,
+      "relaxed_acc": 0.0,
+      "latency_ms_avg": 499,
+      "latency_ms_p95": 719
+    }
+  }
+}
