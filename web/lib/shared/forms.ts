@@ -22,6 +22,14 @@ export const todoAddSchema = z.object({
 });
 export type TodoAddInput = z.infer<typeof todoAddSchema>;
 
+// Day-10: переключение локальной LLM (POST /api/local-model). "base" = сброс
+// на дефолт env; иначе — точное имя Ollama-модели (валидация на сервере
+// против allowlist base/tuned).
+export const localModelSetSchema = z.object({
+  model: z.string().trim().min(1, 'model обязателен').max(128),
+});
+export type LocalModelSetInput = z.infer<typeof localModelSetSchema>;
+
 // --- P2: Chat-агент ---
 
 // Стратегия контекста (зеркало repl.ts STRATEGY_NAMES).
