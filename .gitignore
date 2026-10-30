@@ -55,7 +55,9 @@ graphify-out/
 
 # Day 6 (SQL LoRA): сырые/сплит-данные и обученные артефакты — не в git
 # (adapter живёт в private HF Hub / GitHub Release; в git — код и отчёты)
+# Day 7: датасет — сам результат задачи (526 примеров, ~150 КБ) — исключение.
 training/**/data/
+!training/day-07/data/
 training/**/artifacts/
 __pycache__/
 
