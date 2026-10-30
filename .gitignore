@@ -58,6 +58,7 @@ graphify-out/
 # Day 7: датасет — сам результат задачи (526 примеров, ~150 КБ) — исключение.
 training/**/data/
 !training/day-07/data/
+!training/day-08/data/
 training/**/artifacts/
 __pycache__/
 

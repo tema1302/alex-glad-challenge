@@ -1,0 +1,25 @@
+{
+  "model": "qwen2.5:7b-instruct",
+  "generated_at": "2026-10-30T17:32:48.543962+00:00",
+  "seed": 42,
+  "modes": {
+    "none": {
+      "n": 72,
+      "exact": 0,
+      "relaxed": 0,
+      "exact_acc": 0.0,
+      "relaxed_acc": 0.0,
+      "latency_ms_avg": 2293,
+      "latency_ms_p95": 2313
+    },
+    "prompt": {
+      "n": 72,
+      "exact": 50,
+      "relaxed": 50,
+      "exact_acc": 0.6944,
+      "relaxed_acc": 0.6944,
+      "latency_ms_avg": 2232,
+      "latency_ms_p95": 2297
+    }
+  }
+}
