@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-10-30T19:55:48.228338+00:00",
+  "seed": 42,
+  "checkpoints": [
+    "base",
+    "checkpoint-30",
+    "checkpoint-60",
+    "checkpoint-90",
+    "checkpoint-116"
+  ],
+  "loss": {
+    "eval_points": 4,
+    "eval_loss_min": 0.01906321756541729,
+    "eval_loss_min_step": 90,
+    "diverged": false,
+    "divergence_step": null,
+    "series": [
+      {
+        "step": 30,
+        "eval_loss": 0.03208352252840996
+      },
+      {
+        "step": 60,
+        "eval_loss": 0.02188972383737564
+      },
+      {
+        "step": 90,
+        "eval_loss": 0.01906321756541729
+      },
+      {
+        "step": 116,
+        "eval_loss": 0.01906321756541729
+      }
+    ]
+  },
+  "results": {
+    "base": {
+      "valid_full_match": "1/63",
+      "valid_acc": 0.0159,
+      "outdomain_avg": 0.2254
+    },
+    "checkpoint-30": {
+      "valid_full_match": "55/63",
+      "valid_acc": 0.873,
+      "outdomain_avg": 0.0915
+    },
+    "checkpoint-60": {
+      "valid_full_match": "55/63",
+      "valid_acc": 0.873,
+      "outdomain_avg": 0.0996
+    },
+    "checkpoint-90": {
+      "valid_full_match": "56/63",
+      "valid_acc": 0.8889,
+      "outdomain_avg": 0.0917
+    },
+    "checkpoint-116": {
+      "valid_full_match": "56/63",
+      "valid_acc": 0.8889,
+      "outdomain_avg": 0.0917
+    }
+  }
+}
