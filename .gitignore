@@ -59,6 +59,7 @@ graphify-out/
 training/**/data/
 !training/day-07/data/
 !training/day-08/data/
+!training/day-09/data/
 training/**/artifacts/
 __pycache__/
 
