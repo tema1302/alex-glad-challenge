@@ -1,0 +1,81 @@
+{
+  "timestamp_utc": "2026-10-30T16:25:17.942042+00:00",
+  "model": "qwen2.5:1.5b-instruct",
+  "provider": "ollama (локально, Windows, AMD RX 7600 без CUDA)",
+  "temperature": 0,
+  "seed": 42,
+  "num_predict": 200,
+  "modes": [
+    "none",
+    "prompt"
+  ],
+  "summary": {
+    "none": {
+      "n": 30,
+      "parse_ok": 0,
+      "format_ok": 0,
+      "full_match": 0,
+      "field_text": 0,
+      "field_recurring": 0,
+      "field_day_of_week": 0,
+      "field_interval": 0,
+      "per_class": {
+        "None": {
+          "n": 11,
+          "full_match": 0,
+          "parse_ok": 0
+        },
+        "daily": {
+          "n": 6,
+          "full_match": 0,
+          "parse_ok": 0
+        },
+        "hourly": {
+          "n": 5,
+          "full_match": 0,
+          "parse_ok": 0
+        },
+        "weekly": {
+          "n": 8,
+          "full_match": 0,
+          "parse_ok": 0
+        }
+      },
+      "latency_avg_ms": 3029.3
+    },
+    "prompt": {
+      "n": 30,
+      "parse_ok": 30,
+      "format_ok": 30,
+      "full_match": 14,
+      "field_text": 19,
+      "field_recurring": 19,
+      "field_day_of_week": 21,
+      "field_interval": 28,
+      "per_class": {
+        "None": {
+          "n": 11,
+          "full_match": 1,
+          "parse_ok": 11
+        },
+        "daily": {
+          "n": 6,
+          "full_match": 2,
+          "parse_ok": 6
+        },
+        "hourly": {
+          "n": 5,
+          "full_match": 4,
+          "parse_ok": 5
+        },
+        "weekly": {
+          "n": 8,
+          "full_match": 7,
+          "parse_ok": 8
+        }
+      },
+      "latency_avg_ms": 2274.0
+    }
+  },
+  "eval_set": "training/day-07/eval/eval_set.jsonl (30 кейсов)"
+}
