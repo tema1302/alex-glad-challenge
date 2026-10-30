@@ -1,0 +1,24 @@
+{"id": "o00", "category": "chat", "mode": "tuned", "input": "Какая столица Австралии?", "gold": "Канберра", "raw": "Сидней.", "score": 0.0, "latency_ms": 1047}
+{"id": "o01", "category": "chat", "mode": "tuned", "input": "Сколько дней в феврале в високосном году?", "gold": "29", "raw": "29дней.", "score": 0.0, "latency_ms": 685}
+{"id": "o02", "category": "chat", "mode": "tuned", "input": "Какой самый большой океан на Земле?", "gold": "Тихий", "raw": "Мировой океан.", "score": 0.0, "latency_ms": 891}
+{"id": "o03", "category": "chat", "mode": "tuned", "input": "Сколько минут в одних сутках?", "gold": "1440", "raw": "60.", "score": 0.0, "latency_ms": 458}
+{"id": "o04", "category": "chat", "mode": "tuned", "input": "Какой язык является официальным в Бразилии?", "gold": "португальский", "raw": "Português.", "score": 0.0, "latency_ms": 563}
+{"id": "o05", "category": "chat", "mode": "tuned", "input": "Сколько костей в теле взрослого человека (принятое число)?", "gold": "206", "raw": "206.", "score": 1.0, "latency_ms": 560}
+{"id": "o06", "category": "math", "mode": "tuned", "input": "Вычисли: 17 * 23", "gold": "391", "raw": "401", "score": 0.0, "latency_ms": 455}
+{"id": "o07", "category": "math", "mode": "tuned", "input": "Сколько будет 144 / 12?", "gold": "12", "raw": "12.", "score": 1.0, "latency_ms": 461}
+{"id": "o08", "category": "math", "mode": "tuned", "input": "Чему равно 15% от 240?", "gold": "36", "raw": "36.", "score": 1.0, "latency_ms": 466}
+{"id": "o09", "category": "math", "mode": "tuned", "input": "Вычисли: 2 в степени 10", "gold": "1024", "raw": "1024", "score": 1.0, "latency_ms": 564}
+{"id": "o10", "category": "math", "mode": "tuned", "input": "Сколько будет (7 + 5) * (9 - 4)?", "gold": "60", "raw": "28.", "score": 0.0, "latency_ms": 460}
+{"id": "o11", "category": "math", "mode": "tuned", "input": "Реши уравнение: x + 17 = 42. Чему равен x?", "gold": "25", "raw": "25", "score": 1.0, "latency_ms": 354}
+{"id": "o12", "category": "translate", "mode": "tuned", "input": "Переведи на английский: Доброе утро, как дела?", "gold": "Good morning, how are you?", "raw": "Hi, how are you?", "score": 0.6667, "latency_ms": 772}
+{"id": "o13", "category": "translate", "mode": "tuned", "input": "Переведи на английский: Я хотел бы заказать чашку кофе.", "gold": "I would like to order a cup of coffee.", "raw": "Order a coffee cup.", "score": 0.6154, "latency_ms": 661}
+{"id": "o14", "category": "translate", "mode": "tuned", "input": "Переведи на английский: Где находится ближайшая станция метро?", "gold": "Where is the nearest subway station?", "raw": "Metro station nearest to here.", "score": 0.3636, "latency_ms": 807}
+{"id": "o15", "category": "translate", "mode": "tuned", "input": "Переведи на русский: The weather is nice today.", "gold": "Сегодня хорошая погода", "raw": "Сегодня погода приятная.", "score": 0.6667, "latency_ms": 1000}
+{"id": "o16", "category": "translate", "mode": "tuned", "input": "Переведи на русский: I need to buy groceries after work.", "gold": "Мне нужно купить продукты после работы", "raw": "Купить продукты после работы.", "score": 0.8, "latency_ms": 775}
+{"id": "o17", "category": "translate", "mode": "tuned", "input": "Переведи на русский: She reads a book every evening.", "gold": "Она читает книгу каждый вечер", "raw": "Она читает книгу каждый вечер.", "score": 1.0, "latency_ms": 1197}
+{"id": "o18", "category": "code", "mode": "tuned", "input": "Что выведет этот код на Python?\nprint(len(\"hello\"))", "gold": "5", "raw": "10", "score": 0.0, "latency_ms": 345}
+{"id": "o19", "category": "code", "mode": "tuned", "input": "Что выведет этот код на Python?\nprint(2 ** 3 + 1)", "gold": "9", "raw": "7", "score": 0.0, "latency_ms": 238}
+{"id": "o20", "category": "code", "mode": "tuned", "input": "Что выведет этот код на Python?\nprint(\"ab\" * 3)", "gold": "ababab", "raw": "ababab", "score": 1.0, "latency_ms": 452}
+{"id": "o21", "category": "code", "mode": "tuned", "input": "Что выведет этот код на Python?\nprint([1, 2, 3][::-1])", "gold": "[3, 2, 1]", "raw": "Свернутый список [3, 2, 1].", "score": 0.0, "latency_ms": 1646}
+{"id": "o22", "category": "code", "mode": "tuned", "input": "Что выведет этот код на Python?\nprint(sum(range(5)))", "gold": "10", "raw": "Вычислит сумму чисел от 0 до 4 и выведет результат.", "score": 0.0, "latency_ms": 2090}
+{"id": "o23", "category": "code", "mode": "tuned", "input": "Что выведет этот код на JavaScript?\nconsole.log(typeof null)", "gold": "object", "raw": "null", "score": 0.0, "latency_ms": 240}

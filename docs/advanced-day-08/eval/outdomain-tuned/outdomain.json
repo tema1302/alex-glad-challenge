@@ -1,0 +1,77 @@
+{
+  "backend": "transformers",
+  "model": "transformers+/kaggle/working/day07/artifacts/adapter",
+  "generated_at": "2026-10-30T18:48:33.112231+00:00",
+  "seed": 42,
+  "modes": {
+    "tuned": {
+      "n": 24,
+      "score_avg": 0.4214,
+      "latency_avg_ms": 716,
+      "per_category": {
+        "chat": {
+          "n": 6,
+          "score_avg": 0.1667
+        },
+        "code": {
+          "n": 6,
+          "score_avg": 0.1667
+        },
+        "math": {
+          "n": 6,
+          "score_avg": 0.6667
+        },
+        "translate": {
+          "n": 6,
+          "score_avg": 0.6854
+        }
+      }
+    },
+    "base-none": {
+      "n": 24,
+      "score_avg": 0.4046,
+      "latency_avg_ms": 582,
+      "per_category": {
+        "chat": {
+          "n": 6,
+          "score_avg": 0.0
+        },
+        "code": {
+          "n": 6,
+          "score_avg": 0.5
+        },
+        "math": {
+          "n": 6,
+          "score_avg": 0.5
+        },
+        "translate": {
+          "n": 6,
+          "score_avg": 0.6182
+        }
+      }
+    },
+    "base-prompt": {
+      "n": 24,
+      "score_avg": 0.4965,
+      "latency_avg_ms": 378,
+      "per_category": {
+        "chat": {
+          "n": 6,
+          "score_avg": 0.3333
+        },
+        "code": {
+          "n": 6,
+          "score_avg": 0.1667
+        },
+        "math": {
+          "n": 6,
+          "score_avg": 0.6667
+        },
+        "translate": {
+          "n": 6,
+          "score_avg": 0.8192
+        }
+      }
+    }
+  }
+}

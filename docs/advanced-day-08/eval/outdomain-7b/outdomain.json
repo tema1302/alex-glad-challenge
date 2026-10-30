@@ -1,0 +1,54 @@
+{
+  "backend": "ollama",
+  "model": "qwen2.5:7b-instruct",
+  "generated_at": "2026-10-30T17:39:06.917965+00:00",
+  "seed": 42,
+  "modes": {
+    "base-none": {
+      "n": 24,
+      "score_avg": 0.7708,
+      "latency_avg_ms": 2197,
+      "per_category": {
+        "chat": {
+          "n": 6,
+          "score_avg": 0.5
+        },
+        "code": {
+          "n": 6,
+          "score_avg": 1.0
+        },
+        "math": {
+          "n": 6,
+          "score_avg": 0.6667
+        },
+        "translate": {
+          "n": 6,
+          "score_avg": 0.9167
+        }
+      }
+    },
+    "base-prompt": {
+      "n": 24,
+      "score_avg": 0.9045,
+      "latency_avg_ms": 2184,
+      "per_category": {
+        "chat": {
+          "n": 6,
+          "score_avg": 0.8333
+        },
+        "code": {
+          "n": 6,
+          "score_avg": 1.0
+        },
+        "math": {
+          "n": 6,
+          "score_avg": 0.8333
+        },
+        "translate": {
+          "n": 6,
+          "score_avg": 0.9515
+        }
+      }
+    }
+  }
+}

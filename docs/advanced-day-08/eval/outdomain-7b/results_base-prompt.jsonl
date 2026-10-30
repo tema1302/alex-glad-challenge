@@ -1,0 +1,24 @@
+{"id": "o00", "category": "chat", "mode": "base-prompt", "input": "Какая столица Австралии?", "gold": "Канберра", "raw": "Канберра", "score": 1.0, "latency_ms": 2203}
+{"id": "o01", "category": "chat", "mode": "base-prompt", "input": "Сколько дней в феврале в високосном году?", "gold": "29", "raw": "29", "score": 1.0, "latency_ms": 2141}
+{"id": "o02", "category": "chat", "mode": "base-prompt", "input": "Какой самый большой океан на Земле?", "gold": "Тихий", "raw": "Тихий океан.", "score": 0.0, "latency_ms": 2234}
+{"id": "o03", "category": "chat", "mode": "base-prompt", "input": "Сколько минут в одних сутках?", "gold": "1440", "raw": "1440", "score": 1.0, "latency_ms": 2156}
+{"id": "o04", "category": "chat", "mode": "base-prompt", "input": "Какой язык является официальным в Бразилии?", "gold": "португальский", "raw": "Португальский", "score": 1.0, "latency_ms": 2219}
+{"id": "o05", "category": "chat", "mode": "base-prompt", "input": "Сколько костей в теле взрослого человека (принятое число)?", "gold": "206", "raw": "206", "score": 1.0, "latency_ms": 2141}
+{"id": "o06", "category": "math", "mode": "base-prompt", "input": "Вычисли: 17 * 23", "gold": "391", "raw": "391", "score": 1.0, "latency_ms": 2156}
+{"id": "o07", "category": "math", "mode": "base-prompt", "input": "Сколько будет 144 / 12?", "gold": "12", "raw": "12", "score": 1.0, "latency_ms": 2141}
+{"id": "o08", "category": "math", "mode": "base-prompt", "input": "Чему равно 15% от 240?", "gold": "36", "raw": "36", "score": 1.0, "latency_ms": 2140}
+{"id": "o09", "category": "math", "mode": "base-prompt", "input": "Вычисли: 2 в степени 10", "gold": "1024", "raw": "1024", "score": 1.0, "latency_ms": 2157}
+{"id": "o10", "category": "math", "mode": "base-prompt", "input": "Сколько будет (7 + 5) * (9 - 4)?", "gold": "60", "raw": "48", "score": 0.0, "latency_ms": 2125}
+{"id": "o11", "category": "math", "mode": "base-prompt", "input": "Реши уравнение: x + 17 = 42. Чему равен x?", "gold": "25", "raw": "25", "score": 1.0, "latency_ms": 2140}
+{"id": "o12", "category": "translate", "mode": "base-prompt", "input": "Переведи на английский: Доброе утро, как дела?", "gold": "Good morning, how are you?", "raw": "Good morning, how are you?", "score": 1.0, "latency_ms": 2235}
+{"id": "o13", "category": "translate", "mode": "base-prompt", "input": "Переведи на английский: Я хотел бы заказать чашку кофе.", "gold": "I would like to order a cup of coffee.", "raw": "I would like to order a cup of coffee.", "score": 1.0, "latency_ms": 2296}
+{"id": "o14", "category": "translate", "mode": "base-prompt", "input": "Переведи на английский: Где находится ближайшая станция метро?", "gold": "Where is the nearest subway station?", "raw": "Where is the nearest地铁站?", "score": 0.8, "latency_ms": 2235}
+{"id": "o15", "category": "translate", "mode": "base-prompt", "input": "Переведи на русский: The weather is nice today.", "gold": "Сегодня хорошая погода", "raw": "Погода сегодня хорошая.", "score": 1.0, "latency_ms": 2219}
+{"id": "o16", "category": "translate", "mode": "base-prompt", "input": "Переведи на русский: I need to buy groceries after work.", "gold": "Мне нужно купить продукты после работы", "raw": "Нужно купить продукты после работы.", "score": 0.9091, "latency_ms": 2281}
+{"id": "o17", "category": "translate", "mode": "base-prompt", "input": "Переведи на русский: She reads a book every evening.", "gold": "Она читает книгу каждый вечер", "raw": "Она читает книгу каждый вечер.", "score": 1.0, "latency_ms": 2297}
+{"id": "o18", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на Python?\nprint(len(\"hello\"))", "gold": "5", "raw": "5", "score": 1.0, "latency_ms": 2109}
+{"id": "o19", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на Python?\nprint(2 ** 3 + 1)", "gold": "9", "raw": "9", "score": 1.0, "latency_ms": 2125}
+{"id": "o20", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на Python?\nprint(\"ab\" * 3)", "gold": "ababab", "raw": "ababab", "score": 1.0, "latency_ms": 2156}
+{"id": "o21", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на Python?\nprint([1, 2, 3][::-1])", "gold": "[3, 2, 1]", "raw": "[3, 2, 1]", "score": 1.0, "latency_ms": 2282}
+{"id": "o22", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на Python?\nprint(sum(range(5)))", "gold": "10", "raw": "10", "score": 1.0, "latency_ms": 2125}
+{"id": "o23", "category": "code", "mode": "base-prompt", "input": "Что выведет этот код на JavaScript?\nconsole.log(typeof null)", "gold": "object", "raw": "object", "score": 1.0, "latency_ms": 2109}

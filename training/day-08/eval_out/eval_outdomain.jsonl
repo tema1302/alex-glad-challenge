@@ -1,0 +1,24 @@
+{"category": "chat", "input": "Какая столица Австралии?", "gold": "Канберра", "metric": "exact", "id": "o00"}
+{"category": "chat", "input": "Сколько дней в феврале в високосном году?", "gold": "29", "metric": "exact", "id": "o01"}
+{"category": "chat", "input": "Какой самый большой океан на Земле?", "gold": "Тихий", "metric": "exact", "id": "o02"}
+{"category": "chat", "input": "Сколько минут в одних сутках?", "gold": "1440", "metric": "exact", "id": "o03"}
+{"category": "chat", "input": "Какой язык является официальным в Бразилии?", "gold": "португальский", "metric": "exact", "id": "o04"}
+{"category": "chat", "input": "Сколько костей в теле взрослого человека (принятое число)?", "gold": "206", "metric": "exact", "id": "o05"}
+{"category": "math", "input": "Вычисли: 17 * 23", "gold": "391", "metric": "exact", "id": "o06"}
+{"category": "math", "input": "Сколько будет 144 / 12?", "gold": "12", "metric": "exact", "id": "o07"}
+{"category": "math", "input": "Чему равно 15% от 240?", "gold": "36", "metric": "exact", "id": "o08"}
+{"category": "math", "input": "Вычисли: 2 в степени 10", "gold": "1024", "metric": "exact", "id": "o09"}
+{"category": "math", "input": "Сколько будет (7 + 5) * (9 - 4)?", "gold": "60", "metric": "exact", "id": "o10"}
+{"category": "math", "input": "Реши уравнение: x + 17 = 42. Чему равен x?", "gold": "25", "metric": "exact", "id": "o11"}
+{"category": "translate", "input": "Переведи на английский: Доброе утро, как дела?", "gold": "Good morning, how are you?", "metric": "f1", "id": "o12"}
+{"category": "translate", "input": "Переведи на английский: Я хотел бы заказать чашку кофе.", "gold": "I would like to order a cup of coffee.", "metric": "f1", "id": "o13"}
+{"category": "translate", "input": "Переведи на английский: Где находится ближайшая станция метро?", "gold": "Where is the nearest subway station?", "metric": "f1", "id": "o14"}
+{"category": "translate", "input": "Переведи на русский: The weather is nice today.", "gold": "Сегодня хорошая погода", "metric": "f1", "id": "o15"}
+{"category": "translate", "input": "Переведи на русский: I need to buy groceries after work.", "gold": "Мне нужно купить продукты после работы", "metric": "f1", "id": "o16"}
+{"category": "translate", "input": "Переведи на русский: She reads a book every evening.", "gold": "Она читает книгу каждый вечер", "metric": "f1", "id": "o17"}
+{"category": "code", "input": "Что выведет этот код на Python?\nprint(len(\"hello\"))", "gold": "5", "metric": "exact", "id": "o18"}
+{"category": "code", "input": "Что выведет этот код на Python?\nprint(2 ** 3 + 1)", "gold": "9", "metric": "exact", "id": "o19"}
+{"category": "code", "input": "Что выведет этот код на Python?\nprint(\"ab\" * 3)", "gold": "ababab", "metric": "exact", "id": "o20"}
+{"category": "code", "input": "Что выведет этот код на Python?\nprint([1, 2, 3][::-1])", "gold": "[3, 2, 1]", "metric": "exact", "id": "o21"}
+{"category": "code", "input": "Что выведет этот код на Python?\nprint(sum(range(5)))", "gold": "10", "metric": "exact", "id": "o22"}
+{"category": "code", "input": "Что выведет этот код на JavaScript?\nconsole.log(typeof null)", "gold": "object", "metric": "exact", "id": "o23"}
