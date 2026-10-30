@@ -3,11 +3,12 @@
 # Скоринг: извлечь def <name> из ответа, исполнить тесты задачи в
 # неймспейсе с безопасным подмножеством builtins. pass@1 = все тесты зелёные.
 #
-# Запуск:
+# Запуск (локально):
 #   python eval_code.py --model qwen2.5-coder:1.5b-base \
 #     --out ../../docs/advanced-day-09/eval/1.5b-base
-#   python eval_code.py --model qwen2.5-coder:7b \
-#     --out ../../docs/advanced-day-09/eval/7b
+# Запуск ученика после дистилляции (Kaggle T4, adapter day-09):
+#   python eval_code.py --backend transformers --config configs/qlora.yaml \
+#     --adapter artifacts/adapter --out /kaggle/working/eval-student
 #
 # Выход: results_<model>.jsonl, code.json, code_report.md в --out.
 
@@ -99,24 +100,77 @@ def safe_model_name(model: str) -> str:
     return re.sub(r"[^a-z0-9._-]", "_", model.lower())
 
 
+def make_transformers_gen(args):
+    """Kaggle T4: 4-bit base + адаптер ученика. Возвращает gen(task)->str."""
+    import torch  # noqa: PLC0415
+    import yaml  # noqa: PLC0415
+    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import BitsAndBytesConfig  # noqa: PLC0415
+    from peft import PeftModel  # noqa: PLC0415
+
+    with open(args.config, encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+    qcfg = cfg["quantization"]
+    quant = BitsAndBytesConfig(
+        load_in_4bit=qcfg["load_in_4bit"],
+        bnb_4bit_quant_type=qcfg["bnb_4bit_quant_type"],
+        bnb_4bit_use_double_quant=qcfg["bnb_4bit_use_double_quant"],
+        bnb_4bit_compute_dtype=getattr(torch, qcfg["bnb_4bit_compute_dtype"]))
+    model = AutoModelForCausalLM.from_pretrained(
+        cfg["model"]["base"], quantization_config=quant, device_map="auto",
+        attn_implementation=cfg["model"]["attn_implementation"])
+    model = PeftModel.from_pretrained(model, args.adapter)
+    tok = AutoTokenizer.from_pretrained(args.adapter)
+    torch.manual_seed(args.seed)
+    model.eval()
+
+    def gen(task: dict) -> str:
+        msgs = [{"role": "system", "content": SYSTEM},
+                {"role": "user", "content": task["spec"] + "\nОтвет: код."}]
+        ids = tok.apply_chat_template(
+            msgs, tokenize=True, add_generation_prompt=True,
+            return_tensors="pt").to(model.device)
+        out = model.generate(ids, max_new_tokens=256, do_sample=False,
+                             pad_token_id=tok.pad_token_id)
+        return tok.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+
+    return gen
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True)
+    ap.add_argument("--backend", choices=["ollama", "transformers"],
+                    default="ollama")
+    ap.add_argument("--model", default=None)
+    ap.add_argument("--config", default=None)
+    ap.add_argument("--adapter", default="artifacts/adapter")
     ap.add_argument("--out", required=True)
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+    if args.backend == "ollama" and not args.model:
+        ap.error("--backend ollama требует --model")
+    if args.backend == "transformers" and not args.config:
+        ap.error("--backend transformers требует --config")
 
     tasks = load_tasks()
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    label = args.model
+    if args.backend == "transformers":
+        label = f"transformers+{args.adapter}"
+        gen = make_transformers_gen(args)
+    else:
+        def gen(task):  # noqa: ANN001, ANN202
+            return ollama_chat(args.model, [
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": task["spec"] + "\nОтвет: код."},
+            ], seed=args.seed)
+
     rows = []
     for task in tasks:
         t0 = time.monotonic()
-        raw = ollama_chat(args.model, [
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": task["spec"] + "\nОтвет: код."},
-        ], seed=args.seed)
+        raw = gen(task)
         dt = (time.monotonic() - t0) * 1000
         code = extract_function(raw, task["name"])
         if code is None:
@@ -132,20 +186,20 @@ def main() -> int:
 
     solved = sum(r["ok"] for r in rows)
     summary = {
-        "model": args.model,
+        "model": label,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "seed": args.seed, "n": len(rows), "pass1": solved,
         "pass1_acc": round(solved / len(rows), 4),
         "latency_avg_ms": round(statistics.mean(r["latency_ms"] for r in rows)),
     }
-    with open(out_dir / f"results_{safe_model_name(args.model)}.jsonl", "w",
+    with open(out_dir / f"results_{safe_model_name(label)}.jsonl", "w",
               encoding="utf-8") as f:
         for r in rows:
             f.write(json.dumps(r, ensure_ascii=False) + "\n")
     (out_dir / "code.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [
-        f"# Code eval — {args.model} (day-09 s1)", "",
+        f"# Code eval — {label} (day-09)", "",
         f"Сгенерировано: {summary['generated_at']}, seed={args.seed}",
         f"Задач: {len(rows)}; pass@1 = все тесты задачи зелёные.", "",
         f"**pass@1: {solved}/{len(rows)} ({summary['pass1_acc']:.0%})**, "

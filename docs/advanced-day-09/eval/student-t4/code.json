@@ -1,0 +1,9 @@
+{
+  "model": "transformers+/kaggle/working/day09/artifacts/adapter",
+  "generated_at": "2026-10-30T20:22:38.940472+00:00",
+  "seed": 42,
+  "n": 30,
+  "pass1": 18,
+  "pass1_acc": 0.6,
+  "latency_avg_ms": 3781
+}

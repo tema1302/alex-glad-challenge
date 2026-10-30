@@ -1,0 +1,48 @@
+# QLoRA SFT day-09: дистилляция — ученик Qwen2.5-Coder-1.5B (base) на
+# ответах учителя qwen2.5-coder:7b (rule-фильтрованных). Стек day-07:
+# NF4 4-bit, fp16 (T4), маска assistant-токенов, early stopping.
+# Датасет меньше и проще — 3 эпохи, чекпоинты каждые 5 шагов.
+
+model:
+  base: "Qwen/Qwen2.5-Coder-1.5B"
+  max_seq_length: 512   # код длиннее todo-JSON
+  attn_implementation: "sdpa"
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "float16"
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4      # effective batch = 16
+  learning_rate: 0.0002
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  num_train_epochs: 3
+  optim: "paged_adamw_8bit"
+  max_grad_norm: 0.3
+  gradient_checkpointing: true
+  fp16: true
+  bf16: false
+  logging_steps: 2
+  eval_steps: 5
+  save_steps: 5
+  save_total_limit: 4
+  early_stopping_patience: 2
+  seed: 42
+  report_to: []
+
+data:
+  train_file: "data/distill_train_split.jsonl"   # messages-формат
+  val_file: "data/distill_valid.jsonl"
+
+output:
+  artifacts_dir: "artifacts"
