@@ -1,0 +1,16 @@
+{
+  "model": "qwen2.5-coder-1.5b-distilled",
+  "generated_at": "2026-10-30T22:03:01.781644+00:00",
+  "gguf_bytes": 986048096,
+  "cold_start": {
+    "wall_ms": 4312,
+    "tokens": 20,
+    "tokens_per_sec": 143.3
+  },
+  "warm_avg_ms": 2191,
+  "warm_p95_ms": 2203,
+  "tokens_per_sec_avg": 147.0,
+  "ps": {
+    "ps_size": "GB"
+  }
+}
