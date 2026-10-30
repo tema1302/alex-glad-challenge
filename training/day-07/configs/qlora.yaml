@@ -1,0 +1,50 @@
+# QLoRA SFT: Qwen2.5-1.5B-Instruct на датасете day-07 (NL -> JSON add_todo).
+# Все параметры обучения — здесь, train_qlora.py их только читает.
+# Железо: Kaggle/Colab Tesla T4 16 ГБ. T4 не умеет bf16 — только fp16 + 4-bit NF4.
+# Датасет: 463 train / 63 valid — меньше дня-06, epochs=4 вместо 2.
+
+model:
+  base: "Qwen/Qwen2.5-1.5B-Instruct"
+  max_seq_length: 384   # примеры короткие: system+user+JSON < 300 токенов
+  attn_implementation: "sdpa"   # flash-attention не поддерживает Turing/T4
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "float16"   # не bfloat16: T4 его не поддерживает
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+training:
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4      # effective batch = 16
+  learning_rate: 0.0002
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  num_train_epochs: 4
+  optim: "paged_adamw_8bit"
+  max_grad_norm: 0.3
+  gradient_checkpointing: true
+  fp16: true
+  bf16: false
+  logging_steps: 5
+  eval_steps: 30
+  save_steps: 30
+  save_total_limit: 5
+  early_stopping_patience: 3
+  seed: 42
+  report_to: []
+
+data:
+  train_file: "data/train.jsonl"   # messages-формат {system,user,assistant}
+  val_file: "data/valid.jsonl"
+
+# system_prompt в датасет уже зашит (seeds.SYSTEM_PROMPT) — здесь не нужен.
+
+output:
+  artifacts_dir: "artifacts"
