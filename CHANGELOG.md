@@ -2037,3 +2037,48 @@ Vitest 654/654 после мержа); prod build — 0 ошибок. E2E
 
 **Код:** `web/lib/server/channel-preview.ts`, `web/app/page.tsx`,
 `web/test/unit/channel-preview.spec.ts`.
+
+---
+
+## ADVANCED Day 7 — свой датасет: NL → JSON add_todo (2026-10-30)
+**Дата:** 2026-10-30. Ветка `feat/advanced-days-07-10` (loop run-2026-10-30,
+эпик #152).
+
+**Задание:**
+> Свой датасет под узкую задачу с проверяемым результатом; замеры без тюна
+> (база без инструкций + проработанный промпт); 200+ примеров с чисткой;
+> обучение и сравнение с промптингом на eval-наборе. Формат: видео + код.
+
+**Сделано:**
+- Задача тюна: русская фраза → JSON `add_todo` (text, recurring, day_of_week
+  0=вс, interval_hours); boundary-кейсы (два дня, интервалы в днях/минутах,
+  абсолютные даты) — пунт (recurring=null, текст как есть). Привязка к
+  продукту: NL→tool-args перед MCP `add_todo` (todoParser NL не понимает).
+- Датасет в git (`training/day-07/data/`): train 463 / valid 63; сиды
+  (412 шаблонных вызовов, gold по построению) + LLM-входы qwen2.5:7b-instruct
+  (220 кандидатов → 160 принято, 27% отбраковано rule-валидатором, список
+  брака — `data/rejected.jsonl`); чистка почти-дублей difflib ≥ 0.92 (−46);
+  баланс weekly 177 / daily 122 / none 116 / hourly 111.
+- Eval-набор 30 handcrafted кейсов (`eval/eval_set.jsonl`), слоты не
+  пересекаются с train (assert в seeds.py); `check_split.py`: утечек 0.
+- Ревью глазами 30 случайных × 3 итерации: закрыты 3 дыры валидатора
+  («каждый день»+null, «полчаса»→interval_hours:30, висячий предлог в text).
+- Baseline без тюна (реальный прогон 2026-10-30T16:25Z, qwen2.5:1.5b-instruct
+  Ollama, temperature=0 seed=42): none — parse_ok 0/30 (JSON не выдаёт
+  вовсе), prompt — parse_ok 30/30, full_match **14/30** (text 19, recurring
+  19, dow 21, interval 28; по классам: weekly 7/8, hourly 4/5, daily 2/6,
+  пунт 1/11), latency 2274 мс. Артефакты: `docs/advanced-day-07/eval/`.
+- Код обучения: `train_qlora.py` (QLoRA NF4 r=16 α=32, fp16 для T4, маска
+  assistant-токенов, MASK CHECK, early stopping, run.json с sha256 датасета);
+  `evaluate_tuned.py` (tuned/base-prompt/base-none на одной 4-bit загрузке
+  через `disable_adapter()`); README с Kaggle-runbook.
+- Инфраструктурная находка: `ollama pull` блокируется на R2-блобах CDN —
+  воркаунд GGUF с HF + `ollama create` проверен (issue #163).
+
+**Ограничения:** обучение на T4 **не выполнено** в этой сессии (выполняет
+владелец по runbook; run-статус помечен в README); порог успеха дня —
+full_match ≥ 21/30 при parse_ok 30/30. Пунт-класс (11/30 eval) — ожидаемо
+самый трудный для тюна.
+
+**Код:** `training/day-07/**`, `docs/advanced-day-07/{README,video-script}.md`,
+`docs/advanced-day-07/eval/{baseline_report.md,baseline.json,baseline_results.jsonl}`.
