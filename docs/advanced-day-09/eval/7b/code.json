@@ -1,0 +1,9 @@
+{
+  "model": "qwen2.5-coder:7b",
+  "generated_at": "2026-10-30T20:09:00.104084+00:00",
+  "seed": 42,
+  "n": 30,
+  "pass1": 27,
+  "pass1_acc": 0.9,
+  "latency_avg_ms": 3077
+}

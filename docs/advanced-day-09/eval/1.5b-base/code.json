@@ -1,0 +1,9 @@
+{
+  "model": "qwen2.5-coder:1.5b-base",
+  "generated_at": "2026-10-30T20:07:27.646322+00:00",
+  "seed": 42,
+  "n": 30,
+  "pass1": 24,
+  "pass1_acc": 0.8,
+  "latency_avg_ms": 2396
+}
