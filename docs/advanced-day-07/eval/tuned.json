@@ -1,0 +1,104 @@
+{
+  "timestamp_utc": "2026-10-30T18:26:43.032765+00:00",
+  "base_model": "Qwen/Qwen2.5-1.5B-Instruct",
+  "adapter": "artifacts/adapter",
+  "gpu": "Tesla T4",
+  "max_new_tokens": 120,
+  "do_sample": false,
+  "seed": 42,
+  "modes": [
+    "tuned",
+    "base-prompt",
+    "base-none"
+  ],
+  "summary": {
+    "tuned": {
+      "n": 30,
+      "parse_ok": 30,
+      "format_ok": 30,
+      "full_match": 14,
+      "field_text": 16,
+      "field_recurring": 26,
+      "field_day_of_week": 26,
+      "field_interval": 29,
+      "per_class": {
+        "None": {
+          "n": 11,
+          "full_match": 4
+        },
+        "daily": {
+          "n": 6,
+          "full_match": 2
+        },
+        "hourly": {
+          "n": 5,
+          "full_match": 5
+        },
+        "weekly": {
+          "n": 8,
+          "full_match": 3
+        }
+      },
+      "latency_avg_ms": 3374.5
+    },
+    "base-prompt": {
+      "n": 30,
+      "parse_ok": 27,
+      "format_ok": 30,
+      "full_match": 10,
+      "field_text": 12,
+      "field_recurring": 17,
+      "field_day_of_week": 24,
+      "field_interval": 25,
+      "per_class": {
+        "None": {
+          "n": 11,
+          "full_match": 2
+        },
+        "daily": {
+          "n": 6,
+          "full_match": 1
+        },
+        "hourly": {
+          "n": 5,
+          "full_match": 4
+        },
+        "weekly": {
+          "n": 8,
+          "full_match": 3
+        }
+      },
+      "latency_avg_ms": 1983.9
+    },
+    "base-none": {
+      "n": 30,
+      "parse_ok": 0,
+      "format_ok": 0,
+      "full_match": 0,
+      "field_text": 0,
+      "field_recurring": 0,
+      "field_day_of_week": 0,
+      "field_interval": 0,
+      "per_class": {
+        "None": {
+          "n": 11,
+          "full_match": 0
+        },
+        "daily": {
+          "n": 6,
+          "full_match": 0
+        },
+        "hourly": {
+          "n": 5,
+          "full_match": 0
+        },
+        "weekly": {
+          "n": 8,
+          "full_match": 0
+        }
+      },
+      "latency_avg_ms": 7003.9
+    }
+  },
+  "eval_set": "training/day-07/eval/eval_set.jsonl (30 кейсов)"
+}

@@ -1,10 +1,15 @@
 # Training-only зависимости (обучение и eval на Kaggle/Colab T4).
 # Runtime-пакет pnpm их не видит и не должен видеть.
 # Версии pinned; фактические версии прогона фиксируются в artifacts/run.json.
-# На Kaggle/Colab torch уже предустановлен — если pip конфликтует,
-# закомментируй строку torch и поставь остальное.
+# ВАЖНО: актуальный образ Kaggle — Python 3.13, и torch 2.5.1/torchvision 0.20.1
+# для него без cp313-колёс. На Kaggle requirements.txt НЕ ставится: используются
+# предустановленные torch/torchvision/transformers + доставка недостающего
+# (kernel-скрипт day-07, install-missing). Эти pins — для Colab (py3.11)
+# и фиксации желаемых версий; если pip конфликтует — закомментируй проблемные
+# строки и поставь остальное.
 
 torch==2.5.1
+torchvision==0.20.1   # transformers тянет torchvision при импорте Trainer; версия строго привязана к torch (иначе "operator torchvision::nms does not exist")
 transformers==4.46.3
 peft==0.13.2
 bitsandbytes==0.44.1

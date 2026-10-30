@@ -93,13 +93,51 @@ python evaluate_tuned.py --out ../../docs/advanced-day-07/eval
 Colab-альтернатива: Runtime → T4 GPU, те же команды после
 `!git clone <repo>`.
 
-**Run-статус: обучение на T4 НЕ выполнено** (выполняет владелец; код и
-runbook готовы). После прогона: обновить `docs/advanced-day-07/README.md`
-числами из `tuned_report.md` и `run.json`, отметить пункт ниже.
+**Run-статус: обучение на T4 ВЫПОЛНЕНО** (2026-10-30, kernel
+`tema13002/day07-qlora-todo-t4` v8, GPU T4, Internet On).
+Числа из `artifacts/run.json` и `docs/advanced-day-07/eval/tuned_report.md`.
+Артефакты прогона скачаны в `training/day-07/artifacts/` (в git не входят):
+adapter, чекпоинты 30/60/90/116, run.json, loss.csv.
 
-- [ ] Прогон на T4: train loss / eval loss / wall-clock из `run.json`
-- [ ] `tuned_report.md` в `docs/advanced-day-07/eval/`
-- [ ] Сравнение с baseline (≥ 21/30 full_match — порог успеха)
+- [x] Прогон на T4: train loss 0.0056 (final) / eval loss 0.0191 (best,
+      checkpoint-90, step 90/116 ≈ эпоха 3.1) / wall-clock обучения 452.9 с
+      (~7.5 мин, 463×4 эпохи, eff.batch 16, ~1570 tok/s, VRAM ~3 ГБ)
+- [x] `tuned_report.md` в `docs/advanced-day-07/eval/`
+- [x] Сравнение с baseline: tuned **14/30** vs base-prompt 10/30 и
+      base-none 0/30 (один рантайм, temperature=0, seed=42). Порог успеха
+      ≥ 21/30 full_match **не достигнут** — честно зафиксировано; см.
+      разбор ниже и follow-up issue.
+
+### Tuned vs base (реальный прогон T4, transformers generate)
+
+| Режим | parse_ok | format_ok | full_match | text | recurring | dow | interval | latency |
+|---|---|---|---|---|---|---|---|---|
+| tuned (adapter вкл) | 30/30 | 30/30 | **14/30** | 16/30 | 26/30 | 26/30 | 29/30 | 3374 мс |
+| base-prompt (адаптер выкл) | 27/30 | 30/30 | 10/30 | 12/30 | 17/30 | 24/30 | 25/30 | 1984 мс |
+| base-none (адаптер выкл) | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 7004 мс |
+
+По классам gold (tuned): hourly 5/5, weekly 3/8, daily 2/6, punt-None 4/11.
+Кривая обучения: eval loss монотонно снижался 0.0321 → 0.0219 → 0.0191 →
+0.0191 (шаги 30/60/90/116) — переобучения по loss не видно; early stopping
+не сработал, best checkpoint-90.
+
+**Разбор промаха порога.** Тюн улучшил same-runtime base-prompt (14 vs 10
+full_match, +6 recurring), но до 21/30 не дотянул. Главные провалы — классы
+weekly (3/8) и punt-None (4/11): train-распределение weekly 38% против
+eval 27%, а punt при частоте 22% в train модель выучила недостаточно
+осторожно. Рычаги (по приоритету): 1) ещё LLM-генерация входов
+(`--llm-batches 60`, фокус на weekly/punt-границах); 2) пересмотр
+loss-весов/сэмплирования punt-класса; 3) больше эпох при следящем eval.
+
+### Инфраструктурные находки прогона (образ Kaggle, Python 3.13)
+
+Заявленные pins (`torch 2.5.1`, `torchvision 0.20.1`) не имеют cp313-колёс;
+предустановленный в образе transformers 5.16 сломал API TrainingArguments, а
+предустановленный triton (3.3.1) не содержит `triton.ops`, от которого
+зависит bnb 0.45.0. Рабочий стек прогона (зафиксирован в run.json):
+torch 2.6.0 + torchvision 0.21.0 + transformers 4.46.3 + peft 0.13.2 +
+bitsandbytes 0.45.0 + accelerate 1.1.1, **triton удалён полностью** (bnb
+через `is_triton_available()` ставит заглушки; 4-bit NF4 triton не нужен).
 
 ## Методология eval
 

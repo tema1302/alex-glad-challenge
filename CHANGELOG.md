@@ -2074,11 +2074,30 @@ Vitest 654/654 после мержа); prod build — 0 ошибок. E2E
   через `disable_adapter()`); README с Kaggle-runbook.
 - Инфраструктурная находка: `ollama pull` блокируется на R2-блобах CDN —
   воркаунд GGUF с HF + `ollama create` проверен (issue #163).
+- **T4-прогон выполнен** (2026-10-30, kernel `tema13002/day07-qlora-todo-t4`
+  v8, GPU T4): обучение 452.9 с (~7.5 мин, ~1570 tok/s, VRAM ~3 ГБ), train
+  loss 0.0056, best eval loss 0.0191 (checkpoint-90/116, эпоха ~3.1; eval
+  loss ↓ монотонно — переобучения нет). Tuned vs base (один рантайм,
+  temperature=0 seed=42): tuned parse_ok 30/30, full_match **14/30**
+  (hourly 5/5, weekly 3/8, daily 2/6, punt 4/11) против base-prompt 10/30
+  и base-none 0/30; latency 3374/1984/7004 мс. Артефакты:
+  `docs/advanced-day-07/eval/tuned_*`; adapter + чекпоинты + run.json +
+  loss.csv скачаны в `training/day-07/artifacts/` (gitignored).
+- Инфраструктурные находки прогона (образ Kaggle теперь Python 3.13):
+  pins torch 2.5.1/torchvision 0.20.1 без cp313-колёс; предустановленный
+  transformers 5.16 ломает API TrainingArguments; предустановленный triton
+  (3.3.1) не содержит `triton.ops`, от которого зависит bnb 0.45.0. Рабочий
+  стек: torch 2.6.0 + torchvision 0.21.0 + transformers 4.46.3 + peft
+  0.13.2 + bnb 0.45.0 + accelerate 1.1.1, triton удалён полностью (bnb
+  стабит заглушки через is_triton_available(); 4-bit NF4 triton не нужен).
 
-**Ограничения:** обучение на T4 **не выполнено** в этой сессии (выполняет
-владелец по runbook; run-статус помечен в README); порог успеха дня —
-full_match ≥ 21/30 при parse_ok 30/30. Пунт-класс (11/30 eval) — ожидаемо
-самый трудный для тюна.
+**Ограничения:** порог успеха дня — full_match ≥ 21/30 при parse_ok
+30/30 — **не достигнут**: tuned 14/30 (same-runtime base-prompt 10/30,
+локальный Ollama-бейзлайн prompt 14/30). Главные провалы — weekly 3/8 и
+punt-None 4/11; рычаги: `--llm-batches 60` с фокусом на weekly/punt-границах,
+пересмотр сэмплирования punt-класса, больше эпох при следящем eval.
+Follow-up issue заведён; пункт-класс (11/30 eval) — ожидаемо самый
+трудный для тюна.
 
 **Код:** `training/day-07/**`, `docs/advanced-day-07/{README,video-script}.md`,
 `docs/advanced-day-07/eval/{baseline_report.md,baseline.json,baseline_results.jsonl}`.
