@@ -1,0 +1,30 @@
+{"id":"e01","input":"Оплатить хостинг до пятницы","gold":{"text":"Оплатить хостинг до пятницы","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"дедлайн -> scheduled_at вне схемы, дата остаётся в тексте"}
+{"id":"e02","input":"Нужно купить билеты на концерт","gold":{"text":"Купить билеты на концерт","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e03","input":"напомни забрать посылку с почты","gold":{"text":"Забрать посылку с почты","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e04","input":"Позвонить в банк по вопросу страховки","gold":{"text":"Позвонить в банк по вопросу страховки","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e05","input":"Пора поменять пароль от админки","gold":{"text":"Поменять пароль от админки","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e06","input":"Забрать детей из школы в 15:00","gold":{"text":"Забрать детей из школы в 15:00","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"время разового события остаётся в тексте"}
+{"id":"e07","input":"каждое утро делать разминку","gold":{"text":"Делать разминку","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e08","input":"принимать лекарства каждый день в 20:00","gold":{"text":"Принимать лекарства в 20:00","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":"время дня остаётся в тексте"}
+{"id":"e09","input":"ежедневно проверять статус сборки","gold":{"text":"Проверять статус сборки","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e10","input":"Зарядка по утрам","gold":{"text":"Зарядка","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":"подразумеваемый повтор («по утрам» = daily)"}
+{"id":"e11","input":"напоминай про растяжку ежедневно","gold":{"text":"Растяжка","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e12","input":"выгуливать собаку каждое утро","gold":{"text":"Выгуливать собаку","recurring":"daily","day_of_week":null,"interval_hours":null},"boundary":null}
+{"id":"e13","input":"каждый понедельник сдавать отчёт","gold":{"text":"Сдавать отчёт","recurring":"weekly","day_of_week":1,"interval_hours":null},"boundary":null}
+{"id":"e14","input":"по вторникам созвон с командой","gold":{"text":"Созвон с командой","recurring":"weekly","day_of_week":2,"interval_hours":null},"boundary":null}
+{"id":"e15","input":"не забудь каждую среду поход к стоматологу","gold":{"text":"Поход к стоматологу","recurring":"weekly","day_of_week":3,"interval_hours":null},"boundary":null}
+{"id":"e16","input":"каждый четверг обновлять стендап-борд","gold":{"text":"Обновлять стендап-борд","recurring":"weekly","day_of_week":4,"interval_hours":null},"boundary":null}
+{"id":"e17","input":"по пятницам разбирать техдолг","gold":{"text":"Разбирать техдолг","recurring":"weekly","day_of_week":5,"interval_hours":null},"boundary":null}
+{"id":"e18","input":"каждую субботу мыть машину","gold":{"text":"Мыть машину","recurring":"weekly","day_of_week":6,"interval_hours":null},"boundary":null}
+{"id":"e19","input":"каждое воскресенье планировать неделю","gold":{"text":"Планировать неделю","recurring":"weekly","day_of_week":0,"interval_hours":null},"boundary":null}
+{"id":"e20","input":"по выходным разбирать гараж","gold":{"text":"По выходным разбирать гараж","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"пунт: два дня (сб+вс) не представимы одним day_of_week"}
+{"id":"e21","input":"проверять почту каждые 2 часа","gold":{"text":"Проверять почту","recurring":"hourly","day_of_week":null,"interval_hours":2},"boundary":null}
+{"id":"e22","input":"раз в 4 часа делать скриншот мониторинга","gold":{"text":"Делать скриншот мониторинга","recurring":"hourly","day_of_week":null,"interval_hours":4},"boundary":null}
+{"id":"e23","input":"каждый час проверять очередь задач","gold":{"text":"Проверять очередь задач","recurring":"hourly","day_of_week":null,"interval_hours":1},"boundary":null}
+{"id":"e24","input":"ежечасно обновлять курс валют","gold":{"text":"Обновлять курс валют","recurring":"hourly","day_of_week":null,"interval_hours":1},"boundary":null}
+{"id":"e25","input":"напоминай вставать и разминаться каждые 45 минут","gold":{"text":"Вставать и разминаться каждые 45 минут","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"пунт: минуты вне схемы (interval_hours — целые часы >= 1)"}
+{"id":"e26","input":"каждые 12 часов проверять пейджер","gold":{"text":"Проверять пейджер","recurring":"hourly","day_of_week":null,"interval_hours":12},"boundary":null}
+{"id":"e27","input":"Water the plants every Monday","gold":{"text":"Water the plants","recurring":"weekly","day_of_week":1,"interval_hours":null},"boundary":"языковая робастность (английский вход)"}
+{"id":"e28","input":"полить огурцы раз в 3 дня","gold":{"text":"Полить огурцы раз в 3 дня","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"пунт: интервал в днях вне схемы (только daily/weekly/hourly)"}
+{"id":"e29","input":"каждый вторник и четверг ходить в спортзал","gold":{"text":"Каждый вторник и четверг ходить в спортзал","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"пунт: два дня недели не представимы одним day_of_week"}
+{"id":"e30","input":"завтра в 9:00 сдать отчёт в налоговую","gold":{"text":"Завтра в 9:00 сдать отчёт в налоговую","recurring":null,"day_of_week":null,"interval_hours":null},"boundary":"пунт: абсолютная дата -> scheduled_at вне схемы"}
