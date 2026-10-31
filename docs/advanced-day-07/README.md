@@ -126,5 +126,19 @@ issue по доработке датасета/обучения.
 проверен, задокументирован в issue
 [#163](https://github.com/tema1302/alex-glad-challenge/issues/163).
 
+**Диагноз (2026-10-31, финальный):** блокируется вся зона
+`*.r2.cloudflarestorage.com` — TCP-connect на 443 проходит, TLS ClientHello
+обрывается мгновенным RST (~0.1 c). Не машина: hosts чист, исходящих
+block-правил нет, до того же IP с другим SNI (www.cloudflare.com) TLS
+отрабатывает, `*.r2.dev` и registry.ollama.ai работают; воспроизводится и
+напрямую, и через локальный прокси (другой аплинк). Характер — SNI-фильтрация
+на промежуточном оборудовании сети (провайдер/регулятор), из машины не
+снимается.
+
+**Решение (постоянное):** `ollama pull` из этой сети не восстановить —
+использовать воркаунд как штатный путь: GGUF напрямую с HuggingFace
+(прямые ссылки работают) + `ollama create <имя> -f Modelfile`
+(`FROM ./model.gguf`; chat template подхватывается из метаданных GGUF).
+
 **Код:** `training/day-07/**`, `docs/advanced-day-07/README.md`,
 `docs/advanced-day-07/video-script.md`, `docs/advanced-day-07/eval/*`
