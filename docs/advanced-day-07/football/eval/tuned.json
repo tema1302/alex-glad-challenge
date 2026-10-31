@@ -1,0 +1,52 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "adapter": "artifacts/adapter-epoch3",
+  "generated_at": "2026-10-31T16:27:41.558565+00:00",
+  "seed": 42,
+  "git_sha": "3d76c43",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.10.0",
+  "cpu": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+  "cpu_count": 12,
+  "device": "cpu",
+  "dtype": "fp32",
+  "do_sample": false,
+  "max_new_tokens": 160,
+  "packages": {
+    "torch": "2.6.0+cpu",
+    "transformers": "4.46.3",
+    "peft": "0.13.2"
+  },
+  "modes": {
+    "tuned": {
+      "n": 30,
+      "parse_ok": 30,
+      "format_ok": 30,
+      "full_match": 11,
+      "latency_ms_avg": 18839,
+      "home": 30,
+      "away": 28,
+      "home_score": 29,
+      "away_score": 29,
+      "scorers": 19,
+      "competition": 28,
+      "venue": 24
+    },
+    "base-prompt": {
+      "n": 30,
+      "parse_ok": 0,
+      "format_ok": 0,
+      "full_match": 0,
+      "latency_ms_avg": 23278,
+      "home": 0,
+      "away": 0,
+      "home_score": 0,
+      "away_score": 0,
+      "scorers": 0,
+      "competition": 0,
+      "venue": 0
+    }
+  },
+  "regressions": [],
+  "wall_s": 1263.6
+}

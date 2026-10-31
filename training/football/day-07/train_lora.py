@@ -89,12 +89,14 @@ def eval_loss(model, examples: list[dict], pad_id: int, batch: int) -> float:
     model.train()
     return round(statistics.mean(losses), 6)
 
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
     ap.add_argument("--epochs", type=int, default=3)
-    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=2,
+                    help="микро-батч 2: логиты fp32 на длинных JSON, иначе своп")
+    ap.add_argument("--grad-accum", type=int, default=4,
+                    help="эффективный батч = batch-size × grad-accum = 8")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--lora-r", type=int, default=16)
     ap.add_argument("--seed", type=int, default=42)
@@ -123,6 +125,9 @@ def main() -> int:
         task_type="CAUSAL_LM")
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
+    # Микро-батч 2 БЕЗ чекпоинтинга: пик ~7 ГБ (влезает без свопа), а
+    # чекпоинтинг на этой машине деградировал до 2 эффективных потоков.
+    # Логиты fp32 0.5B: batch>2 на длинных JSON -> пик >16 ГБ -> своп/segfault.
 
     train_ex = build_examples(train_rows, tokenizer)
     val_ex = build_examples(val_rows, tokenizer)
@@ -138,6 +143,7 @@ def main() -> int:
     loss_rows: list[dict] = []
     epoch_val: list[dict] = []
     step = 0
+    micro = 0
     t0 = time.monotonic()
     model.train()
     for epoch in range(1, args.epochs + 1):
@@ -146,6 +152,9 @@ def main() -> int:
             batch = collate(batches[bi], tokenizer.pad_token_id)
             out = model(**batch)
             out.loss.backward()
+            micro += 1
+            if micro % args.grad_accum != 0 and bi != order[-1]:
+                continue
             optimizer.step()
             optimizer.zero_grad()
             step += 1
@@ -153,10 +162,10 @@ def main() -> int:
                    "train_loss": round(out.loss.item(), 6)}
             loss_rows.append(row)
             if step <= 3 or step % 25 == 0:
-                print(f"step {step}/{len(batches) * args.epochs} "
+                print(f"step {step}/{int(len(batches) / args.grad_accum) * args.epochs} "
                       f"(epoch {epoch}) loss {out.loss.item():.4f} "
                       f"elapsed {time.monotonic() - t0:.0f}s", flush=True)
-        vl = eval_loss(model, val_ex, tokenizer.pad_token_id, 16)
+        vl = eval_loss(model, val_ex, tokenizer.pad_token_id, 4)
         epoch_val.append({"epoch": epoch, "val_loss": vl})
         ckpt = out_dir / f"adapter-epoch{epoch}"
         model.save_pretrained(ckpt)
@@ -186,7 +195,9 @@ def main() -> int:
         "packages": {p: importlib.metadata.version(p) for p in PACKAGES},
         "train": {
             "examples": len(train_ex), "val_examples": len(val_ex),
-            "epochs": args.epochs, "batch_size": args.batch_size,
+            "epochs": args.epochs,
+            "batch_size": args.batch_size, "grad_accum": args.grad_accum,
+            "effective_batch": args.batch_size * args.grad_accum,
             "lr": args.lr, "lora_r": args.lora_r,
             "optimizer": "AdamW", "dtype": "fp32", "device": "cpu",
             "wall_s": wall_s,
