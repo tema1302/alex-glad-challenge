@@ -72,7 +72,10 @@ def main():
     ap.add_argument("--model", default="Qwen/Qwen2.5-0.5B-Instruct")
     ap.add_argument("--data", default=str(ROOT / "data" / "distill_train.jsonl"))
     ap.add_argument("--epochs", type=int, default=3)
-    ap.add_argument("--batch-size", type=int, default=4)
+    ap.add_argument("--batch-size", type=int, default=2,
+                    help="микро-батч 2: вход JSON длинный, логиты fp32 >1 ГБ")
+    ap.add_argument("--grad-accum", type=int, default=4,
+                    help="эффективный батч = 2×4 = 8")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=str(ROOT / "artifacts"))
@@ -94,6 +97,7 @@ def main():
                       task_type="CAUSAL_LM")
     model = get_peft_model(model, lora)
     model.print_trainable_parameters()
+    # без чекпоинтинга (см. day-07: на этой машине деградация до 2 потоков)
 
     examples = build_examples(rows, tokenizer)
     batches = [examples[i:i + args.batch_size]
@@ -105,6 +109,7 @@ def main():
         (p for p in model.parameters() if p.requires_grad), lr=args.lr)
     loss_rows, epoch_val = [], []
     step = 0
+    micro = 0
     t0 = time.monotonic()
     model.train()
     for epoch in range(1, args.epochs + 1):
@@ -113,6 +118,9 @@ def main():
             batch = collate(batches[bi], tokenizer.pad_token_id)
             out = model(**batch)
             out.loss.backward()
+            micro += 1
+            if micro % args.grad_accum != 0 and bi != order[-1]:
+                continue
             optimizer.step()
             optimizer.zero_grad()
             step += 1

@@ -25,8 +25,10 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "day-08"))
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-from common import ROOT, generate, load_model  # noqa: E402,E401
+from common import generate, load_model  # noqa: E402,E401
 from report_rules import facts_present  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent
 
 PACKAGES = ["torch", "transformers", "peft"]
 
