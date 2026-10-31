@@ -1,0 +1,8 @@
+# День 6/7 (футбольный трек), CPU-окружение: torch 2.6.0+cpu, transformers 4.46.3.
+# Фактический freeze окружения: artifacts/run.json (packages).
+torch==2.6.0
+transformers==4.46.3
+peft==0.13.2
+accelerate==1.15.0
+psutil
+requests

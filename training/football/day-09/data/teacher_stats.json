@@ -1,0 +1,8 @@
+{
+  "model": "qwen2.5:7b-instruct",
+  "total": 120,
+  "accepted": 60,
+  "rejected": 60,
+  "accept_rate": 0.5,
+  "wall_s": 473.6
+}
