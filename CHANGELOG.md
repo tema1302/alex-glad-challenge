@@ -2308,3 +2308,43 @@ loss ~1.0, recall 3/36; 30 эпох → loss 0.0009, recall 26/36); recall де�
   (ученик выучил «безопасный» формат) — и это одновременно риск переоптимизации.
 
 **Код:** `training/football/day-06..10`, отчёты — `docs/advanced-day-06..10/football/`.
+
+---
+
+## Execution loop run-2026-10-31 — Android parity wave 1: RAG, Telegram, Блог, MCP
+**Дата:** 2026-10-31
+**Ветка:** `feat/close-open-issues`
+
+**Задание:** стори #144–#147 эпика #134 — паритет web-админки в приложении
+«Артель» на существующих контрактах `/api/*` (новых endpoint'ов нет).
+
+**Сделано:**
+- **RAG (#144):** запрос (SSE-стрим с источниками/цитатами), диалоговые чаты
+  (список/деталь/история/task), алиасы TG-чатов, индекс (fixed/structure) и
+  index-tg с предупреждением о reset, заметки (список/JSON-добавление/удаление).
+- **Telegram (#145):** топ сообщений (сортировка реакции/дата), сбор (SSE-лог
+  stage/progress), публикация (подтверждение, errorKind→русский), outbox-история,
+  эволюция бота (SSE-чат с отменой).
+- **Блог (#146):** блоги и настройки (PATCH с explicitNulls-семантикой сброса),
+  посты (список/деталь/правка/удаление/publish с guard'ами), генерация по теме,
+  news и scout (SSE), дайджест, стиль, пайплайн (sandbox-FSM), расписание (PUT
+  целиком, идемпотентно).
+- **MCP (#147):** список инструментов (configured/error-баннеры), вызов с
+  локальной JSON-валидацией аргументов (не роняет экран).
+- **Общая механика:** `SseParser` (generic) + `ArtelRepository.sseStream`
+  (отмена/401 как в chatStream), тайлы дашборда «База знаний и каналы»,
+  9 новых роутов навигации.
+- **Сервер (блокер паритета):** 8 роутов с cookie-only `requireAuth` переведены
+  на `requireApiAuth` (cookie ИЛИ Bearer): rag/index, rag/index-tg, rag/notes,
+  summary POST, tg/collect, telegram/publish, blog posts/{id}/publish,
+  blog digest/generate — мобильный клиент больше не получает 401 по valid-токену.
+
+**Выводы:**
+- SSE-ошибки приходят внутри 200-потока `{type:'error'}` — экраны обязаны
+  парсить события, а не только HTTP-коды (отражено в парсерах).
+- publish-эндпоинты не идемпотентны — guard от двойного тапа на клиенте.
+
+**Код:** `android/app/src/main/java/ru/memo7/artel/{data/api/{Rag,Tg,Blog,Mcp,SseParser},ui/screens/{rag,tg,blog,mcp}}`,
+`web/app/api/{rag,summary,tg,telegram,blog}` (requireApiAuth).
+**Проверка:** `:app:testDebugUnitTest` 136/136 зелёных, `:app:assembleDebug` OK;
+веб-тесты затронутых роутов зелёные.

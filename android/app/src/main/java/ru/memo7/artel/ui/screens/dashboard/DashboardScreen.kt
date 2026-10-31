@@ -26,7 +26,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Newspaper
 import androidx.compose.material.icons.rounded.School
+import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Settings
@@ -114,6 +118,10 @@ fun DashboardScreen(
     onOpenTodos: () -> Unit,
     onOpenCourse: () -> Unit,
     onOpenChat: () -> Unit,
+    onOpenRag: () -> Unit,
+    onOpenTg: () -> Unit,
+    onOpenBlog: () -> Unit,
+    onOpenMcp: () -> Unit,
 ) {
     val vm: DashboardViewModel = viewModel(
         factory = viewModelFactory { initializer { DashboardViewModel(container.repository) } }
@@ -168,6 +176,10 @@ fun DashboardScreen(
                 onOpenTodos = onOpenTodos,
                 onOpenCourse = onOpenCourse,
                 onOpenChat = onOpenChat,
+                onOpenRag = onOpenRag,
+                onOpenTg = onOpenTg,
+                onOpenBlog = onOpenBlog,
+                onOpenMcp = onOpenMcp,
             )
         }
     }
@@ -183,6 +195,10 @@ private fun DashboardContent(
     onOpenTodos: () -> Unit,
     onOpenCourse: () -> Unit,
     onOpenChat: () -> Unit,
+    onOpenRag: () -> Unit,
+    onOpenTg: () -> Unit,
+    onOpenBlog: () -> Unit,
+    onOpenMcp: () -> Unit,
 ) {
     val game = data.gamification
     Column(
@@ -433,6 +449,59 @@ private fun DashboardContent(
             }
         }
 
+        // Parity section: knowledge base & channels
+        Text(
+            "База знаний и каналы",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.MenuBook,
+                title = "База знаний",
+                subtitle = "RAG: запросы, чаты, индекс",
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = onOpenRag,
+            )
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.Send,
+                title = "Telegram",
+                subtitle = "Топ, сбор, публикация, эволюция",
+                tint = MaterialTheme.colorScheme.tertiary,
+                onClick = onOpenTg,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.Newspaper,
+                title = "Блог",
+                subtitle = "Посты, новости, пайплайн",
+                tint = MaterialTheme.colorScheme.secondary,
+                onClick = onOpenBlog,
+            )
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.Extension,
+                title = "MCP",
+                subtitle = "Инструменты и вызовы",
+                tint = MaterialTheme.colorScheme.tertiary,
+                onClick = onOpenMcp,
+            )
+        }
+
         // Course quick action
         BentoCard(
             modifier = Modifier
@@ -547,6 +616,40 @@ private fun CountTile(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = if (compact) 2 else 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Компактный тайл раздела паритета (RAG/TG/Блог/MCP) — иконка, название, подпись. */
+@Composable
+private fun ParityTile(
+    modifier: Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    tint: Color,
+    onClick: () -> Unit,
+) {
+    BentoCard(modifier = modifier.height(108.dp), onClick = onClick) {
+        Column(Modifier.padding(14.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(ArtelShapes.chip)
+                    .background(tint.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+            }
+            Spacer(Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (isCompactLayout()) 2 else 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }

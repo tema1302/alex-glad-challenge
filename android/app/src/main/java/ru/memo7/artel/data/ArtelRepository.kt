@@ -6,6 +6,8 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -23,7 +25,61 @@ import ru.memo7.artel.data.api.AutomationConfigureRequest
 import ru.memo7.artel.data.api.AutomationResponse
 import ru.memo7.artel.data.api.AutomationRunRequest
 import ru.memo7.artel.data.api.AutomationRunResponse
+import ru.memo7.artel.data.api.BlogDetailResponse
+import ru.memo7.artel.data.api.BlogNewsRequest
+import ru.memo7.artel.data.api.BlogPipelineDto
+import ru.memo7.artel.data.api.BlogPipelineResetRequest
+import ru.memo7.artel.data.api.BlogPipelineTransitionRequest
+import ru.memo7.artel.data.api.BlogPostResponse
+import ru.memo7.artel.data.api.BlogPostsResponse
+import ru.memo7.artel.data.api.BlogScheduleResponse
+import ru.memo7.artel.data.api.BlogScoutRequest
+import ru.memo7.artel.data.api.BlogsResponse
+import ru.memo7.artel.data.api.BlogSseParser
+import ru.memo7.artel.data.api.BlogStreamEvent
 import ru.memo7.artel.data.api.BlogStyleRequest
+import ru.memo7.artel.data.api.DigestGenerateRequest
+import ru.memo7.artel.data.api.DigestResponse
+import ru.memo7.artel.data.api.EvoluteAgentRequest
+import ru.memo7.artel.data.api.EvoluteEvent
+import ru.memo7.artel.data.api.EvoluteHistoryMessageDto
+import ru.memo7.artel.data.api.GeneratePostsRequest
+import ru.memo7.artel.data.api.GeneratePostsResponse
+import ru.memo7.artel.data.api.McpCallRequest
+import ru.memo7.artel.data.api.McpCallResponse
+import ru.memo7.artel.data.api.McpToolsResponse
+import ru.memo7.artel.data.api.PatchBlogRequest
+import ru.memo7.artel.data.api.PatchBlogResponse
+import ru.memo7.artel.data.api.PatchPostRequest
+import ru.memo7.artel.data.api.PatchPostResponse
+import ru.memo7.artel.data.api.PublishPostResponse
+import ru.memo7.artel.data.api.PutBlogScheduleRequest
+import ru.memo7.artel.data.api.PutBlogScheduleResponse
+import ru.memo7.artel.data.api.RagAliasActionRequest
+import ru.memo7.artel.data.api.RagAliasActionResponse
+import ru.memo7.artel.data.api.RagChatCreateRequest
+import ru.memo7.artel.data.api.RagChatCreatedResponse
+import ru.memo7.artel.data.api.RagChatDetailResponse
+import ru.memo7.artel.data.api.RagChatListResponse
+import ru.memo7.artel.data.api.RagChatPatchRequest
+import ru.memo7.artel.data.api.RagChatPatchResponse
+import ru.memo7.artel.data.api.RagChatsResponse
+import ru.memo7.artel.data.api.RagNoteAddRequest
+import ru.memo7.artel.data.api.RagNoteAddResponse
+import ru.memo7.artel.data.api.RagNoteDeleteRequest
+import ru.memo7.artel.data.api.RagNoteDeleteResponse
+import ru.memo7.artel.data.api.RagNotesResponse
+import ru.memo7.artel.data.api.SseParser
+import ru.memo7.artel.data.api.StyleSamplesResponse
+import ru.memo7.artel.data.api.TelegramHistoryResponse
+import ru.memo7.artel.data.api.TelegramPublishRequest
+import ru.memo7.artel.data.api.TelegramPublishResponse
+import ru.memo7.artel.data.api.TgCollectEvent
+import ru.memo7.artel.data.api.TgCollectRequest
+import ru.memo7.artel.data.api.TgSseParser
+import ru.memo7.artel.data.api.TgTopResponse
+import ru.memo7.artel.data.api.AddStyleSampleRequest
+import ru.memo7.artel.data.api.AddStyleSampleResponse
 import ru.memo7.artel.data.api.BootstrapResponse
 import ru.memo7.artel.data.api.CalendarResponse
 import ru.memo7.artel.data.api.CalendarSyncResponse
@@ -60,6 +116,9 @@ import ru.memo7.artel.data.api.TodosResponse
  * of the last successful reads so screens can paint instantly on re-entry.
  */
 class ArtelRepository(private val store: CredentialsStore) {
+
+    /** Для PATCH blog: null = «сбросить» — сервер различает «не передано» и explicit null. */
+    private val patchJson = Json { explicitNulls = true; encodeDefaults = true; ignoreUnknownKeys = true }
 
     @Volatile private var apiHolder: Pair<Credentials, ArtelApi>? = null
 
@@ -289,6 +348,77 @@ class ArtelRepository(private val store: CredentialsStore) {
         chatStreamCall?.cancel()
     }
 
+    @Volatile private var sseCall: Call? = null
+
+    /** Отмена активного generic SSE-стрима (rag/tg/blog/joker/evolute). */
+    fun cancelSseStream() {
+        sseCall?.cancel()
+    }
+
+    /**
+     * Общий SSE-стрим для стриминговых endpoint'ов (rag/query, rag/chat/{id}, tg/collect,
+     * evolute/agent, blog/news, blog/scout, joke/session): безымянные события `data: <JSON>`
+     * через `\n\n`. [path] — относительный путь после base URL (напр. "api/rag/query"),
+     * [bodyJson] — сериализованное тело POST, события — сырые JSON-payload'ы в [onEvent].
+     * Отмена [cancelSseStream] возвращает Success с частичным результатом (как «Остановить» в чате).
+     */
+    suspend fun sseStream(path: String, bodyJson: String, onEvent: (String) -> Unit): ApiResult<Unit> =
+        withContext(Dispatchers.IO) {
+            var usedToken: String? = null
+            try {
+                val (credentials, _) = api()
+                usedToken = credentials.token
+                val request = Request.Builder()
+                    .url(credentials.toRetrofitBaseUrl() + path)
+                    .header("Authorization", "Bearer " + credentials.token.trim())
+                    .post(bodyJson.toRequestBody("application/json".toMediaType()))
+                    .build()
+                // readTimeout = 0: паузы генерации не обрываем (холодный LLM, длинные пайплайны).
+                val call = OkHttpClient.Builder()
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(0, TimeUnit.MILLISECONDS)
+                    .build()
+                    .newCall(request)
+                sseCall = call
+                call.execute().use { response ->
+                    when {
+                        response.code == 401 -> {
+                            store.clearTokenIf(usedToken.orEmpty())
+                            throw ApiError.Unauthorized()
+                        }
+                        !response.isSuccessful -> {
+                            val raw = response.body?.string().orEmpty()
+                            val message = runCatching {
+                                ApiFactory.json.decodeFromString(ErrorResponse.serializer(), raw).error
+                            }.getOrNull()
+                            throw ApiError.Server(response.code, message ?: raw.take(200))
+                        }
+                    }
+                    val source = response.body?.source() ?: throw ApiError.BadResponse("Пустой ответ сервера")
+                    val buffer = StringBuilder()
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val line = source.readUtf8Line() ?: break
+                        buffer.append(line).append('\n')
+                        SseParser.drain(buffer, onEvent)
+                    }
+                    ApiResult.Success(Unit)
+                }
+            } catch (e: CancellationException) {
+                sseCall?.cancel()
+                throw e
+            } catch (e: ApiError.Unauthorized) {
+                usedToken?.let { store.clearTokenIf(it) }
+                ApiResult.Failure(e)
+            } catch (e: ApiError) {
+                ApiResult.Failure(e)
+            } catch (e: java.io.IOException) {
+                if (sseCall?.isCanceled() == true) ApiResult.Success(Unit) else ApiResult.Failure(ApiError.Network(e))
+            } catch (e: Exception) {
+                ApiResult.Failure(ApiError.Network(e))
+            }
+        }
+
     /**
      * SSE-стрим ответа POST /api/chat/{sessionId}: безымянные события `data: <JSON>`,
      * разделитель `\n\n`, конец потока = закрытие соединения сервером.
@@ -356,6 +486,192 @@ class ArtelRepository(private val store: CredentialsStore) {
                 ApiResult.Failure(ApiError.Network(e))
             }
         }
+
+    /* ---------- RAG ---------- */
+
+    suspend fun ragChats(): ApiResult<RagChatListResponse> = call { api ->
+        api.ragChatList()
+    }
+
+    suspend fun ragAliases(): ApiResult<RagChatsResponse> = call { api ->
+        api.ragChatCatalog()
+    }
+
+    suspend fun createRagChat(title: String?): ApiResult<RagChatCreatedResponse> = call { api ->
+        api.createRagChat(RagChatCreateRequest(title))
+    }
+
+    suspend fun ragAliasAdd(name: String, chatKey: String, topicId: Int?): ApiResult<RagAliasActionResponse> =
+        call { api ->
+            api.ragAliasAction(RagAliasActionRequest(action = "add", name = name, chatKey = chatKey, topicId = topicId))
+        }
+
+    suspend fun ragAliasRm(name: String): ApiResult<RagAliasActionResponse> = call { api ->
+        api.ragAliasAction(RagAliasActionRequest(action = "rm", name = name))
+    }
+
+    suspend fun ragChat(chatId: String): ApiResult<RagChatDetailResponse> = call { api ->
+        api.ragChat(chatId)
+    }
+
+    suspend fun patchRagChat(chatId: String, request: RagChatPatchRequest): ApiResult<RagChatPatchResponse> =
+        call { api -> api.patchRagChat(chatId, request) }
+
+    suspend fun ragNotes(): ApiResult<RagNotesResponse> = call { api ->
+        api.ragNotes()
+    }
+
+    suspend fun ragNoteAdd(title: String, text: String): ApiResult<RagNoteAddResponse> = call { api ->
+        api.addRagNote(RagNoteAddRequest(title, text))
+    }
+
+    suspend fun ragNoteDelete(source: String): ApiResult<RagNoteDeleteResponse> = call { api ->
+        api.deleteRagNote(RagNoteDeleteRequest(source))
+    }
+
+    /* ---------- Telegram ---------- */
+
+    suspend fun tgTop(chatKey: String, topicId: Int?, limit: Int?, by: String?): ApiResult<TgTopResponse> =
+        call { api -> api.tgTop(chatKey, topicId, limit, by) }
+
+    suspend fun tgCollect(
+        chatRef: String,
+        topicId: Int?,
+        limit: Int?,
+        reset: Boolean?,
+        onEvent: (TgCollectEvent) -> Unit,
+    ): ApiResult<Unit> {
+        val body = ApiFactory.json.encodeToString(TgCollectRequest.serializer(), TgCollectRequest(chatRef, topicId, limit, reset))
+        return sseStream("api/tg/collect", body) { raw -> TgSseParser.parseCollect(raw)?.let(onEvent) }
+    }
+
+    suspend fun telegramHistory(limit: Int?): ApiResult<TelegramHistoryResponse> = call { api ->
+        api.telegramHistory(limit)
+    }
+
+    suspend fun telegramPublish(text: String, parseMode: String?): ApiResult<TelegramPublishResponse> = call { api ->
+        api.telegramPublish(TelegramPublishRequest(text, parseMode))
+    }
+
+    suspend fun evoluteAgent(
+        query: String,
+        history: List<EvoluteHistoryMessageDto>,
+        k: Int?,
+        llm: String?,
+        noRag: Boolean,
+        onEvent: (EvoluteEvent) -> Unit,
+    ): ApiResult<Unit> {
+        val body = ApiFactory.json.encodeToString(
+            EvoluteAgentRequest.serializer(),
+            EvoluteAgentRequest(query, history, k, llm, noRag),
+        )
+        return sseStream("api/evolute/agent", body) { raw -> TgSseParser.parseEvolute(raw)?.let(onEvent) }
+    }
+
+    /** «Остановить» для evolute-стрима: тот же generic SSE-cancel. */
+    fun cancelEvoluteStream() {
+        cancelSseStream()
+    }
+
+    /* ---------- MCP ---------- */
+
+    suspend fun mcpTools(): ApiResult<McpToolsResponse> = call { api ->
+        api.mcpTools()
+    }
+
+    suspend fun mcpCall(tool: String, args: JsonObject?): ApiResult<McpCallResponse> = call { api ->
+        api.mcpCall(McpCallRequest(tool, args))
+    }
+
+    /* ---------- Blog ---------- */
+
+    suspend fun blogs(): ApiResult<BlogsResponse> = call { api ->
+        api.blogs()
+    }
+
+    suspend fun blog(slug: String): ApiResult<BlogDetailResponse> = call { api ->
+        api.blog(slug)
+    }
+
+    /** PATCH /api/blogs/{slug}: null-поля означают «сбросить» — сервер различает
+     *  «не передано» и explicit null, поэтому кодируем null'ы явно. */
+    suspend fun patchBlog(slug: String, request: PatchBlogRequest): ApiResult<PatchBlogResponse> = call { api ->
+        val body = patchJson.encodeToString(PatchBlogRequest.serializer(), request)
+            .toRequestBody("application/json".toMediaType())
+        api.patchBlog(slug, body)
+    }
+
+    suspend fun blogPosts(limit: Int?, blog: String?): ApiResult<BlogPostsResponse> = call { api ->
+        api.blogPosts(limit, blog)
+    }
+
+    suspend fun blogPost(id: Long): ApiResult<BlogPostResponse> = call { api ->
+        api.blogPost(id)
+    }
+
+    suspend fun patchBlogPost(id: Long, content: String): ApiResult<PatchPostResponse> = call { api ->
+        api.patchBlogPost(id, PatchPostRequest(content))
+    }
+
+    suspend fun deleteBlogPost(id: Long): ApiResult<OkResponse> = call { api ->
+        requireSuccess(api.deleteBlogPost(id), "Не удалось удалить пост")
+    }
+
+    suspend fun publishBlogPost(id: Long): ApiResult<PublishPostResponse> = call { api ->
+        api.publishBlogPost(id)
+    }
+
+    suspend fun generateBlogPosts(slug: String, request: GeneratePostsRequest): ApiResult<GeneratePostsResponse> =
+        call { api -> api.generateBlogPosts(slug, request) }
+
+    suspend fun blogStyle(blog: String?): ApiResult<StyleSamplesResponse> = call { api ->
+        api.blogStyle(blog)
+    }
+
+    suspend fun addBlogStyle(request: AddStyleSampleRequest): ApiResult<AddStyleSampleResponse> = call { api ->
+        api.addBlogStyle(request)
+    }
+
+    suspend fun generateDigest(request: DigestGenerateRequest): ApiResult<DigestResponse> = call { api ->
+        api.generateDigest(request)
+    }
+
+    suspend fun blogNews(request: BlogNewsRequest, onEvent: (BlogStreamEvent.NewsEvent) -> Unit): ApiResult<Unit> {
+        val body = ApiFactory.json.encodeToString(BlogNewsRequest.serializer(), request)
+        val buffer = StringBuilder()
+        return sseStream("api/blog/news", body) { raw ->
+            buffer.append(raw).append("\n\n")
+            BlogSseParser.drainNews(buffer, onEvent)
+        }
+    }
+
+    suspend fun blogScout(request: BlogScoutRequest, onEvent: (BlogStreamEvent.ScoutEvent) -> Unit): ApiResult<Unit> {
+        val body = ApiFactory.json.encodeToString(BlogScoutRequest.serializer(), request)
+        val buffer = StringBuilder()
+        return sseStream("api/blog/scout", body) { raw ->
+            buffer.append(raw).append("\n\n")
+            BlogSseParser.drainScout(buffer, onEvent)
+        }
+    }
+
+    suspend fun blogPipeline(): ApiResult<BlogPipelineDto> = call { api ->
+        api.blogPipeline()
+    }
+
+    suspend fun blogPipelineAction(request: BlogPipelineTransitionRequest): ApiResult<BlogPipelineDto> = call { api ->
+        api.blogPipelineTransition(request)
+    }
+
+    suspend fun blogPipelineAction(request: BlogPipelineResetRequest): ApiResult<BlogPipelineDto> = call { api ->
+        api.blogPipelineReset(request)
+    }
+
+    suspend fun blogSchedule(slug: String): ApiResult<BlogScheduleResponse> = call { api ->
+        api.blogSchedule(slug)
+    }
+
+    suspend fun putBlogSchedule(slug: String, request: PutBlogScheduleRequest): ApiResult<PutBlogScheduleResponse> =
+        call { api -> api.putBlogSchedule(slug, request) }
 
     suspend fun createTicket(subject: String, body: String, contact: String?): ApiResult<CreatedIdResponse> =
         call { api ->

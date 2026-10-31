@@ -42,6 +42,7 @@ import ru.memo7.artel.di.AppContainer
 import ru.memo7.artel.ui.components.isCompactLayout
 import ru.memo7.artel.ui.screens.assistant.AssistantScreen
 import ru.memo7.artel.ui.screens.automation.AutomationScreen
+import ru.memo7.artel.ui.screens.blog.BlogHubScreen
 import ru.memo7.artel.ui.screens.calendar.CalendarScreen
 import ru.memo7.artel.ui.screens.course.CourseDetailScreen
 import ru.memo7.artel.ui.screens.course.CourseScreen
@@ -49,11 +50,19 @@ import ru.memo7.artel.ui.screens.chat.ChatScreen
 import ru.memo7.artel.ui.screens.chat.ChatsScreen
 import ru.memo7.artel.ui.screens.dashboard.DashboardScreen
 import ru.memo7.artel.ui.screens.gamification.GamificationScreen
+import ru.memo7.artel.ui.screens.mcp.McpScreen
 import ru.memo7.artel.ui.screens.notifications.NotificationsScreen
 import ru.memo7.artel.ui.screens.projects.ProjectDetailScreen
 import ru.memo7.artel.ui.screens.projects.ProjectsScreen
+import ru.memo7.artel.ui.screens.rag.RagChatDetailScreen
+import ru.memo7.artel.ui.screens.rag.RagChatsScreen
+import ru.memo7.artel.ui.screens.rag.RagHubScreen
+import ru.memo7.artel.ui.screens.rag.RagIndexScreen
+import ru.memo7.artel.ui.screens.rag.RagNotesScreen
+import ru.memo7.artel.ui.screens.rag.RagQueryScreen
 import ru.memo7.artel.ui.screens.settings.SettingsScreen
 import ru.memo7.artel.ui.screens.support.SupportScreen
+import ru.memo7.artel.ui.screens.tg.TgHubScreen
 import ru.memo7.artel.ui.screens.todos.TodosScreen
 
 object Routes {
@@ -72,9 +81,19 @@ object Routes {
     const val CHAT = "chat"
     const val CHAT_DETAIL = "chat/{sessionId}"
     const val PROJECT_DETAIL = "project/{projectId}"
+    const val RAG = "rag"
+    const val RAG_QUERY = "rag/query"
+    const val RAG_CHATS = "rag/chats"
+    const val RAG_CHAT_DETAIL = "rag/chat/{chatId}"
+    const val RAG_INDEX = "rag/index"
+    const val RAG_NOTES = "rag/notes"
+    const val TG = "tg"
+    const val BLOG = "blog"
+    const val MCP = "mcp"
     fun projectDetail(id: Long) = "project/$id"
     fun courseDetail(slug: String) = "course/$slug"
     fun chatDetail(sessionId: String) = "chat/$sessionId"
+    fun ragChatDetail(chatId: String) = "rag/chat/$chatId"
 }
 
 /** Полное [label] доступен TalkBack через contentDescription иконки; [shortLabel] рисуется. */
@@ -182,6 +201,10 @@ fun ArtelRoot(container: AppContainer) {
                     onOpenTodos = { navController.navigate(Routes.TODOS) },
                     onOpenCourse = { navController.navigate(Routes.COURSE) },
                     onOpenChat = { navController.navigate(Routes.CHAT) },
+                    onOpenRag = { navController.navigate(Routes.RAG) },
+                    onOpenTg = { navController.navigate(Routes.TG) },
+                    onOpenBlog = { navController.navigate(Routes.BLOG) },
+                    onOpenMcp = { navController.navigate(Routes.MCP) },
                 )
             }
             composable(Routes.PROJECTS) {
@@ -254,6 +277,52 @@ fun ArtelRoot(container: AppContainer) {
                     projectId = projectId,
                     onBack = { navController.popBackStack() },
                 )
+            }
+            composable(Routes.RAG) {
+                RagHubScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                    onOpenQuery = { navController.navigate(Routes.RAG_QUERY) },
+                    onOpenChats = { navController.navigate(Routes.RAG_CHATS) },
+                    onOpenIndex = { navController.navigate(Routes.RAG_INDEX) },
+                    onOpenNotes = { navController.navigate(Routes.RAG_NOTES) },
+                )
+            }
+            composable(Routes.RAG_QUERY) {
+                RagQueryScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.RAG_CHATS) {
+                RagChatsScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                    onOpenChat = { chatId -> navController.navigate(Routes.ragChatDetail(chatId)) },
+                )
+            }
+            composable(
+                route = Routes.RAG_CHAT_DETAIL,
+                arguments = listOf(navArgument("chatId") { type = NavType.StringType }),
+            ) { entry ->
+                val chatId = entry.arguments?.getString("chatId").orEmpty()
+                RagChatDetailScreen(
+                    container = container,
+                    chatId = chatId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Routes.RAG_INDEX) {
+                RagIndexScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.RAG_NOTES) {
+                RagNotesScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.TG) {
+                TgHubScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.BLOG) {
+                BlogHubScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.MCP) {
+                McpScreen(container = container, onBack = { navController.popBackStack() })
             }
         }
     }

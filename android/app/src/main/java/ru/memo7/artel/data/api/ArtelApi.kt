@@ -1,11 +1,15 @@
 package ru.memo7.artel.data.api
 
 import okhttp3.ResponseBody
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.Streaming
@@ -99,4 +103,119 @@ interface ArtelApi {
 
     @GET("api/course/lessons/{slug}")
     suspend fun courseLesson(@Path("slug") slug: String): CourseLessonResponse
+
+    /* ---------- RAG ---------- */
+
+    @GET("api/rag/chats")
+    suspend fun ragChatCatalog(): RagChatsResponse
+
+    @POST("api/rag/chats")
+    suspend fun ragAliasAction(@Body body: RagAliasActionRequest): RagAliasActionResponse
+
+    @GET("api/rag/chat")
+    suspend fun ragChatList(): RagChatListResponse
+
+    @POST("api/rag/chat")
+    suspend fun createRagChat(@Body body: RagChatCreateRequest): RagChatCreatedResponse
+
+    @GET("api/rag/chat/{id}")
+    suspend fun ragChat(@Path("id") id: String): RagChatDetailResponse
+
+    @PATCH("api/rag/chat/{id}")
+    suspend fun patchRagChat(@Path("id") id: String, @Body body: RagChatPatchRequest): RagChatPatchResponse
+
+    @GET("api/rag/notes")
+    suspend fun ragNotes(): RagNotesResponse
+
+    @POST("api/rag/notes")
+    suspend fun addRagNote(@Body body: RagNoteAddRequest): RagNoteAddResponse
+
+    @HTTP(method = "DELETE", path = "api/rag/notes", hasBody = true)
+    suspend fun deleteRagNote(@Body body: RagNoteDeleteRequest): RagNoteDeleteResponse
+
+    /* ---------- Telegram ---------- */
+
+    @GET("api/tg/top")
+    suspend fun tgTop(
+        @Query("chatKey") chatKey: String,
+        @Query("topicId") topicId: Int? = null,
+        @Query("limit") limit: Int? = null,
+        @Query("by") by: String? = null,
+    ): TgTopResponse
+
+    @GET("api/telegram/history")
+    suspend fun telegramHistory(@Query("limit") limit: Int? = null): TelegramHistoryResponse
+
+    @POST("api/telegram/publish")
+    suspend fun telegramPublish(@Body body: TelegramPublishRequest): TelegramPublishResponse
+
+    /* ---------- MCP ---------- */
+
+    @GET("api/mcp/tools")
+    suspend fun mcpTools(): McpToolsResponse
+
+    @POST("api/mcp/call")
+    suspend fun mcpCall(@Body body: McpCallRequest): McpCallResponse
+
+    /* ---------- Blog ---------- */
+
+    @GET("api/blogs")
+    suspend fun blogs(): BlogsResponse
+
+    @GET("api/blogs/{slug}")
+    suspend fun blog(@Path("slug") slug: String): BlogDetailResponse
+
+    @PATCH("api/blogs/{slug}")
+    suspend fun patchBlog(@Path("slug") slug: String, @Body body: RequestBody): PatchBlogResponse
+
+    @GET("api/blog/posts")
+    suspend fun blogPosts(
+        @Query("limit") limit: Int? = null,
+        @Query("blog") blog: String? = null,
+    ): BlogPostsResponse
+
+    @GET("api/blog/posts/{id}")
+    suspend fun blogPost(@Path("id") id: Long): BlogPostResponse
+
+    @PATCH("api/blog/posts/{id}")
+    suspend fun patchBlogPost(@Path("id") id: Long, @Body body: PatchPostRequest): PatchPostResponse
+
+    @DELETE("api/blog/posts/{id}")
+    suspend fun deleteBlogPost(@Path("id") id: Long): Response<OkResponse>
+
+    @POST("api/blog/posts/{id}/publish")
+    suspend fun publishBlogPost(@Path("id") id: Long): PublishPostResponse
+
+    @POST("api/blogs/{slug}/posts")
+    suspend fun generateBlogPosts(
+        @Path("slug") slug: String,
+        @Body body: GeneratePostsRequest,
+    ): GeneratePostsResponse
+
+    @GET("api/blog/style")
+    suspend fun blogStyle(@Query("blog") blog: String? = null): StyleSamplesResponse
+
+    @POST("api/blog/style")
+    suspend fun addBlogStyle(@Body body: AddStyleSampleRequest): AddStyleSampleResponse
+
+    @POST("api/blog/digest/generate")
+    suspend fun generateDigest(@Body body: DigestGenerateRequest): DigestResponse
+
+    @GET("api/blog/pipeline")
+    suspend fun blogPipeline(): BlogPipelineDto
+
+    @POST("api/blog/pipeline")
+    suspend fun blogPipelineTransition(@Body body: BlogPipelineTransitionRequest): BlogPipelineDto
+
+    @POST("api/blog/pipeline")
+    suspend fun blogPipelineReset(@Body body: BlogPipelineResetRequest): BlogPipelineDto
+
+    @GET("api/blogs/{slug}/schedule")
+    suspend fun blogSchedule(@Path("slug") slug: String): BlogScheduleResponse
+
+    @PUT("api/blogs/{slug}/schedule")
+    suspend fun putBlogSchedule(
+        @Path("slug") slug: String,
+        @Body body: PutBlogScheduleRequest,
+    ): PutBlogScheduleResponse
 }
