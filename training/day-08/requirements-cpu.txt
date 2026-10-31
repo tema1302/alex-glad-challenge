@@ -1,0 +1,9 @@
+# CPU-only окружение для train_facts.py (День 8, эксперимент «факты в весах»).
+# Версии совпадают с рабочим стеком Kaggle-прогонов day-07/09 (run.json).
+#
+# Установка (venv обязателен, чтобы не смешивать с системным Python):
+#   python -m venv ../.venv
+#   ../.venv/Scripts/pip install --index-url https://download.pytorch.org/whl/cpu -r requirements-cpu.txt
+torch==2.6.0
+transformers==4.46.3
+peft==0.13.2
