@@ -1,7 +1,7 @@
 // /api/summary — сводка ожидающих задач + опц. публикация в TG (ТЗ §8.6 cutover).
 // GET  → getTodoDb().getPendingSummary() (текст) + publishable-флаг. Только чтение.
 // POST {publish:true} → единый helper publishToTelegram('summary') [гейт TG-env →
-//   chokepoint → outbox → карта ошибок]. requireAuth — второй auth-слой.
+//   chokepoint → outbox → карта ошибок]. requireApiAuth — второй auth-слой.
 // server-only: core/ через chokepoint.
 import 'server-only';
 import { NextRequest } from 'next/server';
@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 import { summaryPublishSchema } from '../../../lib/shared/forms';
 import { getTodoDb, withDb } from '../../../lib/server/db';
 import { isTelegramConfigured } from '../../../lib/server/challenge';
-import { requireAuth } from '../../../lib/auth';
+import { requireApiAuth } from '../../../lib/auth';
 import { publishToTelegram, tgPublishResponse } from '../../../lib/server/tg-publish';
 
 export const runtime = 'nodejs';
@@ -21,7 +21,7 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const parsed = summaryPublishSchema.safeParse(await req.json().catch(() => ({})));

@@ -15,7 +15,7 @@ import type { SseRagIndexEvent, SseRagIndexStrategyStat } from '../../../../lib/
 import { getRagStore, withDb } from '../../../../lib/server/db';
 import { runIndexing, DATA_DIR } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
-import { requireAuth } from '../../../../lib/auth';
+import { requireApiAuth } from '../../../../lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,7 +25,7 @@ const RAG_DOCS_DIR = path.resolve(DATA_DIR, '..', 'src', 'data', 'rag-sample');
 
 export async function POST(req: NextRequest): Promise<Response> {
   // Второй auth-слой: route мутирует rag.sqlite (reindex) — как /api/rag/index-tg.
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const parsed = ragIndexSchema.safeParse(await req.json().catch(() => ({})));

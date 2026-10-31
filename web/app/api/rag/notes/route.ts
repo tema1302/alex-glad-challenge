@@ -2,7 +2,7 @@
 // POST — добавить заметку: JSON {title,text} ИЛИ multipart (file: .txt/.md/.markdown
 // ≤512КБ, title опц. — иначе имя файла). DELETE — удалить заметку по source (note://).
 // GET — полоса «что в базе»: счётчики всех партиций (RagStore.count) + список заметок.
-// requireAuth — второй auth-слой (middleware '/api/:path*' — первый); read-only GET
+// requireApiAuth — второй auth-слой (middleware '/api/:path*' — первый); read-only GET
 // тоже под ним: список заметок — приватные данные владельца. server-only.
 import 'server-only';
 import { NextRequest } from 'next/server';
@@ -14,7 +14,7 @@ import {
   NOTE_FILE_EXT,
   NOTE_FILE_MAX_BYTES,
 } from '../../../../lib/shared/forms';
-import { requireAuth } from '../../../../lib/auth';
+import { requireApiAuth } from '../../../../lib/auth';
 import { getRagStore, withDb } from '../../../../lib/server/db';
 import { clean, ingestNote, makeEmbedder } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
@@ -34,7 +34,7 @@ function fail(e: unknown): Response {
 
 export async function POST(req: NextRequest): Promise<Response> {
   // Второй auth-слой (день 36): запись в rag.sqlite.
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const contentType = req.headers.get('content-type') ?? '';
@@ -98,7 +98,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 }
 
 export async function DELETE(req: NextRequest): Promise<Response> {
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const parsed = noteDeleteSchema.safeParse(await req.json().catch(() => ({})));
@@ -122,7 +122,7 @@ export async function DELETE(req: NextRequest): Promise<Response> {
 }
 
 export async function GET(req: NextRequest): Promise<Response> {
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   try {

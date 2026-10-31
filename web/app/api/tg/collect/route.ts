@@ -11,14 +11,14 @@ import { tgCollectSchema } from '../../../../lib/shared/forms';
 import type { SseTgCollectEvent } from '../../../../lib/shared/sse';
 import { executeTgCollect } from '../../../../lib/server/tg-collect-adapter';
 import { safeMessage } from '../../../../lib/server/safe-message';
-import { requireAuth } from '../../../../lib/auth';
+import { requireApiAuth } from '../../../../lib/auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest): Promise<Response> {
   // Второй auth-слой (день 36): MTProto-сбор — внешний credential-тяжёлый эффект.
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const parsed = tgCollectSchema.safeParse(await req.json().catch(() => ({})));

@@ -1,7 +1,7 @@
 // Route Handler: POST /api/blog/digest/generate — черновик еженедельного дайджеста
 // одним LLM-вызовом (админ-фича «Дайджест одним кликом»). Отправки в TG здесь НЕТ —
 // публикация только вручную через существующий /api/telegram/publish. Путь:
-//   requireAuth (второй слой; middleware гейтит — путь НЕ в PUBLIC_PATHS) → zod
+//   requireApiAuth (второй слой; middleware гейтит — путь НЕ в PUBLIC_PATHS) → zod
 //   digestGenerateSchema (days 1..30, дефолт 7) → withDb(newsSince) [read-only:
 //   по published_at, включая used; пул pipeline-новостей не расходуется] →
 //   409 при пустом окне (LLM не вызывается) → LLM ВНЕ withDb-мьютекса (cloud-first,
@@ -15,7 +15,7 @@ import 'server-only';
 import { NextRequest } from 'next/server';
 
 import { digestGenerateSchema } from '../../../../../lib/shared/forms';
-import { requireAuth } from '../../../../../lib/auth';
+import { requireApiAuth } from '../../../../../lib/auth';
 import { getBlogDb, withDb } from '../../../../../lib/server/db';
 import { pickLlmClient } from '../../../../../lib/server/llm';
 import { getKeysStatus } from '../../../../../lib/server/env';
@@ -75,7 +75,7 @@ function clampDigest(raw: string): { text: string; truncated: boolean } {
 export async function POST(req: NextRequest): Promise<Response> {
   // Второй auth-слой: генерация жжёт токены владельца — ошибка в middleware-matcher
   // не должна открывать бесплатный LLM-endpoint.
-  const denied = requireAuth(req);
+  const denied = requireApiAuth(req);
   if (denied) return denied;
 
   const parsed = digestGenerateSchema.safeParse(await req.json().catch(() => ({})));

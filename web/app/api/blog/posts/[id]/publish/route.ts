@@ -1,12 +1,12 @@
 // /api/blog/posts/[id]/publish — публикация поста в Telegram-канал (ТЗ §7.3).
 // POST → реальная отправка через единый helper publishToTelegram('blog', id)
 // [гейт TG-env → chokepoint publishPost → outbox → карта ошибок §7.4].
-// requireAuth — второй auth-слой (реальный внешний эффект). server-only.
+// requireApiAuth — второй auth-слой (реальный внешний эффект). server-only.
 import 'server-only';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getBlogDb, withDb } from '../../../../../../lib/server/db';
-import { requireAuth } from '../../../../../../lib/auth';
+import { requireApiAuth } from '../../../../../../lib/auth';
 import { publishToTelegram, tgPublishResponse } from '../../../../../../lib/server/tg-publish';
 
 export const runtime = 'nodejs';
@@ -16,7 +16,7 @@ export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const denied = requireAuth(_req);
+  const denied = requireApiAuth(_req);
   if (denied) return denied;
 
   const { id: idStr } = await params;
