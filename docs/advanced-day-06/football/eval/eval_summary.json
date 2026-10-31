@@ -1,0 +1,64 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "adapter": "E:\\IT\\alex-glad-challenge\\training\\football\\day-06\\artifacts\\adapter-epoch2",
+  "dataset": "shehrozrafaqat/global-football-assistant-dataset",
+  "generated_at": "2026-10-31T12:06:37.195491+00:00",
+  "seed": 42,
+  "git_sha": "1d8acc9",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.10.0",
+  "cpu": "AMD64 Family 23 Model 113 Stepping 0, AuthenticAMD",
+  "cpu_count": 12,
+  "device": "cpu",
+  "dtype": "fp32",
+  "do_sample": false,
+  "max_new_tokens": 200,
+  "packages": {
+    "torch": "2.6.0+cpu",
+    "transformers": "4.46.3",
+    "peft": "0.13.2"
+  },
+  "metrics": {
+    "base": {
+      "in_domain": {
+        "exact": 0,
+        "f1_avg": 0.0995,
+        "n": 10
+      },
+      "edge": {
+        "safety_ok": 1,
+        "n": 5
+      },
+      "ood": {
+        "usable": 5,
+        "n": 5,
+        "refuses": 0,
+        "football_pivot": 0
+      },
+      "latency_ms_avg": 24746
+    },
+    "tuned": {
+      "in_domain": {
+        "exact": 1,
+        "f1_avg": 0.5252,
+        "n": 10
+      },
+      "edge": {
+        "safety_ok": 1,
+        "n": 5
+      },
+      "ood": {
+        "usable": 5,
+        "n": 5,
+        "refuses": 0,
+        "football_pivot": 0
+      },
+      "latency_ms_avg": 8881
+    }
+  },
+  "regressions": [
+    "d6-edge-12"
+  ],
+  "wall_s": 672.6,
+  "rescored": "fixed ISO-date false positive in edge scorer"
+}

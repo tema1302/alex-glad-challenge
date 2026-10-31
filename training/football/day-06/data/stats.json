@@ -1,0 +1,71 @@
+{
+  "source": "shehrozrafaqat/global-football-assistant-dataset",
+  "rows": 9600,
+  "fact_ids": 323,
+  "duplicate_user_prompts": 0,
+  "answer_chars": {
+    "avg": 225.9,
+    "p95": 344
+  },
+  "question_chars": {
+    "avg": 51.5,
+    "p95": 74
+  },
+  "category_counts": {
+    "FIFA and global football": 480,
+    "positions and player roles": 364,
+    "major domestic leagues": 4290,
+    "tactics and formations": 700,
+    "rules and refereeing": 896,
+    "date-aware safety": 180,
+    "continental competitions": 768,
+    "analytics and terminology": 812,
+    "notable clubs": 620,
+    "football history and culture": 364,
+    "comparison and reasoning": 126
+  },
+  "seed": 42,
+  "eval": {
+    "total": 20,
+    "in-domain": 10,
+    "edge": 5,
+    "ood": 5,
+    "held_out_facts": [
+      "analytics_and_terminology__football_analytics__clean_sheet",
+      "comparison__4_3_3__4_2_3_1",
+      "continental_competitions__club_and_national_competitions__afc_asian_cup",
+      "date_aware_safety__current_information_handling__betting_odds",
+      "date_aware_safety__current_information_handling__competition_draw",
+      "date_aware_safety__current_information_handling__current_league_table",
+      "date_aware_safety__current_information_handling__current_transfer_rumours",
+      "date_aware_safety__current_information_handling__disciplinary_suspensions",
+      "fifa_and_global_football__fifa_competitions__fifa",
+      "football_history_and_culture__rivalries__der_klassiker",
+      "major_domestic_leagues__premier_league__chelsea",
+      "notable_clubs__argentine_primera_division__boca_juniors",
+      "positions_and_player_roles__positions__attacking_midfielder",
+      "rules_and_refereeing__core_rules__added_time",
+      "tactics_and_formations__tactical_concepts__3_4_3"
+    ]
+  },
+  "split": {
+    "train": 1300,
+    "val": 160,
+    "train_facts": 280,
+    "val_facts": 28,
+    "method": "group by fact_id, sha256(seed:fact_id)<0.9 -> train"
+  },
+  "train_category_counts": {
+    "major domestic leagues": 595,
+    "notable clubs": 78,
+    "positions and player roles": 54,
+    "FIFA and global football": 65,
+    "tactics and formations": 80,
+    "football history and culture": 48,
+    "analytics and terminology": 108,
+    "rules and refereeing": 126,
+    "continental competitions": 106,
+    "date-aware safety": 18,
+    "comparison and reasoning": 22
+  }
+}

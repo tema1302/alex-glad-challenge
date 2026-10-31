@@ -1,0 +1,20 @@
+# Параметры запуска обучения (train_lora.py) — футбольный трек, день 6.
+# Зеркало дефолтов argparse; фактический прогон фиксируется в artifacts/run.json.
+model: Qwen/Qwen2.5-0.5B-Instruct
+device: cpu
+dtype: fp32
+seed: 42
+epochs: 2
+batch_size: 8
+lr: 1.0e-4
+optimizer: AdamW
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+data:
+  train: data/train.jsonl   # 1300
+  val: data/val.jsonl       # 160
+loss_mask: assistant-only   # prompt-токены = -100
+batching: length-grouped    # батчи по длине, порядок батчей шафлится

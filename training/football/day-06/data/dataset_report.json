@@ -1,0 +1,33 @@
+{
+  "dataset_name": "Global Football Knowledge Assistant Synthetic ChatML Dataset",
+  "verified_date": "2026-04-23",
+  "random_seed": 20260423,
+  "source_fact_count": 302,
+  "distinct_dataset_fact_id_count": 323,
+  "derived_comparison_fact_id_count": 21,
+  "distinct_source_url_count": 27,
+  "duplicate_user_prompts": 0,
+  "bonus_evaluation_prompt_count": 240,
+  "minimum_assistant_word_count": 14,
+  "example_count": {
+    "all": 9600,
+    "train": 7680,
+    "validation": 960,
+    "test": 960
+  },
+  "category_counts": {
+    "FIFA and global football": 480,
+    "analytics and terminology": 812,
+    "comparison and reasoning": 126,
+    "continental competitions": 768,
+    "date-aware safety": 180,
+    "football history and culture": 364,
+    "major domestic leagues": 4290,
+    "notable clubs": 620,
+    "positions and player roles": 364,
+    "rules and refereeing": 896,
+    "tactics and formations": 700
+  },
+  "format": "JSONL rows with messages=[user, assistant] plus metadata columns",
+  "recommended_training_file": "train.jsonl"
+}

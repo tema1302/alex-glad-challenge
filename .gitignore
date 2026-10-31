@@ -60,6 +60,10 @@ training/**/data/
 !training/day-07/data/
 !training/day-08/data/
 !training/day-09/data/
+# Футбольный трек (дни 6–10): датасеты/eval — результат задачи, в git;
+# обученные адаптеры/чекпоинты — как раньше вне git.
+!training/football/**/data/
+!training/football/**/eval/
 training/**/artifacts/
 __pycache__/
 training/.venv/
