@@ -1,0 +1,31 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "adapter": "../day-07/artifacts/adapter-epoch3",
+  "generated_at": "2026-10-31T18:33:27.469972+00:00",
+  "seed": 42,
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.10.0",
+  "packages": {
+    "torch": "2.6.0+cpu",
+    "transformers": "4.46.3",
+    "peft": "0.13.2"
+  },
+  "modes": {
+    "base-none": {
+      "avg": 0.25,
+      "n": 12,
+      "latency_ms_avg": 16667
+    },
+    "base-prompt": {
+      "avg": 0.417,
+      "n": 12,
+      "latency_ms_avg": 10363
+    },
+    "tuned": {
+      "avg": 0.333,
+      "n": 12,
+      "latency_ms_avg": 16850
+    }
+  },
+  "wall_s": 526.6
+}

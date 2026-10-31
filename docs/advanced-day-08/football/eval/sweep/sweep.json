@@ -1,0 +1,43 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "generated_at": "2026-10-31T18:22:27.766445+00:00",
+  "seed": 42,
+  "git_sha": "f051dbb",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.10.0",
+  "packages": {
+    "torch": "2.6.0+cpu",
+    "transformers": "4.46.3",
+    "peft": "0.13.2"
+  },
+  "rows": [
+    {
+      "checkpoint": "adapter-epoch1",
+      "valid_full_match": 11,
+      "valid_n": 42,
+      "valid_acc": 0.2619,
+      "ood_avg": 0.7083,
+      "ood_n": 24,
+      "latency_ms_avg": 27844
+    },
+    {
+      "checkpoint": "adapter-epoch2",
+      "valid_full_match": 12,
+      "valid_n": 42,
+      "valid_acc": 0.2857,
+      "ood_avg": 0.7083,
+      "ood_n": 24,
+      "latency_ms_avg": 24893
+    },
+    {
+      "checkpoint": "adapter-epoch3",
+      "valid_full_match": 25,
+      "valid_n": 42,
+      "valid_acc": 0.5952,
+      "ood_avg": 0.6667,
+      "ood_n": 24,
+      "latency_ms_avg": 25902
+    }
+  ],
+  "wall_s": 4211.7
+}

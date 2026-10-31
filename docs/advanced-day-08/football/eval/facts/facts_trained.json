@@ -1,0 +1,51 @@
+{
+  "model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "generated_at": "2026-10-31T16:55:58.591516+00:00",
+  "seed": 42,
+  "git_sha": "f051dbb",
+  "platform": "Windows-10-10.0.26200-SP0",
+  "python": "3.10.0",
+  "packages": {
+    "torch": "2.6.0+cpu",
+    "transformers": "4.46.3",
+    "peft": "0.13.2"
+  },
+  "train": {
+    "examples": 36,
+    "epochs": 30,
+    "batch_size": 6,
+    "lr": 0.0002,
+    "wall_s": 928.7,
+    "final_loss": 0.000603
+  },
+  "modes": {
+    "trained-none-orig": {
+      "n": 36,
+      "exact": 36,
+      "relaxed": 36,
+      "exact_acc": 1.0,
+      "latency_ms_avg": 975
+    },
+    "trained-none-para": {
+      "n": 36,
+      "exact": 14,
+      "relaxed": 14,
+      "exact_acc": 0.3889,
+      "latency_ms_avg": 886
+    },
+    "base-none": {
+      "n": 72,
+      "exact": 2,
+      "relaxed": 2,
+      "exact_acc": 0.0278,
+      "latency_ms_avg": 1036
+    },
+    "base-prompt": {
+      "n": 72,
+      "exact": 12,
+      "relaxed": 16,
+      "exact_acc": 0.1667,
+      "latency_ms_avg": 4917
+    }
+  }
+}
