@@ -1,0 +1,18 @@
+{
+  "model": "qwen2.5:0.5b-instruct",
+  "generated_at": "2026-10-31T19:45:37.868269+00:00",
+  "disk_bytes": 397807936,
+  "memory": {
+    "size": "483",
+    "processor": "MB"
+  },
+  "cold_wall_ms": 3938,
+  "warm": {
+    "wall_ms_avg": 2991,
+    "wall_ms_p95": 3000,
+    "tokens_per_sec_avg": 176.6,
+    "tokens_avg": 163
+  },
+  "sanity_reply": "```json\n{\n  \"home\": \"Челси\",\n  \"away\": \"Арсенал\",\n  \"home_score\": \"2-1\",\n  \"away_score\": \"0-0\",\n  \"scorers\": \"Мудрик (34′) и Галлагер (78′)\",\n  \"competition\": \"АПЛ\",\n  \"venue\": \"АПЛ\"\n}\n```",
+  "n_warm": 5
+}

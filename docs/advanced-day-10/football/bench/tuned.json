@@ -1,0 +1,18 @@
+{
+  "model": "qwen2.5-0.5b-football",
+  "generated_at": "2026-10-31T19:45:01.528039+00:00",
+  "disk_bytes": 397807744,
+  "memory": {
+    "size": "483",
+    "processor": "MB"
+  },
+  "cold_wall_ms": 4484,
+  "warm": {
+    "wall_ms_avg": 2553,
+    "wall_ms_p95": 2563,
+    "tokens_per_sec_avg": 143.0,
+    "tokens_avg": 70
+  },
+  "sanity_reply": "{\"home\": \"Челси\", \"away\": \"Арсенал\", \"home_score\": 2, \"away_score\": 1, \"scorers\": [\"Мудрик\", \"Галлагер\"], \"competition\": \"Амэкс\", \"venue\": \"Стэмфорд Бридж\"}",
+  "n_warm": 5
+}
