@@ -26,11 +26,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Chat
 import androidx.compose.material.icons.rounded.Checklist
+import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Extension
+import androidx.compose.material.icons.rounded.ManageSearch
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Newspaper
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.TheaterComedy
+import androidx.compose.material.icons.rounded.Webhook
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Settings
@@ -122,6 +126,10 @@ fun DashboardScreen(
     onOpenTg: () -> Unit,
     onOpenBlog: () -> Unit,
     onOpenMcp: () -> Unit,
+    onOpenSys: () -> Unit,
+    onOpenIntegrations: () -> Unit,
+    onOpenJoker: () -> Unit,
+    onOpenAntonov: () -> Unit,
 ) {
     val vm: DashboardViewModel = viewModel(
         factory = viewModelFactory { initializer { DashboardViewModel(container.repository) } }
@@ -180,6 +188,10 @@ fun DashboardScreen(
                 onOpenTg = onOpenTg,
                 onOpenBlog = onOpenBlog,
                 onOpenMcp = onOpenMcp,
+                onOpenSys = onOpenSys,
+                onOpenIntegrations = onOpenIntegrations,
+                onOpenJoker = onOpenJoker,
+                onOpenAntonov = onOpenAntonov,
             )
         }
     }
@@ -199,6 +211,10 @@ private fun DashboardContent(
     onOpenTg: () -> Unit,
     onOpenBlog: () -> Unit,
     onOpenMcp: () -> Unit,
+    onOpenSys: () -> Unit,
+    onOpenIntegrations: () -> Unit,
+    onOpenJoker: () -> Unit,
+    onOpenAntonov: () -> Unit,
 ) {
     val game = data.gamification
     Column(
@@ -499,6 +515,59 @@ private fun DashboardContent(
                 subtitle = "Инструменты и вызовы",
                 tint = MaterialTheme.colorScheme.tertiary,
                 onClick = onOpenMcp,
+            )
+        }
+
+        // System & tools section
+        Text(
+            "Система и инструменты",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.ManageSearch,
+                title = "Система",
+                subtitle = "Агент, брифинг, сводка, серверы",
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = onOpenSys,
+            )
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.Webhook,
+                title = "Интеграции",
+                subtitle = "Webhooks и inbound-хуки",
+                tint = MaterialTheme.colorScheme.secondary,
+                onClick = onOpenIntegrations,
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.TheaterComedy,
+                title = "Шутник",
+                subtitle = "Кино-шутник с температурой",
+                tint = MaterialTheme.colorScheme.tertiary,
+                onClick = onOpenJoker,
+            )
+            ParityTile(
+                modifier = Modifier.weight(1f),
+                icon = Icons.Rounded.EditNote,
+                title = "Антонов",
+                subtitle = "Переписывание и треды",
+                tint = MaterialTheme.colorScheme.primary,
+                onClick = onOpenAntonov,
             )
         }
 

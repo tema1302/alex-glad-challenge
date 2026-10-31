@@ -218,4 +218,82 @@ interface ArtelApi {
         @Path("slug") slug: String,
         @Body body: PutBlogScheduleRequest,
     ): PutBlogScheduleResponse
+
+    /* ---------- SYS (agent / briefing / summary / admin servers) ---------- */
+
+    @POST("api/agent")
+    suspend fun agent(@Body body: AgentRequest): AgentResponse
+
+    @GET("api/briefing")
+    suspend fun briefing(
+        @Query("chatKey") chatKey: String? = null,
+        @Query("topicId") topicId: Int? = null,
+    ): BriefingResponse
+
+    @GET("api/summary")
+    suspend fun summary(): SummaryResponse
+
+    @POST("api/summary")
+    suspend fun publishSummary(@Body body: SummaryPublishRequest): SummaryPublishResponse
+
+    @GET("api/admin/servers")
+    suspend fun adminServers(): AdminServersResponse
+
+    /* ---------- Integrations ---------- */
+
+    @GET("api/integrations/webhooks")
+    suspend fun webhooks(): WebhooksResponse
+
+    @POST("api/integrations/webhooks")
+    suspend fun createWebhook(@Body body: CreateWebhookRequest): Response<CreatedIdResponse>
+
+    @DELETE("api/integrations/webhooks/{id}")
+    suspend fun deleteWebhook(@Path("id") id: Long): Response<OkResponse>
+
+    @GET("api/integrations/inbound")
+    suspend fun inboundHooks(): InboundHooksResponse
+
+    @POST("api/integrations/inbound")
+    suspend fun createInboundHook(@Body body: CreateInboundHookRequest): Response<CreateInboundHookResponse>
+
+    @DELETE("api/integrations/inbound/{id}")
+    suspend fun deleteInboundHook(@Path("id") id: Long): Response<OkResponse>
+
+    /* ---------- Chat extras (joker / antonov / panels) ---------- */
+
+    @GET("api/joke/session")
+    suspend fun jokerSession(): JokerSessionResponse
+
+    @PATCH("api/joke/session")
+    suspend fun resetJokerSession(@Body body: JokerResetRequest): JokerSessionResponse
+
+    @POST("api/antonov/rewrite")
+    suspend fun antonovRewrite(@Body body: AntonovRewriteRequest): AntonovRewriteResponse
+
+    @POST("api/antonov/thread")
+    suspend fun antonovThread(@Body body: AntonovThreadRequest): AntonovThreadResponse
+
+    @GET("api/chat/{sessionId}/memory")
+    suspend fun chatMemory(@Path("sessionId") sessionId: String): MemoryViewDto
+
+    @POST("api/chat/{sessionId}/memory")
+    suspend fun chatMemoryAction(@Path("sessionId") sessionId: String, @Body body: MemoryActionRequest): MemoryActionResponse
+
+    @GET("api/chat/{sessionId}/branch")
+    suspend fun chatBranches(@Path("sessionId") sessionId: String): BranchViewDto
+
+    @POST("api/chat/{sessionId}/branch")
+    suspend fun chatBranchAction(@Path("sessionId") sessionId: String, @Body body: BranchActionRequest): BranchActionResponse
+
+    @GET("api/chat/{sessionId}/profile")
+    suspend fun chatProfile(@Path("sessionId") sessionId: String): ProfileViewDto
+
+    @POST("api/chat/{sessionId}/profile")
+    suspend fun chatProfileAction(@Path("sessionId") sessionId: String, @Body body: ProfileActionRequest): ProfileActionResponse
+
+    @GET("api/chat/{sessionId}/constraints")
+    suspend fun chatConstraints(@Path("sessionId") sessionId: String): ConstraintsViewDto
+
+    @POST("api/chat/{sessionId}/constraints")
+    suspend fun chatConstraintsAction(@Path("sessionId") sessionId: String, @Body body: ConstraintsActionRequest): ConstraintsActionResponse
 }

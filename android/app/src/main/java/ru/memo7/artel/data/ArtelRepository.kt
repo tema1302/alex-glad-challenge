@@ -70,6 +70,36 @@ import ru.memo7.artel.data.api.RagNoteDeleteRequest
 import ru.memo7.artel.data.api.RagNoteDeleteResponse
 import ru.memo7.artel.data.api.RagNotesResponse
 import ru.memo7.artel.data.api.SseParser
+import ru.memo7.artel.data.api.AdminServersResponse
+import ru.memo7.artel.data.api.AgentRequest
+import ru.memo7.artel.data.api.AgentResponse
+import ru.memo7.artel.data.api.AntonovRewriteRequest
+import ru.memo7.artel.data.api.AntonovRewriteResponse
+import ru.memo7.artel.data.api.AntonovThreadRequest
+import ru.memo7.artel.data.api.AntonovThreadResponse
+import ru.memo7.artel.data.api.BranchActionRequest
+import ru.memo7.artel.data.api.BranchActionResponse
+import ru.memo7.artel.data.api.BranchViewDto
+import ru.memo7.artel.data.api.BriefingResponse
+import ru.memo7.artel.data.api.ConstraintsActionRequest
+import ru.memo7.artel.data.api.ConstraintsActionResponse
+import ru.memo7.artel.data.api.ConstraintsViewDto
+import ru.memo7.artel.data.api.CreateInboundHookRequest
+import ru.memo7.artel.data.api.CreateInboundHookResponse
+import ru.memo7.artel.data.api.CreateWebhookRequest
+import ru.memo7.artel.data.api.InboundHooksResponse
+import ru.memo7.artel.data.api.JokerResetRequest
+import ru.memo7.artel.data.api.JokerSessionResponse
+import ru.memo7.artel.data.api.MemoryActionRequest
+import ru.memo7.artel.data.api.MemoryActionResponse
+import ru.memo7.artel.data.api.MemoryViewDto
+import ru.memo7.artel.data.api.ProfileActionRequest
+import ru.memo7.artel.data.api.ProfileActionResponse
+import ru.memo7.artel.data.api.ProfileViewDto
+import ru.memo7.artel.data.api.SummaryPublishRequest
+import ru.memo7.artel.data.api.SummaryPublishResponse
+import ru.memo7.artel.data.api.SummaryResponse
+import ru.memo7.artel.data.api.WebhooksResponse
 import ru.memo7.artel.data.api.StyleSamplesResponse
 import ru.memo7.artel.data.api.TelegramHistoryResponse
 import ru.memo7.artel.data.api.TelegramPublishRequest
@@ -672,6 +702,103 @@ class ArtelRepository(private val store: CredentialsStore) {
 
     suspend fun putBlogSchedule(slug: String, request: PutBlogScheduleRequest): ApiResult<PutBlogScheduleResponse> =
         call { api -> api.putBlogSchedule(slug, request) }
+
+    /* ---------- SYS ---------- */
+
+    suspend fun agent(prompt: String, llm: String?): ApiResult<AgentResponse> = call { api ->
+        api.agent(AgentRequest(prompt, llm))
+    }
+
+    suspend fun briefing(chatKey: String?, topicId: Int?): ApiResult<BriefingResponse> = call { api ->
+        api.briefing(chatKey, topicId)
+    }
+
+    suspend fun summary(): ApiResult<SummaryResponse> = call { api ->
+        api.summary()
+    }
+
+    /** POST /api/summary {publish:true} — внешний эффект (отправка в канал). */
+    suspend fun publishSummary(): ApiResult<SummaryPublishResponse> = call { api ->
+        api.publishSummary(SummaryPublishRequest(publish = true))
+    }
+
+    suspend fun adminServers(): ApiResult<AdminServersResponse> = call { api ->
+        api.adminServers()
+    }
+
+    /* ---------- Integrations ---------- */
+
+    suspend fun webhooks(): ApiResult<WebhooksResponse> = call { api ->
+        api.webhooks()
+    }
+
+    suspend fun createWebhook(request: CreateWebhookRequest): ApiResult<CreatedIdResponse> = call { api ->
+        requireSuccess(api.createWebhook(request), "Не удалось создать webhook")
+    }
+
+    suspend fun deleteWebhook(id: Long): ApiResult<OkResponse> = call { api ->
+        requireSuccess(api.deleteWebhook(id), "Не удалось удалить webhook")
+    }
+
+    suspend fun inboundHooks(): ApiResult<InboundHooksResponse> = call { api ->
+        api.inboundHooks()
+    }
+
+    suspend fun createInboundHook(request: CreateInboundHookRequest): ApiResult<CreateInboundHookResponse> = call { api ->
+        requireSuccess(api.createInboundHook(request), "Не удалось создать inbound-хук")
+    }
+
+    suspend fun deleteInboundHook(id: Long): ApiResult<OkResponse> = call { api ->
+        requireSuccess(api.deleteInboundHook(id), "Не удалось удалить inbound-хук")
+    }
+
+    /* ---------- Chat extras ---------- */
+
+    suspend fun jokerSession(): ApiResult<JokerSessionResponse> = call { api ->
+        api.jokerSession()
+    }
+
+    suspend fun resetJokerSession(): ApiResult<JokerSessionResponse> = call { api ->
+        api.resetJokerSession(JokerResetRequest(reset = true))
+    }
+
+    suspend fun antonovRewrite(request: AntonovRewriteRequest): ApiResult<AntonovRewriteResponse> = call { api ->
+        api.antonovRewrite(request)
+    }
+
+    suspend fun antonovThread(request: AntonovThreadRequest): ApiResult<AntonovThreadResponse> = call { api ->
+        api.antonovThread(request)
+    }
+
+    suspend fun chatMemory(sessionId: String): ApiResult<MemoryViewDto> = call { api ->
+        api.chatMemory(sessionId)
+    }
+
+    suspend fun chatMemoryAction(sessionId: String, request: MemoryActionRequest): ApiResult<MemoryActionResponse> =
+        call { api -> api.chatMemoryAction(sessionId, request) }
+
+    suspend fun chatBranches(sessionId: String): ApiResult<BranchViewDto> = call { api ->
+        api.chatBranches(sessionId)
+    }
+
+    suspend fun chatBranchAction(sessionId: String, request: BranchActionRequest): ApiResult<BranchActionResponse> =
+        call { api -> api.chatBranchAction(sessionId, request) }
+
+    suspend fun chatProfile(sessionId: String): ApiResult<ProfileViewDto> = call { api ->
+        api.chatProfile(sessionId)
+    }
+
+    suspend fun chatProfileAction(sessionId: String, request: ProfileActionRequest): ApiResult<ProfileActionResponse> =
+        call { api -> api.chatProfileAction(sessionId, request) }
+
+    /** Глобальный список ограничений — sessionId сервером игнорируется. */
+    suspend fun constraints(): ApiResult<ConstraintsViewDto> = call { api ->
+        api.chatConstraints("global")
+    }
+
+    suspend fun constraintsAction(request: ConstraintsActionRequest): ApiResult<ConstraintsActionResponse> = call { api ->
+        api.chatConstraintsAction("global", request)
+    }
 
     suspend fun createTicket(subject: String, body: String, contact: String?): ApiResult<CreatedIdResponse> =
         call { api ->

@@ -62,6 +62,14 @@ import ru.memo7.artel.ui.screens.rag.RagNotesScreen
 import ru.memo7.artel.ui.screens.rag.RagQueryScreen
 import ru.memo7.artel.ui.screens.settings.SettingsScreen
 import ru.memo7.artel.ui.screens.support.SupportScreen
+import ru.memo7.artel.ui.screens.sys.SysAgentScreen
+import ru.memo7.artel.ui.screens.sys.SysBriefingScreen
+import ru.memo7.artel.ui.screens.sys.SysHubScreen
+import ru.memo7.artel.ui.screens.sys.SysServersScreen
+import ru.memo7.artel.ui.screens.sys.SysSummaryScreen
+import ru.memo7.artel.ui.screens.chatextras.AntonovScreen
+import ru.memo7.artel.ui.screens.chatextras.JokerScreen
+import ru.memo7.artel.ui.screens.integrations.IntegrationsScreen
 import ru.memo7.artel.ui.screens.tg.TgHubScreen
 import ru.memo7.artel.ui.screens.todos.TodosScreen
 
@@ -90,6 +98,14 @@ object Routes {
     const val TG = "tg"
     const val BLOG = "blog"
     const val MCP = "mcp"
+    const val SYS = "sys"
+    const val SYS_AGENT = "sys/agent"
+    const val SYS_BRIEFING = "sys/briefing"
+    const val SYS_SUMMARY = "sys/summary"
+    const val SYS_SERVERS = "sys/servers"
+    const val INTEGRATIONS = "integrations"
+    const val JOKER = "joker"
+    const val ANTONOV = "antonov"
     fun projectDetail(id: Long) = "project/$id"
     fun courseDetail(slug: String) = "course/$slug"
     fun chatDetail(sessionId: String) = "chat/$sessionId"
@@ -205,6 +221,10 @@ fun ArtelRoot(container: AppContainer) {
                     onOpenTg = { navController.navigate(Routes.TG) },
                     onOpenBlog = { navController.navigate(Routes.BLOG) },
                     onOpenMcp = { navController.navigate(Routes.MCP) },
+                    onOpenSys = { navController.navigate(Routes.SYS) },
+                    onOpenIntegrations = { navController.navigate(Routes.INTEGRATIONS) },
+                    onOpenJoker = { navController.navigate(Routes.JOKER) },
+                    onOpenAntonov = { navController.navigate(Routes.ANTONOV) },
                 )
             }
             composable(Routes.PROJECTS) {
@@ -323,6 +343,37 @@ fun ArtelRoot(container: AppContainer) {
             }
             composable(Routes.MCP) {
                 McpScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SYS) {
+                SysHubScreen(
+                    container = container,
+                    onBack = { navController.popBackStack() },
+                    onAgent = { navController.navigate(Routes.SYS_AGENT) },
+                    onBriefing = { navController.navigate(Routes.SYS_BRIEFING) },
+                    onSummary = { navController.navigate(Routes.SYS_SUMMARY) },
+                    onServers = { navController.navigate(Routes.SYS_SERVERS) },
+                )
+            }
+            composable(Routes.SYS_AGENT) {
+                SysAgentScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SYS_BRIEFING) {
+                SysBriefingScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SYS_SUMMARY) {
+                SysSummaryScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.SYS_SERVERS) {
+                SysServersScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.INTEGRATIONS) {
+                IntegrationsScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.JOKER) {
+                JokerScreen(container = container, onBack = { navController.popBackStack() })
+            }
+            composable(Routes.ANTONOV) {
+                AntonovScreen(container = container, onBack = { navController.popBackStack() })
             }
         }
     }

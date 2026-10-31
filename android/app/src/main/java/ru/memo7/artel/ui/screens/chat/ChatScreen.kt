@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -57,6 +58,7 @@ import ru.memo7.artel.data.api.ChatStreamEvent
 import ru.memo7.artel.di.AppContainer
 import ru.memo7.artel.ui.components.StateContainer
 import ru.memo7.artel.ui.screens.assistant.ChatMessage
+import ru.memo7.artel.ui.screens.chatextras.ChatPanelsSheet
 import ru.memo7.artel.ui.theme.ArtelShapes
 
 /** Клиентский предел сообщения — как на сервере (chatSendSchema.text.max(8000)). */
@@ -194,6 +196,7 @@ fun ChatScreen(
     val state by vm.state.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     var confirmReset by remember { mutableStateOf(false) }
+    var showPanels by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text) {
@@ -226,6 +229,12 @@ fun ChatScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            IconButton(
+                onClick = { showPanels = true },
+                enabled = state.load is UiState.Success,
+            ) {
+                Icon(Icons.Rounded.Tune, contentDescription = "Панели чата")
             }
             IconButton(
                 onClick = { confirmReset = true },
@@ -327,6 +336,14 @@ fun ChatScreen(
             dismissButton = {
                 TextButton(onClick = { confirmReset = false }) { Text("Отмена") }
             },
+        )
+    }
+    if (showPanels) {
+        ChatPanelsSheet(
+            container = container,
+            sessionId = sessionId,
+            onBranchesChanged = { vm.load() },
+            onDismiss = { showPanels = false },
         )
     }
 }

@@ -2348,3 +2348,37 @@ loss ~1.0, recall 3/36; 30 эпох → loss 0.0009, recall 26/36); recall де�
 `web/app/api/{rag,summary,tg,telegram,blog}` (requireApiAuth).
 **Проверка:** `:app:testDebugUnitTest` 136/136 зелёных, `:app:assembleDebug` OK;
 веб-тесты затронутых роутов зелёные.
+
+---
+
+## Execution loop run-2026-10-31 — Android parity wave 2: sys, integrations, chat extras
+**Дата:** 2026-10-31
+**Ветка:** `feat/close-open-issues`
+
+**Задание:** стори #148–#150 эпика #134 — завершение паритета функций с web-админкой.
+
+**Сделано:**
+- **sys (#148):** агент (prompt≤8000, cloud/local), брифинг (10 счётчиков + top-TG,
+  snake_case как на сервере), сводка (publishable + публикация с errorKind-маппингом
+  и guard'ами), статусы серверов (mcp/cloud/local/embed/mtproto/botApi).
+- **integrations (#149):** webhooks (список + доставки, создание с валидацией,
+  удаление), inbound-хуки (создание с показом секрета ровно один раз — transient-стейт,
+  не сохраняется и не логируется; удаление).
+- **chat extras (#150):** шутник (SSE-стрим, температура 0.3..1.2, сброс, отмена),
+  антонов (rewrite/thread, mode/format/llm, локальная валидация, 429/502/503 →
+  русские строки), панели чата memory/branch/profile/constraints (bottom-sheet в
+  ChatScreen, перезагрузка диалога после switch ветки).
+- **Панель подключена в ChatScreen** (кнопка Tune → ModalBottomSheet) — чат MVP из
+  #137 не регрессирует: его код не менялся кроме точки монтирования панели.
+- Дашборд: секция «Система и инструменты» (sys/integrations/joker/antonov),
+  8 новых роутов, +22 endpoint'а в ArtelApi, +24 delegate'а в репозитории.
+
+**Выводы:**
+- Контракт «секрет inbound показывается один раз» реализуем только transient-стейтом
+  UI — в DataStore/логи он не попадает.
+- requireApiAuth с wave 1 покрывает и новые write-операции (publish summary) —
+  Bearer-сессия мобильного клиента проходит без cookie.
+
+**Код:** `android/app/src/main/java/ru/memo7/artel/{data/api/{Sys,Integrations,ChatExtras,JokerSseParser},ui/screens/{sys,integrations,chatextras}}`,
+`ui/screens/chat/ChatScreen.kt` (монтирование панели), `ui/{ArtelRoot,DashboardScreen}.kt`.
+**Проверка:** `:app:testDebugUnitTest` 179/179 зелёных, `:app:assembleDebug` OK.
