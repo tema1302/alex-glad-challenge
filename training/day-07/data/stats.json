@@ -1,26 +1,51 @@
 {
-  "seeds_total": 412,
+  "seeds_total": 646,
+  "merged_v8_train": 439,
+  "merged_v8_dropped_convention": 24,
+  "keep_valid": true,
+  "valid_kept": 63,
+  "train_valid_overlap_dropped": 51,
   "llm": {
-    "batches": 28,
-    "parse_fail": 2,
-    "candidates": 220,
-    "accepted": 160,
-    "rejected_rules": 59,
-    "rejected_dup": 1,
-    "wall_sec": 326.6
+    "batches": 59,
+    "parse_fail": 1,
+    "candidates": 474,
+    "accepted": 278,
+    "rejected_rules": 187,
+    "rejected_dup": 9,
+    "boundary": {
+      "batches": 12,
+      "parse_fail": 0,
+      "candidates": 96,
+      "accepted": 73,
+      "rejected_rules": 23,
+      "rejected_dup": 0
+    },
+    "wall_sec": 807.9
   },
-  "pool_total": 572,
-  "exact_dup_dropped": 0,
-  "near_dup_dropped": 46,
+  "pool_total": 1436,
+  "exact_dup_dropped": 327,
+  "near_dup_dropped": 125,
   "eval_leak_dropped": 0,
-  "final_total": 526,
-  "train": 463,
+  "final_total": 933,
+  "train": 933,
   "valid": 63,
   "by_class_total": {
-    "None": 116,
-    "daily": 122,
-    "weekly": 177,
-    "hourly": 111
+    "None": 336,
+    "daily": 157,
+    "weekly": 275,
+    "hourly": 165
+  },
+  "by_source": {
+    "seed-daily": 68,
+    "seed-hourly": 63,
+    "seed-none": 72,
+    "seed-weekly": 115,
+    "seed-punt-boundary": 139,
+    "seed-daily-time": 10,
+    "seed-weekly-time": 24,
+    "v8-train": 117,
+    "llm": 252,
+    "llm-boundary": 73
   },
   "near_dup_threshold": 0.92,
   "seed": 42

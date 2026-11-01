@@ -1,7 +1,7 @@
 # QLoRA SFT: Qwen2.5-1.5B-Instruct на датасете day-07 (NL -> JSON add_todo).
 # Все параметры обучения — здесь, train_qlora.py их только читает.
 # Железо: Kaggle/Colab Tesla T4 16 ГБ. T4 не умеет bf16 — только fp16 + 4-bit NF4.
-# Датасет: 463 train / 63 valid — меньше дня-06, epochs=4 вместо 2.
+# Датасет: v9 — ~1000+ train (boundary-пунты + 60 LLM-батчей), valid тот же, что v8.
 
 model:
   base: "Qwen/Qwen2.5-1.5B-Instruct"
@@ -26,7 +26,7 @@ training:
   learning_rate: 0.0002
   lr_scheduler_type: "cosine"
   warmup_ratio: 0.03
-  num_train_epochs: 4
+  num_train_epochs: 6                 # v9: было 4; best checkpoint по eval_loss
   optim: "paged_adamw_8bit"
   max_grad_norm: 0.3
   gradient_checkpointing: true
@@ -42,7 +42,7 @@ training:
 
 data:
   train_file: "data/train.jsonl"   # messages-формат {system,user,assistant}
-  val_file: "data/valid.jsonl"
+  val_file: "data/valid.jsonl"     # v8-сплит, байтово неизменен (--keep-valid)
 
 # system_prompt в датасет уже зашит (seeds.SYSTEM_PROMPT) — здесь не нужен.
 

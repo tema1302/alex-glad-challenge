@@ -27,17 +27,52 @@
 
 | Набор | Размер | Источник |
 |---|---|---|
-| train | 463 | сиды руками (412 вызовов шаблонов, gold по построению) + LLM-входы (qwen2.5:7b-instruct локально, 160 принято после rule-валидации) |
-| valid | 63 | тот же пул, хэш-сплит |
+| train | ~1000+ | v9: сиды руками (646 вызовов шаблонов, в т.ч. 234 boundary-пунта) + LLM-входы (qwen2.5:7b-instruct локально, 60 батчей + 12 boundary-батчей) + мердж LLM-входов v8 |
+| valid | 63 | v8-сплит, байтово неизменен (`--keep-valid`) — сравнимость eval loss с прогоном v8 |
 | eval | 30 | handcrafted, слоты не пересекаются с train-списками (`seeds.py` assert) |
 
-Чистка: точные дубли → почти-дубли (difflib ≥ 0.92, снято 46) → утечки eval
-(порог 0.90, снято 0). Баланс классов: weekly 177 / daily 122 / none 116 /
-hourly 111. Статистика: `data/stats.json`; отклонённые LLM-кандидаты:
-`data/rejected.jsonl` (59 шт., 27% — rule-валидатор ловил «каждый день»+null,
-«полчаса»→30 часов, висячие предлоги в text). Ревью глазами 30 случайных —
-3 итерации (найденные дыры валидатора закрыты). Утечки и структура:
-`check_split.py` — OK.
+Чистка: точные дубли → почти-дубли (difflib ≥ 0.92) → утечки eval (порог 0.90) →
+при `--keep-valid` ещё почти-дубли к старому valid (порог 0.90). Статистика:
+`data/stats.json`; отклонённые LLM-кандидаты: `data/rejected.jsonl`.
+Утечки и структура: `check_split.py` — OK.
+
+### Датасет v9 (2026-11-01, issue #179)
+
+Разбор промаха порога v8 (14/30): punt-None 4/11, weekly 3/8, daily 2/6,
+hourly 5/5. Корневой skew: в v8 punt-входы без маркеров расписания, а в eval
+11/30 кейсов — boundary-пунты с маркерами («по выходным», «раз в 3 дня»,
+«каждые 45 минут», «вторник и четверг», «завтра в 9:00»), gold text дословно.
+Модель таких пар не видела и лепила false-weekly.
+
+Рычаги #179, закрытые в v9:
+1. `--llm-batches 60` + новые `--boundary-batches 12` — LLM-генерация
+   punt-ловушек (вход с маркерами → recurring=null, text дословно);
+   отдельный промпт и строгий валидатор `validate_boundary_none`.
+2. Пересмотр сэмплирования punt: 234 boundary-сидa (два дня, выходные,
+   минуты, интервалы в днях, абс. даты/дедлайны, «в день», время суток) —
+   доля None в train ~35-40% против 22% в v8 (eval: 37%). Мультипликативный
+   буст не понадобился: масс-шифт свежими примерами точнее дублей.
+3. `num_train_epochs` 4→6 — best checkpoint по eval_loss
+   (`load_best_model_at_end`, early stopping patience=3 уже были).
+
+Плюс: сиды daily/weekly с временем суток («в 20:00» остаётся в text —
+закрывает обрезку времени из v8-разбора) и в gen_prompt добавлено требование
+сохранять вид глагола/существительные в text.
+
+Команда воспроизведения (локально, ~15 мин, Ollama):
+
+```bash
+cd training/day-07
+python generate_data.py --llm-batches 60 --boundary-batches 12 --keep-valid
+python check_split.py
+```
+
+`--keep-valid` не перезаписывает `data/valid.jsonl` и подмешивает старый
+train v8 в пул (его LLM-входы не теряются); строки v8, конфликтующие с
+конвенцией eval (boundary без дословного text, typed без «в HH:MM»), из
+мерджа исключаются (`stats.json: merged_v8_dropped_convention`). Порог
+приёмки неизменен: full_match ≥21/30 на фиксированном `eval/eval_set.jsonl`;
+обучение и evaluate_tuned — на T4 (Kaggle-runbook ниже). Статус: ждёт GPU-прогон.
 
 ## Baseline без тюна (реальный прогон 2026-10-30, Ollama локально)
 
@@ -82,7 +117,7 @@ python eval_baseline.py --model qwen2.5:1.5b-instruct      # baseline (Ollama)
 ```bash
 pip install -r training/day-07/requirements.txt
 cd training/day-07
-python train_qlora.py          # 463×4 эпохи, eff.batch 16: ~10–20 мин на T4
+python train_qlora.py          # v9: ~1000+×6 эпох, eff.batch 16: ~20–30 мин на T4
 python evaluate_tuned.py --out ../../docs/advanced-day-07/eval
 ```
 
@@ -177,8 +212,9 @@ bitsandbytes 0.45.0 + accelerate 1.1.1, **triton удалён полностью
 
 ## Риски
 
-- 463 примера — на нижней границе «от 200» с запасом; при слабом tuned
-  первый рычаг — ещё LLM-генерация (`--llm-batches 60`).
-- Punt-класс (11/30 eval) — самый трудный для тюна: модель может
-  «выучить» punt слишком охотно (частота punt в train 22%).
+- Punt-класс (11/30 eval) — самый трудный для тюна: при переусердствии
+  (см. план v9) модель может «выучить» punt слишком охотно — ловить по
+  per-class метрикам прогона v9 (false-None на daily/weekly).
 - T4 не умеет bf16 — везде fp16 (как в дне-06).
+
+(v8-риски «мало данных → --llm-batches 60» закрыты датасетом v9, см. раздел выше.)

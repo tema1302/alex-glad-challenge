@@ -114,10 +114,15 @@ def seed_weekly_colon(action: str, dow: int) -> tuple[str, dict, str]:
         gold(action, "weekly", dow), "seed-weekly"
 
 
+# Дательный мн.ч. («по понедельникам») и родительный («до пятницы»)
+DATIVE_PLURAL = {0: "воскресеньям", 1: "понедельникам", 2: "вторникам",
+                 3: "средам", 4: "четвергам", 5: "пятницам", 6: "субботам"}
+GENITIVE = {0: "воскресенья", 1: "понедельника", 2: "вторника", 3: "среды",
+            4: "четверга", 5: "пятницы", 6: "субботы"}
+
+
 def seed_weekly_po(action: str, dow: int) -> tuple[str, dict, str]:
-    dpl = {1: "понедельникам", 2: "вторникам", 3: "средам", 4: "четвергам",
-           5: "пятницам", 6: "субботам", 0: "воскресеньям"}[dow]
-    return f"{action} по {dpl}", gold(action, "weekly", dow), "seed-weekly"
+    return f"{action} по {DATIVE_PLURAL[dow]}", gold(action, "weekly", dow), "seed-weekly"
 
 
 def seed_daily_prefix(action: str, prefix: str) -> tuple[str, dict, str]:
@@ -154,6 +159,28 @@ def seed_none_remind(action: str) -> tuple[str, dict, str]:
     return f"{REMIND_PREFIXES[0]}{action}", gold(action), "seed-none"
 
 
+# --- Boundary-пунты и время суток (v9, issue #179) ---------------------
+# Пунт-границы из README дня: два дня, «по выходным», минуты, интервалы в
+# днях, абсолютные даты/дедлайны, время суток без периода. Gold: recurring=
+# None, text = вход ДОСЛОВНО (в отличие от обычных сидов, где text очищен).
+# Для daily/weekly с временем суток: «в 20:00» ОСТАЁТСЯ в text.
+
+def seed_punt_verbatim(input_text: str) -> tuple[str, dict, str]:
+    return input_text, gold(input_text), "seed-punt-boundary"
+
+
+def seed_daily_time(action: str, t: str) -> tuple[str, dict, str]:
+    return f"каждый день {action} в {t}", \
+        gold(f"{action} в {t}", "daily"), "seed-daily-time"
+
+
+def seed_weekly_time(action: str, dow: int, t: str) -> tuple[str, dict, str]:
+    d = DAY_FORMS[dow][1]
+    g = DAY_GENDER[dow]
+    return f"{g} {d} {action} в {t}", \
+        gold(f"{action} в {t}", "weekly", dow), "seed-weekly-time"
+
+
 # Экспортируемые сиды: (callable, слоты) — раскрываются в generate_data.py
 SEED_CALLS: list[tuple[SeedFn, tuple]] = []
 for a in TRAIN_ACTIONS:
@@ -175,6 +202,54 @@ for a in TRAIN_ACTIONS[:14]:
     for n in (2, 4, 8):
         SEED_CALLS.append((seed_hourly_kazhdye, (a, n)))
         SEED_CALLS.append((seed_hourly_raz, (a, n)))
+
+# Boundary-пунты (v9): recurring=None, text дословно — закрывают skew,
+# при котором в train punt-входы без маркеров, а в eval 11/30 — с маркерами.
+# Объём подобран под баланс ~35-40% None в итоговом train (eval: 37% None).
+_PUNT_ACTIONS = TRAIN_ACTIONS[12:28]        # 16 действий, не задействованных выше
+_PUNT_ACTIONS_SHORT = TRAIN_ACTIONS[12:20]  # 8 действий для объёмных семейств
+_TWO_DAY_PAIRS = ((1, 4), (2, 5), (3, 6))
+_MINUTES = (30, 45)
+_DAY_INTERVALS = (2, 3)
+_ABS_RELATIVE = ("завтра", "послезавтра", "сегодня вечером")
+_DEADLINE_DAYS = (5, 3, 1)
+_ACC_DAYS = (1, 4, 6)
+_TIMES = ("9:00", "15:00", "20:00")
+
+for a in _PUNT_ACTIONS_SHORT:                        # два дня недели
+    for d1, d2 in _TWO_DAY_PAIRS:
+        day1, day2 = DAY_FORMS[d1][0], DAY_FORMS[d2][0]
+        SEED_CALLS.append((seed_punt_verbatim,
+                           (f"{DAY_GENDER[d1]} {day1} и {day2} {a}",)))
+for a in _PUNT_ACTIONS:                              # выходные
+    SEED_CALLS.append((seed_punt_verbatim, (f"по выходным {a}",)))
+    SEED_CALLS.append((seed_punt_verbatim, (f"{a} по выходным",)))
+for a in _PUNT_ACTIONS_SHORT:                        # минуты (вне схемы часов)
+    for m in _MINUTES:
+        SEED_CALLS.append((seed_punt_verbatim, (f"{a} каждые {m} минут",)))
+        SEED_CALLS.append((seed_punt_verbatim, (f"{a} раз в {m} минут",)))
+for a in TRAIN_ACTIONS[12:18]:                       # интервалы в днях
+    for n in _DAY_INTERVALS:
+        SEED_CALLS.append((seed_punt_verbatim, (f"{a} раз в {n} дня",)))
+        SEED_CALLS.append((seed_punt_verbatim, (f"раз в {n} дня {a}",)))
+for a in TRAIN_ACTIONS[12:18]:                       # относительные даты
+    for w in _ABS_RELATIVE:
+        SEED_CALLS.append((seed_punt_verbatim, (f"{w} {a}",)))
+for a in TRAIN_ACTIONS[12:18]:                       # дедлайн «до дня»
+    for d in _DEADLINE_DAYS:
+        SEED_CALLS.append((seed_punt_verbatim, (f"{a} до {GENITIVE[d]}",)))
+for a in TRAIN_ACTIONS[12:18]:                       # «в день» без периода
+    for d in _ACC_DAYS:
+        SEED_CALLS.append((seed_punt_verbatim, (f"в {DAY_FORMS[d][1]} {a}",)))
+for a in _PUNT_ACTIONS_SHORT:                        # время суток без периода
+    for t in _TIMES:
+        SEED_CALLS.append((seed_punt_verbatim, (f"{a} в {t}",)))
+for a in TRAIN_ACTIONS[:10]:                         # daily + время суток
+    for t in ("20:00", "9:00"):
+        SEED_CALLS.append((seed_daily_time, (a, t)))
+for a in TRAIN_ACTIONS[:8]:                          # weekly + время суток
+    for d in (1, 3, 5):
+        SEED_CALLS.append((seed_weekly_time, (a, d, "20:00")))
 
 
 if __name__ == "__main__":
