@@ -1,0 +1,14 @@
+# ROCm-окружение (training/.venv-rocm), Windows + AMD gfx1102 (RX 7600).
+# torch ставится только со stable-индекса TheRock:
+#   pip install --index-url https://stable.repo.amd.com/rocm/whl-next/ "torch[device-gfx1102]"
+# Фактический freeze окружения: artifacts/smoke_rocm.json (packages).
+torch==2.14.0+rocm10.1.0
+bitsandbytes==0.50.2
+transformers==5.22.1
+peft==0.21.2
+accelerate==1.15.0
+numpy==2.5.4
+psutil
+datasets
+sqlglot
+pyyaml

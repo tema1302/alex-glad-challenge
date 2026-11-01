@@ -67,6 +67,7 @@ training/**/data/
 training/**/artifacts/
 __pycache__/
 training/.venv/
+training/.venv-rocm/
 
 # Инцидент CPU-майнера (29.10.2026, антимайнер): карантин с малварью —
 # бинарники/сессии в git не попадают никогда. Задание и скрипты — коммитятся.
