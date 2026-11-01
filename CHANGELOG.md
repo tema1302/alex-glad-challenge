@@ -2382,3 +2382,42 @@ loss ~1.0, recall 3/36; 30 эпох → loss 0.0009, recall 26/36); recall де�
 **Код:** `android/app/src/main/java/ru/memo7/artel/{data/api/{Sys,Integrations,ChatExtras,JokerSseParser},ui/screens/{sys,integrations,chatextras}}`,
 `ui/screens/chat/ChatScreen.kt` (монтирование панели), `ui/{ArtelRoot,DashboardScreen}.kt`.
 **Проверка:** `:app:testDebugUnitTest` 179/179 зелёных, `:app:assembleDebug` OK.
+
+---
+
+## Execution loop run-2026-11-01 — GPU-путь: локальное обучение на RX 7600 (ROCm TheRock)
+**Дата:** 2026-11-01
+**Ветка:** `feat/day07-dataset-v9`
+
+**Задание:** эпик #186 — проверить и реализовать путь использования AMD RX 7600
+(gfx1102, Windows) для рецептов day-06/07 (QLoRA NF4 через bitsandbytes),
+которые ранее требовали Kaggle T4 (#179).
+
+**Сделано:**
+- Research опроверг исходную premise: bitsandbytes ≥0.49 поддерживает Windows +
+  AMD RDNA gfx110X (QLoRA 4-bit ✅); TheRock (ROCm 7.14+) — gfx1102 на Windows
+  Release Ready (✅/✅/✅). torch-directml — тупик (Sep 2024, pin torch 2.3.1,
+  alpha); WSL2 ROCm — только gfx1100.
+- **s1 (#183):** Python 3.12.10 + venv `training/.venv-rocm` (CPU-venv не
+  тронут) + torch 2.14.0+rocm10.1.0 со stable-индекса TheRock
+  (`torch[device-gfx1102]`, HIP 7.16.26385) + bnb 0.50.2/transformers 4.46.3/
+  peft 0.21.2/datasets 3.1.0. Смоук `training/rocm/smoke_rocm.py`:
+  `cuda_available=True`, device RX 7600, NF4 forward+backward ok.
+- **s2 (#184):** прогон рецепта day-06 (скрипт не менялся, smoke-конфиг с
+  срезами 200/40): train_loss 0.3129→0.1515, eval_loss 0.156, VRAM пик
+  3.31 ГБ, ~6.9 с/шаг (T4 ~4.6 с/шаг), tokens/s ~970–1320; `paged_adamw_8bit`
+  работает на ROCm. Экстраполяция полного рецепта: ~1.3–1.7 ч локально.
+- **s3 (#185):** README `training/rocm/`, pins, комментарии в #183/#184/#179.
+
+**Выводы:**
+- Локальный recipe-preserving путь QLoRA NF4 на RX 7600 существует и работает:
+  та же методология, что на T4; числовая байт-в-байт сверка с T4 невозможна
+  (другое железо/fp16-ядра) — для сравнимых метрик пороги приёмки остаются на
+  фиксированных eval-сетах.
+- RX 7600 ~1.5× медленнее T4 на шаг NF4-рецепта, но порядок величины тот же —
+  переобучение day-07 v9 (#179) теперь возможно локально, решение за владельцем.
+
+**Код:** `training/rocm/{README.md, smoke_rocm.py, requirements-rocm.txt, configs/qlora-smoke.yaml}`, `.gitignore` (+`training/.venv-rocm/`).
+**Проверка:** smoke `SMOKE OK` (artifacts/smoke_rocm.json); прогон day-06 smoke
+12 шагов с падающим loss (run.json/loss.csv в training/rocm/artifacts/);
+baseline `challenge` typecheck зелёный.
