@@ -8,6 +8,15 @@ Ready** (Build Passing / Sanity Tested / Release Ready в
 gfx110X — **QLoRA 4-bit ✅** (исходная premise «bnb = только NVIDIA»
 устарела).
 
+## Политика: GPU-first
+
+Когда это возможно (рецепт совместим со стеком ROCm/bnb, модель и батч
+влезают в VRAM), локальное обучение выполняется на видеокарте — RX 7600,
+venv `training/.venv-rocm`. CPU-venv (`training/.venv`) — fallback для
+случаев несовместимости рецепта с GPU-стеком; облачный T4 — только когда
+нужна числовая сверка с зафиксированным CUDA-прогоном или локальный GPU
+не тянет задачу.
+
 ## Установка (повторяемо)
 
 ```powershell

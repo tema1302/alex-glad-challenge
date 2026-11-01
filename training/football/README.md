@@ -1,8 +1,11 @@
 # Футбольный трек (дни 6–10): дообучение под АПЛ/Челси
 
-Полный execution-loop дней 6–10 челленджа в футбольном домене. Железо без
-CUDA: весь тюн — Qwen2.5-0.5B-Instruct + LoRA (CPU fp32, venv
-`training/.venv`), учитель и прод-рантайм — Ollama (localhost:11434).
+Полный execution-loop дней 6–10 челленджа в футбольном домене. Трек
+выполнен на CPU (torch 2.6.0+cpu, venv `training/.venv`): тюн —
+Qwen2.5-0.5B-Instruct + LoRA fp32; учитель и прод-рантайм — Ollama
+(localhost:11434). С 2026-11-01 есть локальный GPU-путь (RX 7600, ROCm —
+`training/rocm/`): по политике GPU-first (`training/rocm/README.md`)
+новые прогоны — на GPU, когда возможно.
 Предыдущий трек (SQL/todo/code) не тронут — всё лежит рядом.
 
 | День | Папка | Суть | Главный результат |
