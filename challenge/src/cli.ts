@@ -107,6 +107,7 @@ import {
   documentVector,
   webSearchVector,
   copilotCodeVector,
+  allVectors,
   runIndirectMatrix,
 } from './core/security/indirectLab.js';
 import type { DefenseMode, IndirectVector } from './core/security/indirectLab.js';
@@ -2443,19 +2444,55 @@ async function runTgTopCommand(argv: string[]): Promise<void> {
   }
 }
 
+function parseSecCliFlags(
+  argv: readonly string[],
+  allowedFlags: readonly string[],
+): ReadonlyMap<string, string> {
+  const allowed = new Set(allowedFlags);
+  const out = new Map<string, string>();
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i] ?? '';
+    if (!token.startsWith('--')) {
+      console.error(`Неожиданный аргумент: ${token}`);
+      process.exit(1);
+    }
+    const name = token.slice(2);
+    if (!allowed.has(name)) {
+      console.error(
+        `Неизвестный флаг: --${name}. Доступно: ${allowedFlags.map((f) => `--${f}`).join(', ')}`,
+      );
+      process.exit(1);
+    }
+    const val = argv[i + 1];
+    if (val === undefined || val.startsWith('--')) {
+      console.error(`Флаг --${name} требует значения`);
+      process.exit(1);
+    }
+    out.set(name, val);
+    i += 1;
+  }
+  return out;
+}
+
+function parseSeedFlag(seedRaw: string | undefined): number | undefined {
+  if (seedRaw === undefined) return undefined;
+  const n = Number(seedRaw);
+  if (seedRaw.trim() === '' || !Number.isSafeInteger(n)) {
+    console.error(`Некорректный --seed: ${seedRaw} (ожидается целое число)`);
+    process.exit(1);
+  }
+  return n;
+}
+
 // ADVANCED day-11: лаборатория prompt injection. Все атаки — против локальной
 // LLM (фронтрирные модели для атак не используются). Промпты и ответы печатаются
 // целиком: stdout — это транскрипт для docs/advanced-day-11/.
 async function runSecInjectCommand(argv: string[]): Promise<void> {
-  const getFlag = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 ? argv[i + 1] : undefined;
-  };
-  const targetName = getFlag('target') ?? 'bank';
-  const author = getFlag('author') ?? 'Гоша';
-  const modelOverride = getFlag('model');
-  const seedRaw = getFlag('seed');
-  const seed = seedRaw ? Number(seedRaw) : undefined;
+  const flags = parseSecCliFlags(argv, ['target', 'author', 'model', 'seed']);
+  const targetName = flags.get('target') ?? 'bank';
+  const author = flags.get('author') ?? 'Гоша';
+  const modelOverride = flags.get('model');
+  const seed = parseSeedFlag(flags.get('seed'));
 
   const cfg = localLlmConfig();
   const model = modelOverride ?? cfg.model;
@@ -2513,15 +2550,11 @@ async function runSecInjectCommand(argv: string[]): Promise<void> {
 // × режимы защиты (none/sanitize/boundary/output/all|matrix). Все прогоны —
 // против локальной LLM; stdout — транскрипт для docs/advanced-day-12/.
 async function runSecIndirectCommand(argv: string[]): Promise<void> {
-  const getFlag = (name: string): string | undefined => {
-    const i = argv.indexOf(`--${name}`);
-    return i >= 0 ? argv[i + 1] : undefined;
-  };
-  const vectorName = getFlag('vector') ?? 'all';
-  const modeName = getFlag('mode') ?? 'all';
-  const modelOverride = getFlag('model');
-  const seedRaw = getFlag('seed');
-  const seed = seedRaw ? Number(seedRaw) : undefined;
+  const flags = parseSecCliFlags(argv, ['vector', 'mode', 'model', 'seed']);
+  const vectorName = flags.get('vector') ?? 'all';
+  const modeName = flags.get('mode') ?? 'all';
+  const modelOverride = flags.get('model');
+  const seed = parseSeedFlag(flags.get('seed'));
 
   const cfg = localLlmConfig();
   const model = modelOverride ?? cfg.model;
@@ -2530,10 +2563,14 @@ async function runSecIndirectCommand(argv: string[]): Promise<void> {
     : makeLocalLlmClient();
 
   const vectors: IndirectVector[] = [];
-  if (vectorName === 'email' || vectorName === 'all') vectors.push(emailVector());
-  if (vectorName === 'doc' || vectorName === 'all') vectors.push(documentVector());
-  if (vectorName === 'search' || vectorName === 'all') vectors.push(webSearchVector());
-  if (vectorName === 'code' || vectorName === 'all') vectors.push(copilotCodeVector());
+  if (vectorName === 'all') {
+    vectors.push(...allVectors());
+  } else {
+    if (vectorName === 'email') vectors.push(emailVector());
+    if (vectorName === 'doc') vectors.push(documentVector());
+    if (vectorName === 'search') vectors.push(webSearchVector());
+    if (vectorName === 'code') vectors.push(copilotCodeVector());
+  }
   const validModes: readonly DefenseMode[] = ['none', 'sanitize', 'boundary', 'output', 'all'];
   if (vectors.length === 0) {
     console.error(`Неизвестный вектор: ${vectorName}. Доступно: email | doc | search | code | all`);
@@ -2567,10 +2604,31 @@ async function runSecIndirectCommand(argv: string[]): Promise<void> {
       `   payload дожил до промпта: ${r.payloadSurvived ? 'ДА' : 'НЕТ'} | модель выполнила: ${r.succeeded ? 'ДА' : 'НЕТ'} | валидатор заблокировал: ${r.blocked ? 'ДА' : 'НЕТ'}`,
     );
     console.log(`   ИТОГ: ${r.passed ? 'АТАКА ПРОШЛА' : 'АТАКА НЕ ПРОШЛА'}`);
-    if (r.matchedMarkers.length > 0) console.log(`   маркеры: ${r.matchedMarkers.join(', ')}`);
+    if (r.matchedMarkers.length > 0 && (r.succeeded || r.blocked)) {
+      console.log(`   маркеры: ${r.matchedMarkers.join(', ')}`);
+    }
     console.log(
       `   Ответ модели:\n${r.response.split('\n').map((l) => `   | ${l}`).join('\n')}`,
     );
+    console.log('');
+  }
+
+  if (modes.length > 1) {
+    const shortLabel: Record<DefenseMode, string> = {
+      none: 'none',
+      sanitize: 'sntz',
+      boundary: 'bndr',
+      output: 'outp',
+      all: 'ALL',
+    };
+    console.log('Матрица (строки — векторы, столбцы — режимы):');
+    for (const v of vectors) {
+      const cells = modes.map((m) => {
+        const hit = results.find((r) => r.vectorId === v.id && r.mode === m);
+        return `${shortLabel[m]}=${hit?.passed ? 'PASS' : 'fail'}`;
+      });
+      console.log(`  ${v.id.padEnd(14)} ${cells.join(' ')}`);
+    }
     console.log('');
   }
 

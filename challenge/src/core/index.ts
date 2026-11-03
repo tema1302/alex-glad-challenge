@@ -41,3 +41,4 @@ export type {
   TokenEstimate,
 } from './tokenEstimator.js';
 export * as agents from './agents/index.js';
+export * as security from './security/index.js';
