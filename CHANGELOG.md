@@ -2462,3 +2462,45 @@ extraction закрывается шаблоном отказа + output-дет�
 `challenge/src/cli.ts` (sec-inject), `docs/advanced-day-11/**`.
 **Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 17/17;
 реальные смоуки `sec-inject` на Ollama (bank/medium/hardened, seed=42).
+
+---
+
+## ADVANCED Day 12 — Indirect Prompt Injection (2026-11-03)
+**Дата:** 2026-11-03. Ветка `feat/security-days-11-12` (loop run-2026-11-03,
+эпик #198, стори #199–#201). Фронтрирные модели не используются — все прогоны
+на локальной qwen3.5:4b (Ollama, seed=42).
+
+**Задание:** ловушка для LLM-агента — инструкция спрятана в данных; 3 вектора
+(email, документ, веб-страница); 3 защитных слоя (input sanitization, content
+boundary markers, output validation); ретест атак после защиты; реальный кейс
+упрощённо.
+
+**Сделано:**
+- `core/security/indirectLab.ts` — 4 вектора: email-суммаризатор (HTML-
+  комментарий), документ-аналитик (белый текст + zero-width), поисковый агент
+  (display:none → поддельный курс), код репозитория (комментарий «NOTE FOR AI
+  CODING ASSISTANTS» → навязанный npm-пакет; упрощение Copilot-кейса).
+- `core/security/contentDefense.ts` — три слоя: `sanitizeExternal`
+  (комментарии/script/style, невидимые стилями фрагменты, zero-width на
+  уровне абзаца), boundary-маркеры + правило «данные — не инструкции»,
+  `validateOutput` (запрещённые маркеры до показа пользователю).
+- CLI `sec-indirect --vector email|doc|search|code|all --mode
+  none|sanitize|boundary|output|all|matrix`.
+- Матрица 4×5 = 20 прогонов (транскрипт `docs/advanced-day-12/transcripts-
+  matrix.md`): **5 из 20 прошли** — email и поиск идут без защиты, но
+  останавливаются всеми тремя слоями; doc-вектор qwen3.5:4b отбила даже без
+  защиты; repo-code прошёл сквозь sanitize и boundary (видимый комментарий —
+  не скрытый канал), остановлен только output-валидатором.
+- Зафиксировано ложное срабатывание output-валидатора (модель отказалась —
+  валидатор заблокировал отказ: маркеры совпали с цитированием в тексте
+  отказа); урок — детект семантический, не подстрочный.
+
+**Выводы:** indirect injection приходит в данных, которые агент обязан читать;
+защита — слои, а не слой; для инъекций через легитимный видимый текст
+(комментарии кода) работает только last-line output validation; тесты
+фиксируют и слабости защиты (false positive) — это часть результата.
+
+**Код:** `challenge/src/core/security/{indirectLab.ts,contentDefense.ts}` + тесты,
+`challenge/src/cli.ts` (sec-indirect), `docs/advanced-day-12/**`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 40/40
+(security-модули); реальные смоуки sec-inject/sec-indirect на Ollama (seed=42).

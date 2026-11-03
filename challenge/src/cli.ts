@@ -95,11 +95,21 @@ import { OllamaNativeClient } from './core/rag/llm.js';
 import {
   bankTarget,
   mediumTarget,
+  hardenedBankTarget,
+  hardenedMediumTarget,
   defaultAttacks,
   runInjectionAttacks,
   summarizeByTechnique,
 } from './core/security/injectionLab.js';
 import type { InjectionTarget } from './core/security/injectionLab.js';
+import {
+  emailVector,
+  documentVector,
+  webSearchVector,
+  copilotCodeVector,
+  runIndirectMatrix,
+} from './core/security/indirectLab.js';
+import type { DefenseMode, IndirectVector } from './core/security/indirectLab.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -163,9 +173,15 @@ function printHelp(): void {
   console.log('    --rebuild          полная перестройка FTS-индекса (можно вместе с --index-only)');
   console.log('  maxim-bot        Бот «Максим Артемьевич» (QA Lead front-back): напутствия в чат + капс при молчании');
   console.log('  sec-inject       ADVANCED day-11: лаборатория prompt injection (3 техники, локальная LLM)');
-  console.log('    --target bank|medium|all  цель атаки (по умолчанию bank)');
+  console.log('    --target bank|medium|hardened|all  цель атаки (по умолчанию bank; hardened — усиленные промпты)');
   console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
   console.log('    --author <name>    имя автора для цели medium (по умолчанию Гоша)');
+  console.log('    --seed <N>         seed генерации для воспроизводимости');
+  console.log('  sec-indirect     ADVANCED day-12: indirect prompt injection — векторы × защиты');
+  console.log('    --vector email|doc|search|code|all  вектор атаки (по умолчанию all)');
+  console.log('    --mode none|sanitize|boundary|output|all|matrix  режим защиты');
+  console.log('                        (matrix = все 5 режимов на выбранных векторах)');
+  console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
   console.log('    --seed <N>         seed генерации для воспроизводимости');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
@@ -639,6 +655,12 @@ async function main(): Promise<void> {
   // --- Security week (ADVANCED day-11): лаборатория prompt injection ---
   if (arg === 'sec-inject') {
     await runSecInjectCommand(argv.slice(1));
+    return;
+  }
+
+  // --- Security week (ADVANCED day-12): indirect prompt injection ---
+  if (arg === 'sec-indirect') {
+    await runSecIndirectCommand(argv.slice(1));
     return;
   }
 
@@ -2444,8 +2466,11 @@ async function runSecInjectCommand(argv: string[]): Promise<void> {
   const targets: InjectionTarget[] = [];
   if (targetName === 'bank' || targetName === 'all') targets.push(bankTarget());
   if (targetName === 'medium' || targetName === 'all') targets.push(mediumTarget(author));
+  if (targetName === 'hardened' || targetName === 'all') {
+    targets.push(hardenedBankTarget(), hardenedMediumTarget(author));
+  }
   if (targets.length === 0) {
-    console.error(`Неизвестная цель: ${targetName}. Доступно: bank | medium | all`);
+    console.error(`Неизвестная цель: ${targetName}. Доступно: bank | medium | hardened | all`);
     process.exit(1);
   }
 
@@ -2482,6 +2507,75 @@ async function runSecInjectCommand(argv: string[]): Promise<void> {
   }
 
   console.log(`ИТОГО: атак прошло ${passed} из ${total}`);
+}
+
+// ADVANCED day-12: indirect prompt injection. Векторы (email/документ/поиск/код)
+// × режимы защиты (none/sanitize/boundary/output/all|matrix). Все прогоны —
+// против локальной LLM; stdout — транскрипт для docs/advanced-day-12/.
+async function runSecIndirectCommand(argv: string[]): Promise<void> {
+  const getFlag = (name: string): string | undefined => {
+    const i = argv.indexOf(`--${name}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const vectorName = getFlag('vector') ?? 'all';
+  const modeName = getFlag('mode') ?? 'all';
+  const modelOverride = getFlag('model');
+  const seedRaw = getFlag('seed');
+  const seed = seedRaw ? Number(seedRaw) : undefined;
+
+  const cfg = localLlmConfig();
+  const model = modelOverride ?? cfg.model;
+  const client = modelOverride
+    ? new OllamaNativeClient({ ...cfg, model: modelOverride })
+    : makeLocalLlmClient();
+
+  const vectors: IndirectVector[] = [];
+  if (vectorName === 'email' || vectorName === 'all') vectors.push(emailVector());
+  if (vectorName === 'doc' || vectorName === 'all') vectors.push(documentVector());
+  if (vectorName === 'search' || vectorName === 'all') vectors.push(webSearchVector());
+  if (vectorName === 'code' || vectorName === 'all') vectors.push(copilotCodeVector());
+  const validModes: readonly DefenseMode[] = ['none', 'sanitize', 'boundary', 'output', 'all'];
+  if (vectors.length === 0) {
+    console.error(`Неизвестный вектор: ${vectorName}. Доступно: email | doc | search | code | all`);
+    process.exit(1);
+  }
+  const modes: readonly DefenseMode[] =
+    modeName === 'matrix'
+      ? ['none', 'sanitize', 'boundary', 'output', 'all']
+      : validModes.filter((m) => m === modeName);
+  if (modes.length === 0) {
+    console.error(
+      `Неизвестный режим: ${modeName}. Доступно: none | sanitize | boundary | output | all | matrix`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `▶ sec-indirect (ADVANCED day-12): vector=${vectorName} mode=${modeName} model=${model} seed=${seed ?? '-'}\n`,
+  );
+  const results = await runIndirectMatrix((m, p) => client.chat(m, p), vectors, modes, { seed });
+
+  let lastVector = '';
+  for (const r of results) {
+    if (r.vectorId !== lastVector) {
+      lastVector = r.vectorId;
+      const v = vectors.find((x) => x.id === r.vectorId);
+      console.log(`══════ ${v?.title ?? r.vectorId} ══════`);
+    }
+    console.log(`── режим защиты: ${r.mode}`);
+    console.log(
+      `   payload дожил до промпта: ${r.payloadSurvived ? 'ДА' : 'НЕТ'} | модель выполнила: ${r.succeeded ? 'ДА' : 'НЕТ'} | валидатор заблокировал: ${r.blocked ? 'ДА' : 'НЕТ'}`,
+    );
+    console.log(`   ИТОГ: ${r.passed ? 'АТАКА ПРОШЛА' : 'АТАКА НЕ ПРОШЛА'}`);
+    if (r.matchedMarkers.length > 0) console.log(`   маркеры: ${r.matchedMarkers.join(', ')}`);
+    console.log(
+      `   Ответ модели:\n${r.response.split('\n').map((l) => `   | ${l}`).join('\n')}`,
+    );
+    console.log('');
+  }
+
+  const passedTotal = results.filter((r) => r.passed).length;
+  console.log(`ИТОГО: атак прошло ${passedTotal} из ${results.length}`);
 }
 
 // Whole-chat индексация (forum = все топики; не-forum = основной поток topic_id=0).
