@@ -56,7 +56,7 @@
 ## Метрики дня (реальный прогон 2026-10-31)
 
 - Слияние: adapter-epoch3 + Qwen2.5-0.5B-Instruct → fp16 safetensors
-  (942 МБ) → GGUF f16 (988 МБ) → **Q4_K_M 379 МБ** (llama.cpp b12023,
+  (942 МБ) → GGUF f16 (994 МБ) → **Q4_K_M 379 МБ** (llama.cpp b12023,
   llama-quantize 3.7 с). sha256 в `artifacts/merge_report.json`.
 - Ollama: `qwen2.5-0.5b-football` (GGUF + ChatML TEMPLATE + temperature 0
   + stop `<|im_end|>`). Прямой импорт safetensors этим Ollama-билдом не
@@ -74,7 +74,9 @@
 Warm wall у tuned ниже за счёт короткого ответа (~70 токенов против
 лимита 220 у base); чистая скорость генерации tuned ниже (143 vs 177
 ток/с) — плата за более «тяжёлый» стиль вывода; память и размер равны.
-- Переключение: <100 мс (in-memory override), без рестарта; allowlist env
+- Переключение: мгновенно (in-memory override), без рестарта; точный
+  замер латентности не фиксировался — smoke.md фиксирует сам факт смены
+  состояния и обслуживания запросов. Allowlist env
   режет неизвестные имена (смоук, smoke.md).
 - Ключевая находка прогона: tuned выражает строгий JSON-контракт ТОЛЬКО с
   полным system prompt day-07; с коротким/чужим системным промптом
