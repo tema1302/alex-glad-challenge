@@ -55,6 +55,7 @@ import {
   Retriever,
   makeEmbedder,
   makeLocalLlmClient,
+  localLlmConfig,
   runIndexing,
   loadEval,
   runEval,
@@ -90,6 +91,15 @@ import {
 import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.js';
 import { runTgBot } from './core/tg/bot.js';
 import { runMaximBot } from './core/tg/maximBot.js';
+import { OllamaNativeClient } from './core/rag/llm.js';
+import {
+  bankTarget,
+  mediumTarget,
+  defaultAttacks,
+  runInjectionAttacks,
+  summarizeByTechnique,
+} from './core/security/injectionLab.js';
+import type { InjectionTarget } from './core/security/injectionLab.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -152,6 +162,11 @@ function printHelp(): void {
   console.log('    --index-only       собрать/доклеить FTS-индекс (tg-fts.sqlite) и выйти, без сети');
   console.log('    --rebuild          полная перестройка FTS-индекса (можно вместе с --index-only)');
   console.log('  maxim-bot        Бот «Максим Артемьевич» (QA Lead front-back): напутствия в чат + капс при молчании');
+  console.log('  sec-inject       ADVANCED day-11: лаборатория prompt injection (3 техники, локальная LLM)');
+  console.log('    --target bank|medium|all  цель атаки (по умолчанию bank)');
+  console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
+  console.log('    --author <name>    имя автора для цели medium (по умолчанию Гоша)');
+  console.log('    --seed <N>         seed генерации для воспроизводимости');
   console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
@@ -618,6 +633,12 @@ async function main(): Promise<void> {
   }
   if (arg === 'tg-top') {
     await runTgTopCommand(argv.slice(1));
+    return;
+  }
+
+  // --- Security week (ADVANCED day-11): лаборатория prompt injection ---
+  if (arg === 'sec-inject') {
+    await runSecInjectCommand(argv.slice(1));
     return;
   }
 
@@ -2398,6 +2419,69 @@ async function runTgTopCommand(argv: string[]): Promise<void> {
   } finally {
     store.close();
   }
+}
+
+// ADVANCED day-11: лаборатория prompt injection. Все атаки — против локальной
+// LLM (фронтрирные модели для атак не используются). Промпты и ответы печатаются
+// целиком: stdout — это транскрипт для docs/advanced-day-11/.
+async function runSecInjectCommand(argv: string[]): Promise<void> {
+  const getFlag = (name: string): string | undefined => {
+    const i = argv.indexOf(`--${name}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const targetName = getFlag('target') ?? 'bank';
+  const author = getFlag('author') ?? 'Гоша';
+  const modelOverride = getFlag('model');
+  const seedRaw = getFlag('seed');
+  const seed = seedRaw ? Number(seedRaw) : undefined;
+
+  const cfg = localLlmConfig();
+  const model = modelOverride ?? cfg.model;
+  const client = modelOverride
+    ? new OllamaNativeClient({ ...cfg, model: modelOverride })
+    : makeLocalLlmClient();
+
+  const targets: InjectionTarget[] = [];
+  if (targetName === 'bank' || targetName === 'all') targets.push(bankTarget());
+  if (targetName === 'medium' || targetName === 'all') targets.push(mediumTarget(author));
+  if (targets.length === 0) {
+    console.error(`Неизвестная цель: ${targetName}. Доступно: bank | medium | all`);
+    process.exit(1);
+  }
+
+  console.log(
+    `▶ sec-inject (ADVANCED day-11): target=${targetName} model=${model} seed=${seed ?? '-'}\n`,
+  );
+  const attacks = defaultAttacks();
+  let passed = 0;
+  let total = 0;
+
+  for (const target of targets) {
+    console.log(`══════ ${target.title} ══════`);
+    console.log('SYSTEM PROMPT:');
+    console.log(target.systemPrompt);
+    console.log('');
+    const results = await runInjectionAttacks((m, p) => client.chat(m, p), target, attacks, { seed });
+    for (const r of results) {
+      total += 1;
+      if (r.succeeded) passed += 1;
+      const attack = attacks.find((a) => a.id === r.attackId);
+      console.log(`── [${r.technique}] ${attack?.title ?? r.attackId}`);
+      console.log(`   Атака: ${r.attackId}`);
+      console.log(`   Детектор: ${r.detectHint}`);
+      console.log(`   Вердикт: ${r.succeeded ? 'АТАКА ПРОШЛА' : 'ЗАЩИТА УДЕРЖАЛА'}`);
+      console.log(`   Ответ модели:\n${r.response.split('\n').map((l) => `   | ${l}`).join('\n')}`);
+      console.log('');
+    }
+    const summary = summarizeByTechnique(results);
+    const parts = [...summary.entries()].map(
+      ([t, s]) => `${t} ${s.passed}/${s.total}`,
+    );
+    console.log(`Сводка ${target.id}: ${parts.join(' · ')}`);
+    console.log('');
+  }
+
+  console.log(`ИТОГО: атак прошло ${passed} из ${total}`);
 }
 
 // Whole-chat индексация (forum = все топики; не-forum = основной поток topic_id=0).
