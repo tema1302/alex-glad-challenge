@@ -68,6 +68,8 @@ test('stripHiddenStyledTags: display:none, прозрачность, атриб�
   for (const c of cases) {
     assert.ok(!stripHiddenStyledTags(c).includes('скрытая инструкция'), c);
   }
+  const manyHidden = `${'<span hidden>шум</span>'.repeat(12)}<p style="display:none">скрытая инструкция</p>`;
+  assert.ok(!stripHiddenStyledTags(manyHidden).includes('скрытая инструкция'));
   assert.ok(!stripHiddenStyledTags('<p style="color:#fff">инструкция</p>').includes('инструкция'));
 });
 

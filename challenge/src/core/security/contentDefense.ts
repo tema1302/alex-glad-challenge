@@ -74,7 +74,7 @@ export function stripHiddenStyledTags(s: string): string {
   let out = s;
   const openTagRe = /<([^/\s>!][^>\s]*)(?:\s+([^>]*))?>/g;
 
-  for (let pass = 0; pass < 8; pass++) {
+  for (let pass = 0; pass < 256; pass++) {
     openTagRe.lastIndex = 0;
     let changed = false;
     let match: RegExpExecArray | null;
