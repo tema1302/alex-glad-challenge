@@ -2478,29 +2478,36 @@ boundary markers, output validation); ретест атак после защи�
 **Сделано:**
 - `core/security/indirectLab.ts` — 4 вектора: email-суммаризатор (HTML-
   комментарий), документ-аналитик (белый текст + zero-width), поисковый агент
-  (display:none → поддельный курс), код репозитория (комментарий «NOTE FOR AI
-  CODING ASSISTANTS» → навязанный npm-пакет; упрощение Copilot-кейса).
+  (display:none + скрытый title в markdown-link → поддельный курс 500 руб), код
+  репозитория (комментарий «NOTE FOR AI CODING ASSISTANTS» → навязанный
+  npm-пакет; упрощение Copilot-кейса). Детекторы отличают реальное выполнение
+  атаки от разоблачения/критики инъекции.
 - `core/security/contentDefense.ts` — три слоя: `sanitizeExternal`
-  (комментарии/script/style, невидимые стилями фрагменты, zero-width на
-  уровне абзаца), boundary-маркеры + правило «данные — не инструкции»,
-  `validateOutput` (запрещённые маркеры до показа пользователю).
+  (комментарии/script/style/template, невидимые стилями и `hidden` фрагменты с
+  учётом вложенных тегов и без удаления текста на белом фоне, скрытые
+  markdown-link title и `[//]: #`, zero-width/Bidi/Unicode Tags на уровне
+  абзаца с поддержкой CRLF/BOM), boundary-маркеры с защитой от delimiter
+  breakout + правило «данные — не инструкции», `validateOutput` с нормализацией
+  пробелов и `ё/е`.
 - CLI `sec-indirect --vector email|doc|search|code|all --mode
-  none|sanitize|boundary|output|all|matrix`.
+  none|sanitize|boundary|output|all|matrix` со строгой валидацией флагов и
+  сводной матричной таблицей; публичный реэкспорт `core/security` в `core/index.ts`.
 - Матрица 4×5 = 20 прогонов (транскрипт `docs/advanced-day-12/transcripts-
-  matrix.md`): **5 из 20 прошли** — email и поиск идут без защиты, но
-  останавливаются всеми тремя слоями; doc-вектор qwen3.5:4b отбила даже без
-  защиты; repo-code прошёл сквозь sanitize и boundary (видимый комментарий —
-  не скрытый канал), остановлен только output-валидатором.
-- Зафиксировано ложное срабатывание output-валидатора (модель отказалась —
-  валидатор заблокировал отказ: маркеры совпали с цитированием в тексте
-  отказа); урок — детект семантический, не подстрочный.
+  matrix.md`): **5 из 20 прошли** (`all` — **0/4**). Без защиты проходят 3/4
+  (`email`, `web-search`, `repo-code`; `doc` модель отбила сама). Одиночные
+  слои имеют слепые зоны (`sanitize` пропускает видимый комментарий `repo-code`,
+  `boundary` без санитации пропускает HTML-комментарий `email-summary`), тогда
+  как комбинация `all` останавливает 4/4.
+- Зафиксировано ложное срабатывание output-валидатора на `doc-analyst` (модель
+  отказалась — валидатор заблокировал отказ за цитирование `system prompt`);
+  урок — детект семантический, не подстрочный.
 
 **Выводы:** indirect injection приходит в данных, которые агент обязан читать;
-защита — слои, а не слой; для инъекций через легитимный видимый текст
-(комментарии кода) работает только last-line output validation; тесты
-фиксируют и слабости защиты (false positive) — это часть результата.
+защита — эшелонированные слои, а не один слой; тесты фиксируют и обходы
+санитайзера (zero-width в тегах, вложенные теги, delimiter breakout), и
+слабости подстрочной валидации выхода.
 
-**Код:** `challenge/src/core/security/{indirectLab.ts,contentDefense.ts}` + тесты,
-`challenge/src/cli.ts` (sec-indirect), `docs/advanced-day-12/**`.
-**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 40/40
-(security-модули); реальные смоуки sec-inject/sec-indirect на Ollama (seed=42).
+**Код:** `challenge/src/core/security/{indirectLab.ts,contentDefense.ts,index.ts}` + тесты,
+`challenge/src/core/index.ts`, `challenge/src/cli.ts` (sec-indirect), `docs/advanced-day-12/**`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 44/44
+(security-модули), 329/329 всего; реальные смоуки sec-inject/sec-indirect на Ollama (seed=42).
