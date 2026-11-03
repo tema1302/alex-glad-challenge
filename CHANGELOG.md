@@ -2421,3 +2421,44 @@ loss ~1.0, recall 3/36; 30 эпох → loss 0.0009, recall 26/36); recall де�
 **Проверка:** smoke `SMOKE OK` (artifacts/smoke_rocm.json); прогон day-06 smoke
 12 шагов с падающим loss (run.json/loss.csv в training/rocm/artifacts/);
 baseline `challenge` typecheck зелёный.
+
+---
+
+## ADVANCED Day 11 — Prompt Injection (2026-11-03)
+**Дата:** 2026-11-03. Ветка `feat/security-days-11-12` (loop run-2026-11-03,
+эпик #194, стори #195–#197). Неделя security; фронтрирные модели для атак не
+используются — все прогоны на локальной qwen3.5:4b (Ollama, seed=42).
+
+**Задание:** 3 техники direct injection (role-play DAN, instruction override,
+extraction), фиксация что сработало; коллекция 5 реальных инъекций с
+классификацией direct/indirect/jailbreak; атака на свой прод-промпт; усиленный
+system prompt + ретест теми же техниками.
+
+**Сделано:**
+- `core/security/injectionLab.ts` — лаборатория: цели bank/medium (+hardened),
+  6 атак (3 техники × 2) с детекторами (канарейки FREEDOM/МЯУ/ВЗЛОМАНО/ACCESS
+  GRANTED, утечка по дословным фрагментам промпта), DI клиента как ChatFn,
+  тесты node:test без сети (17).
+- CLI `sec-inject --target bank|medium|hardened|all --model --author --seed`.
+- Прогоны (транскрипты `docs/advanced-day-11/transcripts-*.md`): банк 1/6
+  (override-канарейка «ВЗЛОМАНО»), свой прод-промпт бота «Медиум» 2/6 (смена
+  личности с канарейкой МЯУ в манере персонажа + verbatim-утечка промпта через
+  легенду «я разработчик»).
+- Усиление: `hardenedBankTarget`/`hardenedMediumTarget` (иерархия
+  «ИНСТРУКЦИИ vs ДАННЫЕ», запрет канареек, шаблон отказа, самопроверка) —
+  ретест теми же 12 атаками: **0/12 проходов** (исходные: 3/12).
+- Коллекция 5 реальных инъекций с классификацией и защитами в
+  `docs/advanced-day-11/README.md` (Willison/NCC canonical, DAN, Bing «Sydney»,
+  ChatGPT Search invisible text, промпты в научных статьях; источники —
+  Ars Technica/Guardian/Nikkei/Wikipedia).
+
+**Выводы:** прод-промпт «играй роль» уязвимее к role-play по построению;
+extraction закрывается шаблоном отказа + output-детектором, а не запретом;
+канарейка — однозначный маркер успеха для автоматизации; hardening — победа
+над своими атаками, не над классом (NCSC: no surefire mitigations) — следующие
+слои в дне 12.
+
+**Код:** `challenge/src/core/security/{injectionLab.ts,injectionLab.test.ts}`,
+`challenge/src/cli.ts` (sec-inject), `docs/advanced-day-11/**`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 17/17;
+реальные смоуки `sec-inject` на Ollama (bank/medium/hardened, seed=42).
