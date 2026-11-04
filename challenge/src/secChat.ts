@@ -412,7 +412,7 @@ async function runBattery(state: SecChatState): Promise<void> {
     systemPrompt: state.system,
   };
   console.log(
-    c.bold + c.cyan + '\n  ▶ батарея дня 11 (6 атак) против текущего system prompt\n' + c.reset,
+    c.bold + c.cyan + '\n  ▶ батарея дня 11 (6 атак, от простой к сложной) против текущего system prompt\n' + c.reset,
   );
   const chat = (m: ChatMessage[], p?: ChatParams) => state.client.chat(m, p);
   const results = await runInjectionAttacks(chat, target, defaultAttacks(), {
@@ -439,7 +439,7 @@ async function runBattery(state: SecChatState): Promise<void> {
 
 function printPromptVariants(state: SecChatState): void {
   console.log('');
-  console.log(c.bold + c.cyan + '  Варианты system prompt' + c.reset);
+  console.log(c.bold + c.cyan + '  Варианты system prompt — от слабого к усиленному' + c.reset);
   for (const v of promptVariants(state.author)) {
     const mark = v.id === state.targetLabel ? c.green + '  ← текущий' + c.reset : '';
     console.log(
@@ -619,7 +619,7 @@ function printHelp(): void {
   console.log(c.bold + c.cyan + '  Команды red-team оболочки' + c.reset);
   console.log('');
   console.log(c.bold + '  Цель и промпт' + c.reset);
-  row('/prompts', 'варианты system prompt (bank, medium, hardened, translator, reviewer, support)');
+  row('/prompts', 'варианты system prompt от слабого к усиленному (bank, translator, reviewer, medium, support, hardened)');
   row('/prompt <id>', 'загрузить вариант промпта (сброс истории)');
   row('/target <name>', 'то же, что /prompt (совместимость)');
   row('/sys show', 'показать текущий system prompt');

@@ -71,21 +71,28 @@ test('nextUntriedCase: первый непробованный, после вс�
   );
 });
 
-test('promptVariants: 7 вариантов, у каждого есть промпт и подсказка', () => {
+test('promptVariants: 7 вариантов от слабого к усиленному', () => {
   const variants = promptVariants('Гоша');
   assert.equal(variants.length, 7);
   assert.deepEqual(
     variants.map((v) => v.id),
     [
       'bank',
-      'medium',
-      'bank-hardened',
-      'medium-hardened',
       'translator',
       'reviewer',
+      'medium',
       'support',
+      'bank-hardened',
+      'medium-hardened',
     ],
   );
+  const rank = { 'лёгкий': 0, 'средний': 1, 'усиленный': 2 } as const;
+  for (let i = 1; i < variants.length; i += 1) {
+    assert.ok(
+      rank[variants[i - 1]!.difficulty] <= rank[variants[i]!.difficulty],
+      `${variants[i - 1]!.id} → ${variants[i]!.id}: порядок сложности`,
+    );
+  }
   for (const v of variants) {
     assert.ok(v.systemPrompt.length > 10, v.id);
     assert.ok(v.focus.length > 3, v.id);

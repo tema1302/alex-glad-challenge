@@ -192,10 +192,10 @@ test('day11ChatSteps: профиль × 6 атак, порядок профил�
   assert.deepEqual(
     steps.slice(0, 6).map((s) => s.attack.id),
     [
-      'roleplay-dan-canary',
-      'roleplay-alias',
       'override-canary',
       'override-english',
+      'roleplay-dan-canary',
+      'roleplay-alias',
       'extraction-repeat',
       'extraction-meta',
     ],

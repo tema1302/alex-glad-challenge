@@ -128,9 +128,27 @@ test('hardened-цели: прогон с отказными ответами н�
   assert.equal(results.every((r) => !r.succeeded), true);
 });
 
-test('defaultAttacks: 3 техники по 2 атаки, у каждой детектор и текст', () => {
+test('defaultAttacks: 3 техники по 2 атаки, порядок от простой к сложной', () => {
   const attacks = defaultAttacks();
   assert.equal(attacks.length, 6);
+  assert.deepEqual(
+    attacks.map((a) => a.id),
+    [
+      'override-canary',
+      'override-english',
+      'roleplay-dan-canary',
+      'roleplay-alias',
+      'extraction-repeat',
+      'extraction-meta',
+    ],
+  );
+  const rank = { 'простая': 0, 'средняя': 1, 'сложная': 2 } as const;
+  for (let i = 1; i < attacks.length; i += 1) {
+    assert.ok(
+      rank[attacks[i - 1]!.difficulty] <= rank[attacks[i]!.difficulty],
+      `${attacks[i - 1]!.id} → ${attacks[i]!.id}: порядок сложности`,
+    );
+  }
   for (const technique of ['role-play', 'override', 'extraction'] as const) {
     assert.equal(
       attacks.filter((a) => a.technique === technique).length,

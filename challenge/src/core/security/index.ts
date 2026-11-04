@@ -18,6 +18,7 @@ export type {
   ChatFn,
   InjectionTarget,
   InjectionTechnique,
+  AttackDifficulty,
   InjectionAttack,
   AttackResult,
   RunLabOptions,

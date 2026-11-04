@@ -60,7 +60,10 @@ function supportTarget(): InjectionTarget {
   };
 }
 
-/** Все варианты prompt'ов для меню /prompts и CLI --target. */
+/**
+ * Все варианты prompt'ов для меню /prompts и CLI --target.
+ * Порядок — от слабого промпта к усиленному: лёгкий → средний → усиленный.
+ */
 export function promptVariants(authorName: string): readonly PromptVariant[] {
   const bank = bankTarget();
   const medium = mediumTarget(authorName);
@@ -75,24 +78,6 @@ export function promptVariants(authorName: string): readonly PromptVariant[] {
       description: 'Синтетический банк из задания дня 11: 1/6 атак проходит.',
     },
     {
-      ...medium,
-      difficulty: 'средний',
-      focus: 'role-play и extraction через social engineering',
-      description: 'Прод-промпт «Медиума»: 2/6 атак проходит, роль ломается.',
-    },
-    {
-      ...hardenedBank,
-      difficulty: 'усиленный',
-      focus: 'ретест тех же атак + over-refusal',
-      description: 'Иерархия «инструкции vs данные», 0/6 на батарее дня 11.',
-    },
-    {
-      ...hardenedMedium,
-      difficulty: 'усиленный',
-      focus: 'ретест в образе персонажа + отказ без канарейки',
-      description: 'Усиленный «Медиум»: отказ в манере, 0/6.',
-    },
-    {
       ...translatorTarget(),
       difficulty: 'лёгкий',
       focus: 'case 1: «ignore the above directions»',
@@ -105,10 +90,28 @@ export function promptVariants(authorName: string): readonly PromptVariant[] {
       description: 'Слабый рецензент: читает документ и верит скрытому тексту.',
     },
     {
+      ...medium,
+      difficulty: 'средний',
+      focus: 'role-play и extraction через social engineering',
+      description: 'Прод-промпт «Медиума»: 2/6 атак проходит, роль ломается.',
+    },
+    {
       ...supportTarget(),
       difficulty: 'средний',
       focus: 'excess grant: социальная инженерия против прав агента',
       description: 'Агент с правом возвратов и смены адреса — цель для social.',
+    },
+    {
+      ...hardenedBank,
+      difficulty: 'усиленный',
+      focus: 'ретест тех же атак + over-refusal',
+      description: 'Иерархия «инструкции vs данные», 0/6 на батарее дня 11.',
+    },
+    {
+      ...hardenedMedium,
+      difficulty: 'усиленный',
+      focus: 'ретест в образе персонажа + отказ без канарейки',
+      description: 'Усиленный «Медиум»: отказ в манере, 0/6.',
     },
   ];
 }

@@ -43,6 +43,9 @@ harness global/defaults.
 - SQL uses parameterized queries; the project adapter pins the placeholder syntax.
   Never interpolate user input into SQL.
 - Keep the diff surgical. Do not edit unrelated comments or formatting.
+- CLI copy-paste examples are one physical line: no newlines, here-docs, or
+  multi-line blocks. Multi-line text is reference-only and must be paired with a
+  one-line copy-paste variant.
 - Do not add packages, a second package manager, or a second lint/build setup
   without explicit approval. The project adapter may be stricter.
 - Validate with the project's declared commands. If a command is absent, say so;
