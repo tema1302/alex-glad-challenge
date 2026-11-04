@@ -9,6 +9,14 @@ CLI `sec-inject`.
 против локальной qwen3.5:4b (Ollama, seed=42). Это и безопасно, и
 воспроизводимо: любой может повторить прогоны командой из транскриптов.
 
+**Живой прогон:** пошаговый сценарий «подними локальную модель и попробуй сам»
+— [`live-run.md`](./live-run.md).
+
+**Сборник тест-кейсов:** 5 реальных инъекций + 2 кейса дня 12, варианты
+system prompt, банк промптов и глоссарий — [`test-cases.md`](./test-cases.md).
+Интерактивно то же самое доступно в CLI `sec-chat` (`/cases`, `/case`,
+`/learn`, `/hint`, `/prompts`).
+
 ## Задание
 
 > Попробовать 3 техники атаки (role-play «DAN», instruction override, extraction),
@@ -28,6 +36,9 @@ CLI `sec-inject`.
 - **s3 (#197)**: усиленные промпты (`hardenedBankTarget`, `hardenedMediumTarget`)
   + ретест теми же техниками (`transcripts-hardened.md`); коллекция реальных
   инъекций (ниже); CHANGELOG.
+- **s4 (#205)**: интерактивная оболочка `sec-chat` — коуч `/hint`, библиотека
+  кейсов `/cases` + `/case <n> send`, глоссарий `/learn`, варианты промпта
+  `/prompts`; сборник [`test-cases.md`](./test-cases.md).
 
 ## Результаты атак (qwen3.5:4b, seed=42)
 

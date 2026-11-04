@@ -2558,3 +2558,54 @@ boundary markers, output validation); ретест атак после защи�
 всего (17 новых); смоуки: offline (`/help`, `/stats`, `/quit`) и живой прогон
 на Ollama qwen3.5:4b (bank, seed=42) — DIALOG на benign-вопрос, классификация
 `override + canary` и вердикт `AMBIGUOUS` на атаку, журнал записан.
+
+---
+
+## ADVANCED Days 11–12 (доработка 2) — sec-chat: коуч, кейсы и глоссарий (2026-11-04)
+**Дата:** 2026-11-04. Ветка `feat/security-days-11-12` (loop run-2026-11-04,
+issue #205). Только локальная LLM; фронтрирные модели не используются.
+
+**Задание:** сделать оболочку максимально интерактивной: варианты system prompt,
+библиотека реальных инъекций, подсказки «как атаковать», объяснение терминов
+простыми словами и единый документ-сборник тест-кейсов.
+
+**Сделано:**
+- `core/security/redTeamCases.ts` (чистые данные/функции): 5 основных кейсов из
+  открытых источников (ignore-the-above, DAN, Sydney, ChatGPT Search,
+  peer-review) + 2 кейса дня 12 (Gemini memory, белый текст в резюме); у каждого
+  — источник, механика, почему работает, защита, payload, канарейки, детектор,
+  рекомендуемый промпт. 18 терминов глоссария (canary, почему FREEDOM, excess
+  grant/excessive agency, boundary, sanitizer, output validation, verdict,
+  over-refusal, crescendo, zero-width, RLHF и др.). 7 вариантов system prompt
+  (`bank`, `medium`, `bank-hardened`, `medium-hardened`, `translator`,
+  `reviewer`, `support`). Коуч `coachHint` + `topicHint` для подсказок по
+  состоянию сессии и техникам.
+- `sec-chat`: `/prompts` + `/prompt <id>` (совместимый `/target`), `/cases`,
+  `/case <n>` (разбор), `/case <n> send` (payload в живой чат с авто-канарейками),
+  `/learn [term]`, `/hint [topic]`; коуч-подсказка после каждого вердикта;
+  обновлены banner/help/autocomplete. `findPromptVariant` заменил жёсткую карту
+  целей в CLI, добавлены алиасы `hardened-bank`/`hardened-medium`.
+- Классификатор `redTeamChat`: добавлены needle'ы `ignore the above`,
+  `ignore previous`, `always recommend`, `do not tell the user` и др., чтобы
+  payload'ы новых кейсов распознавались как атака.
+- Документ [`docs/advanced-day-11/test-cases.md`](docs/advanced-day-11/test-cases.md):
+  быстрый старт, глоссарий, 5+2 кейса, все 7 промптов, банк инъекций по
+  техникам (direct/role-play/extraction/canary/delimiter/encoding/social/
+  indirect), рубрика вердикта, журнал, границы безопасности. Ссылки из README
+  дней 11 и 12.
+
+**Выводы:** готовые кейсы снимают «страх пустого поля» — новичок запускает
+`/case 1 send` и сразу видит классификацию, детекторы и вердикт; коуч после
+каждого хода предлагает следующий шаг. Live-smoke выявил ограничение
+эвристического детектора: модель может процитировать канарейку в рассуждении —
+такой ответ стоит читать глазами и при сомнении ставить `AMBIGUOUS`.
+
+**Код:** `challenge/src/core/security/{redTeamCases.ts,redTeamCases.test.ts,
+redTeamChat.ts,index.ts}`, `challenge/src/secChat.ts`, `challenge/src/cli.ts`,
+`docs/advanced-day-11/{test-cases.md,README.md}`, `docs/advanced-day-12/README.md`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 359/359
+(13 новых); offline-смоук `/cases`, `/case 1`, `/learn canary`, `/hint`,
+`/prompts`; живой прогон на Ollama `qwen3:4b` (тега `qwen3.5:4b` в локальном
+реестре не было; seed=42, temp=0) — `/case 1 send` на `translator`:
+классификация `override`, канарейка `Haha pwned` найдена, вердикт
+`ATTACK PASS`, журнал `.data/redteam-journal-*.md` записан.
