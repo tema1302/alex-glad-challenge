@@ -30,6 +30,7 @@ import { runDay25Server } from './demos/day-25-server.js';
 import { runDay20 } from './demos/day-20.js';
 import { startRepl } from './repl.js';
 import { startSecChat, SEC_CHAT_DEFAULT_SYSTEM } from './secChat.js';
+import { findPromptVariant } from './core/security/redTeamCases.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
@@ -2577,13 +2578,7 @@ async function runSecChatCommand(argv: string[]): Promise<void> {
     ? new OllamaNativeClient({ ...cfg, model: modelOverride })
     : makeLocalLlmClient();
 
-  const targets = new Map<string, InjectionTarget>([
-    ['bank', bankTarget()],
-    ['medium', mediumTarget(author)],
-    ['hardened-bank', hardenedBankTarget()],
-    ['hardened-medium', hardenedMediumTarget(author)],
-  ]);
-  const target = targets.get(targetName);
+  const target = findPromptVariant(author, targetName);
   let targetLabel: string;
   let targetTitle: string;
   let system: string;
@@ -2597,7 +2592,7 @@ async function runSecChatCommand(argv: string[]): Promise<void> {
     system = sysFlag ?? SEC_CHAT_DEFAULT_SYSTEM;
   } else {
     console.error(
-      `Неизвестная цель: ${targetName}. Доступно: bank | medium | hardened-bank | hardened-medium | custom`,
+      `Неизвестная цель: ${targetName}. Доступно: bank | medium | hardened-bank | hardened-medium | translator | reviewer | support | custom`,
     );
     process.exit(1);
   }

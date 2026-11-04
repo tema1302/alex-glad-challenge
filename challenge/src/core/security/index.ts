@@ -73,3 +73,24 @@ export type {
   RedTeamVerdict,
   RedTeamStats,
 } from './redTeamChat.js';
+
+export {
+  RED_TEAM_CASES,
+  GLOSSARY,
+  TECHNIQUE_HINTS,
+  promptVariants,
+  findPromptVariant,
+  findRedTeamCase,
+  nextUntriedCase,
+  findGlossaryEntry,
+  topicHint,
+  coachHint,
+} from './redTeamCases.js';
+export type {
+  CaseKind,
+  RedTeamCase,
+  PromptDifficulty,
+  PromptVariant,
+  GlossaryEntry,
+  CoachContext,
+} from './redTeamCases.js';

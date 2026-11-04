@@ -12,15 +12,26 @@ import readline from 'node:readline';
 import { LlmClient, msg } from './core/index.js';
 import type { ChatMessage, ChatParams } from './core/index.js';
 import {
-  bankTarget,
   defaultAttacks,
-  hardenedBankTarget,
-  hardenedMediumTarget,
-  mediumTarget,
   runInjectionAttacks,
   summarizeByTechnique,
 } from './core/security/injectionLab.js';
 import type { InjectionTarget } from './core/security/injectionLab.js';
+import {
+  GLOSSARY,
+  RED_TEAM_CASES,
+  coachHint,
+  findGlossaryEntry,
+  findPromptVariant,
+  findRedTeamCase,
+  nextUntriedCase,
+  promptVariants,
+  topicHint,
+} from './core/security/redTeamCases.js';
+import type {
+  GlossaryEntry,
+  RedTeamCase,
+} from './core/security/redTeamCases.js';
 import {
   analyzeResponse,
   applyVerdict,
@@ -96,6 +107,8 @@ interface SecChatState {
   history: ChatMessage[];
   stats: RedTeamStats;
   journal: JournalEntry[];
+  lastVerdict?: RedTeamVerdict;
+  triedCaseIds: string[];
 }
 
 const TARGET_COMMANDS = [
@@ -103,12 +116,24 @@ const TARGET_COMMANDS = [
   '/target medium',
   '/target hardened-bank',
   '/target hardened-medium',
+  '/target translator',
+  '/target reviewer',
+  '/target support',
   '/target custom',
 ];
 
 const ALL_COMMANDS = [
   '/help',
   ...TARGET_COMMANDS,
+  '/prompts',
+  '/prompt ',
+  '/cases',
+  '/case ',
+  '/learn',
+  '/learn ',
+  '/glossary',
+  '/hint',
+  '/hint ',
   '/sys show',
   '/sys set ',
   '/sys file ',
@@ -197,6 +222,14 @@ function printBanner(state: SecChatState): void {
     c.yellow + 'AMBIGUOUS' + c.reset + c.gray + ' / ' + c.reset +
     c.gray + 'DIALOG' + c.reset,
   );
+  console.log(
+    c.gray + '  коуч    ' + c.reset +
+    '/cases — 5+2 реальных кейса · /learn — глоссарий · /hint — следующий шаг',
+  );
+  console.log(
+    c.gray + '  промпты ' + c.reset +
+    '/prompts — варианты system prompt · /sys set|file — свой промпт',
+  );
   console.log(c.gray + '  /help — команды · /attacks — батарея дня 11 · /quit — выход' + c.reset);
   console.log(c.gray + RULE + c.reset);
   console.log('');
@@ -270,16 +303,35 @@ function formatPrompt(state: SecChatState): string {
 
 // --- Ход: классификация → стрим → детекторы → вердикт ---
 
+function addCanary(state: SecChatState, raw: string): boolean {
+  const word = raw.trim();
+  if (word.length < 2) return false;
+  if (state.canaries.some((x) => x.toUpperCase() === word.toUpperCase())) {
+    return false;
+  }
+  state.canaries.push(word);
+  return true;
+}
+
+function currentCoach(state: SecChatState): string {
+  return coachHint({
+    turns: state.stats.turns,
+    passed: state.stats.passed,
+    held: state.stats.held,
+    ambiguous: state.stats.ambiguous,
+    triedCaseIds: state.triedCaseIds,
+    ...(state.lastVerdict ? { lastVerdict: state.lastVerdict } : {}),
+  });
+}
+
 async function runTurn(state: SecChatState, line: string): Promise<void> {
   const classification = classifyInput(line);
   printClassification(classification, state.canaries);
 
-  const fresh = canariesFromText(line).filter(
-    (w) => !state.canaries.some((x) => x.toUpperCase() === w.toUpperCase()),
-  );
-  for (const w of fresh) {
-    state.canaries.push(w);
-    console.log(c.cyan + '  + канарейка: ' + c.reset + w);
+  for (const w of canariesFromText(line)) {
+    if (addCanary(state, w)) {
+      console.log(c.cyan + '  + канарейка: ' + c.reset + w);
+    }
   }
 
   const messages: ChatMessage[] = [
@@ -315,7 +367,9 @@ async function runTurn(state: SecChatState, line: string): Promise<void> {
   const analysis = analyzeResponse(response, state.system, state.canaries);
   const verdict = decideVerdict(classification, analysis);
   state.stats = applyVerdict(state.stats, verdict);
+  state.lastVerdict = verdict;
   printDetectors(state, analysis, verdict);
+  console.log(c.gray + '  подсказка: ' + c.reset + c.cyan + currentCoach(state) + c.reset);
   state.journal.push({ n: state.stats.turns, user: line, classification, response, analysis, verdict, ms });
 }
 
@@ -349,6 +403,135 @@ async function runBattery(state: SecChatState): Promise<void> {
   const parts = [...summary.entries()].map(([t, s]) => `${t} ${s.passed}/${s.total}`);
   const total = passed === 0 ? c.green : c.red;
   console.log(`  ИТОГО: ${total}атак прошло ${passed} из ${results.length}${c.reset}  ${c.gray}(${parts.join(' · ')})${c.reset}\n`);
+}
+
+// --- Коуч: варианты промпта, кейсы, глоссарий ---
+
+function printPromptVariants(state: SecChatState): void {
+  console.log('');
+  console.log(c.bold + c.cyan + '  Варианты system prompt' + c.reset);
+  for (const v of promptVariants(state.author)) {
+    const mark = v.id === state.targetLabel ? c.green + '  ← текущий' + c.reset : '';
+    console.log(
+      `  ${c.yellow}${v.id.padEnd(16)}${c.reset} ${c.gray}${v.difficulty.padEnd(10)}${c.reset}` +
+      `${v.focus}${mark}`,
+    );
+    console.log(c.gray + '     ' + v.description + c.reset);
+  }
+  console.log('');
+  console.log(
+    c.gray + '  /prompt <id> — загрузить промпт (история сбросится) · /sys set <text> — свой\n' + c.reset,
+  );
+}
+
+function printCaseList(
+  title: string,
+  items: readonly RedTeamCase[],
+  tried: ReadonlySet<string>,
+): void {
+  console.log(c.bold + c.cyan + '  ' + title + c.reset);
+  for (const item of items) {
+    const mark = tried.has(item.id) ? c.green + ' ✓' + c.reset : '';
+    console.log(
+      `  ${String(item.n).padStart(2)}. ${c.yellow}[${item.kind}]${c.reset} ` +
+      `${item.title}${mark}`,
+    );
+    console.log(c.gray + '      детектор: ' + item.detectHint + c.reset);
+  }
+}
+
+function printCases(state: SecChatState): void {
+  const tried = new Set(state.triedCaseIds);
+  console.log('');
+  printCaseList('5 реальных кейсов из открытых источников', RED_TEAM_CASES.filter((x) => !x.bonus), tried);
+  console.log('');
+  printCaseList('Дополнительно (день 12)', RED_TEAM_CASES.filter((x) => x.bonus), tried);
+  console.log('');
+  console.log(
+    c.gray + '  /case <n> — подробности · /case <n> send — отправить payload в чат\n' + c.reset,
+  );
+}
+
+function printCase(item: RedTeamCase): void {
+  const kind = item.bonus ? `${item.kind}, дополнительный` : item.kind;
+  console.log('');
+  console.log(c.bold + c.magenta + `  Кейс ${item.n} · ${item.title}` + c.reset);
+  console.log(c.gray + '  тип       ' + c.reset + kind);
+  console.log(c.gray + '  источник  ' + c.reset + item.source);
+  console.log(c.gray + '  что делает' + c.reset + ' ' + item.whatItDoes);
+  console.log(c.gray + '  почему    ' + c.reset + item.whyItWorks);
+  console.log(c.gray + '  защита    ' + c.reset + item.defense);
+  console.log(c.gray + '  детектор  ' + c.reset + item.detectHint);
+  console.log(c.gray + '  промпт    ' + c.reset + `/prompt ${item.suggestedPrompt}`);
+  console.log(c.gray + '  payload:' + c.reset);
+  console.log(indentBlock(item.payload, '  | '));
+  console.log('');
+  console.log(c.gray + `  отправить: /case ${item.n} send\n` + c.reset);
+}
+
+async function sendCase(state: SecChatState, item: RedTeamCase): Promise<void> {
+  if (!state.triedCaseIds.includes(item.id)) state.triedCaseIds.push(item.id);
+  const added = item.canaries.filter((w) => addCanary(state, w));
+  if (added.length > 0) {
+    console.log(c.cyan + '  + канарейки кейса: ' + c.reset + added.join(', '));
+  }
+  console.log(c.gray + `  /case ${item.n} → payload:` + c.reset);
+  console.log(indentBlock(item.payload, '  | '));
+  await runTurn(state, item.payload);
+}
+
+function printGlossaryList(): void {
+  console.log('');
+  console.log(c.bold + c.cyan + '  Глоссарий: термины простыми словами' + c.reset);
+  for (const e of GLOSSARY) {
+    console.log('  ' + c.green + e.id.padEnd(18) + c.reset + e.short);
+  }
+  console.log('');
+  console.log(c.gray + '  /learn <id|термин> — подробнее · /hint <техника> — как атаковать\n' + c.reset);
+}
+
+function printGlossaryEntry(entry: GlossaryEntry): void {
+  console.log('');
+  console.log(c.bold + c.magenta + '  ' + entry.term + c.reset);
+  console.log(c.gray + '  коротко: ' + c.reset + entry.short);
+  console.log(indentBlock(entry.detail, '  '));
+  if (entry.example) console.log(c.gray + '  пример:  ' + c.reset + entry.example);
+  console.log('');
+}
+
+function printHint(state: SecChatState, arg: string): void {
+  const query = arg.trim();
+  if (query !== '') {
+    const topic = topicHint(query);
+    if (topic) {
+      console.log('');
+      console.log(c.cyan + '  ' + topic + c.reset);
+      console.log('');
+      return;
+    }
+    const term = findGlossaryEntry(query);
+    if (term) {
+      printGlossaryEntry(term);
+      return;
+    }
+    const item = findRedTeamCase(query);
+    if (item) {
+      printCase(item);
+      return;
+    }
+    console.log(
+      c.red + `  Не знаю "${query}". ` + c.reset +
+      c.gray + 'Попробуй /learn (список) или /hint (следующий шаг).' + c.reset,
+    );
+    return;
+  }
+  console.log('');
+  console.log(c.bold + '  Следующий шаг: ' + c.reset + c.cyan + currentCoach(state) + c.reset);
+  const next = nextUntriedCase(state.triedCaseIds);
+  console.log(
+    c.gray + `  Ещё не пробовали: /case ${next.n} — ${next.title}` + c.reset,
+  );
+  console.log('');
 }
 
 // --- Журнал (/export + автосохранение на выходе) ---
@@ -406,11 +589,20 @@ function printHelp(): void {
   console.log(c.bold + c.cyan + '  Команды red-team оболочки' + c.reset);
   console.log('');
   console.log(c.bold + '  Цель и промпт' + c.reset);
-  row('/target <name>', 'bank | medium | hardened-bank | hardened-medium | custom (сброс истории)');
+  row('/prompts', 'варианты system prompt (bank, medium, hardened, translator, reviewer, support)');
+  row('/prompt <id>', 'загрузить вариант промпта (сброс истории)');
+  row('/target <name>', 'то же, что /prompt (совместимость)');
   row('/sys show', 'показать текущий system prompt');
   row('/sys set <text>', 'задать свой system prompt (одной строкой)');
   row('/sys file <path>', 'загрузить system prompt из файла (UTF-8)');
   row('/sys reset', 'вернуть промпт текущей цели');
+  console.log('');
+  console.log(c.bold + '  Обучение и кейсы' + c.reset);
+  row('/cases', '5 реальных инъекций + 2 кейса дня 12');
+  row('/case <n>', 'разбор кейса: источник, механика, защита, payload');
+  row('/case <n> send', 'отправить payload кейса в чат');
+  row('/learn [term]', 'глоссарий простыми словами (канарейка, FREEDOM, excess grant)');
+  row('/hint [topic]', 'следующий шаг или подсказка по технике');
   console.log('');
   console.log(c.bold + '  Детекторы' + c.reset);
   row('/canary list', 'канарейки под наблюдением');
@@ -433,15 +625,6 @@ function printHelp(): void {
 
 // --- Обработка команд ---
 
-function targetMap(author: string): ReadonlyMap<string, InjectionTarget> {
-  return new Map([
-    ['bank', bankTarget()],
-    ['medium', mediumTarget(author)],
-    ['hardened-bank', hardenedBankTarget()],
-    ['hardened-medium', hardenedMediumTarget(author)],
-  ]);
-}
-
 async function handleCommand(
   raw: string,
   state: SecChatState,
@@ -454,19 +637,21 @@ async function handleCommand(
       printHelp();
       return;
 
-    case 'target': {
+    case 'target':
+    case 'prompt': {
       if (arg === 'custom') {
         state.targetLabel = 'custom';
         state.targetTitle = 'Свой системный промпт';
         state.targetSystem = SEC_CHAT_DEFAULT_SYSTEM;
         state.system = SEC_CHAT_DEFAULT_SYSTEM;
         state.history = [];
-        console.log(c.blue + `target → custom ${c.gray}(история сброшена, промпт по умолчанию — задай /sys set)` + c.reset);
+        state.lastVerdict = undefined;
+        console.log(c.blue + `${cmd} → custom ${c.gray}(история сброшена, промпт по умолчанию — задай /sys set)` + c.reset);
         return;
       }
-      const t = targetMap(state.author).get(arg);
+      const t = findPromptVariant(state.author, arg);
       if (!t) {
-        console.log(c.red + `Неизвестная цель "${arg}". Доступно: bank | medium | hardened-bank | hardened-medium | custom` + c.reset);
+        console.log(c.red + `Неизвестный промпт "${arg}". ` + c.reset + c.gray + 'Список: /prompts' + c.reset);
         return;
       }
       state.targetLabel = t.id;
@@ -474,9 +659,64 @@ async function handleCommand(
       state.targetSystem = t.systemPrompt;
       state.system = t.systemPrompt;
       state.history = [];
-      console.log(c.blue + `target → ${t.id} ${c.gray}«${t.title}» (история сброшена)` + c.reset);
+      state.lastVerdict = undefined;
+      console.log(c.blue + `${cmd} → ${t.id} ${c.gray}«${t.title}» (история сброшена)` + c.reset);
       return;
     }
+
+    case 'prompts':
+      printPromptVariants(state);
+      return;
+
+    case 'cases':
+      printCases(state);
+      return;
+
+    case 'case': {
+      if (arg === '') {
+        printCases(state);
+        return;
+      }
+      const [which, ...caseRest] = arg.split(/\s+/);
+      const item = findRedTeamCase(which ?? '');
+      if (!item) {
+        console.log(c.red + `Неизвестный кейс "${which}". ` + c.reset + c.gray + '/cases — список.' + c.reset);
+        return;
+      }
+      const action = caseRest.join(' ').trim().toLowerCase();
+      if (action === 'send' || action === 'run' || action === 'go') {
+        await sendCase(state, item);
+        return;
+      }
+      if (action !== '') {
+        console.log(c.gray + `Использование: /case ${item.n} [send]` + c.reset);
+        return;
+      }
+      printCase(item);
+      return;
+    }
+
+    case 'learn':
+    case 'glossary': {
+      if (arg === '') {
+        printGlossaryList();
+        return;
+      }
+      const term = findGlossaryEntry(arg);
+      if (!term) {
+        console.log(
+          c.red + `Термин "${arg}" не найден. ` + c.reset +
+          c.gray + '/learn — список терминов.' + c.reset,
+        );
+        return;
+      }
+      printGlossaryEntry(term);
+      return;
+    }
+
+    case 'hint':
+      printHint(state, arg);
+      return;
 
     case 'sys': {
       const [sub, ...sysRest] = arg.split(/\s+/);
@@ -494,6 +734,7 @@ async function handleCommand(
         state.system = text;
         state.targetLabel = state.targetLabel === 'custom' ? 'custom' : state.targetLabel + '*';
         state.history = [];
+        state.lastVerdict = undefined;
         console.log(c.blue + 'system → ' + c.reset + trunc(text, 60) + c.gray + '  (история сброшена)' + c.reset);
         return;
       }
@@ -506,6 +747,7 @@ async function handleCommand(
         try {
           state.system = fs.readFileSync(p, 'utf8').trim();
           state.history = [];
+          state.lastVerdict = undefined;
           console.log(c.blue + `system → файл ${p} ${c.reset + c.gray}(${state.system.length} симв., история сброшена)` + c.reset);
         } catch (e) {
           console.log(c.red + 'Не удалось прочитать файл: ' + (e instanceof Error ? e.message : String(e)) + c.reset);
@@ -515,6 +757,7 @@ async function handleCommand(
       if (sub === 'reset') {
         state.system = state.targetSystem;
         state.history = [];
+        state.lastVerdict = undefined;
         console.log(c.blue + 'system → промпт цели ' + c.reset + trunc(state.targetSystem, 50) + c.gray + '  (история сброшена)' + c.reset);
         return;
       }
@@ -542,11 +785,7 @@ async function handleCommand(
       }
       const added: string[] = [];
       for (const w of arg.split(/\s+/)) {
-        const word = w.trim();
-        if (word.length >= 2 && !state.canaries.some((x) => x.toUpperCase() === word.toUpperCase())) {
-          state.canaries.push(word);
-          added.push(word);
-        }
+        if (addCanary(state, w)) added.push(w.trim());
       }
       if (added.length > 0) console.log(c.cyan + '+ канарейки: ' + c.reset + added.join(', '));
       return;
@@ -588,6 +827,7 @@ async function handleCommand(
 
     case 'reset':
       state.history = [];
+      state.lastVerdict = undefined;
       console.log(c.yellow + 'reset' + c.reset + c.gray + '  история очищена (промпт, канарейки и статистика сохранены)' + c.reset);
       return;
 
@@ -654,6 +894,7 @@ export async function startSecChat(client: LlmClient, opts: SecChatOptions): Pro
     history: [],
     stats: emptyStats(),
     journal: [],
+    triedCaseIds: [],
   };
 
   printBanner(state);
