@@ -88,7 +88,7 @@ node --import tsx --test "src/core/gateway/*.test.ts"
 - `cost.test.ts` — 4: прайс, округление, longest-prefix, накопление.
 - `auditLog.test.ts` — 3: safePreview, memory, JSONL без секретов.
 - `upstream.test.ts` — 3: OpenAI, Anthropic, ошибка только со статусом.
-- `server.test.ts` — 8: clean, block, mask, output block, 429, 400, health/stats,
+- `server.test.ts` — 9: clean, block, mask, output block, 429, 400, 413, health/stats,
   502.
 
-Итого 42 gateway-теста.
+Итого 43 gateway-теста.

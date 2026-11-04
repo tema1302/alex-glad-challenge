@@ -163,6 +163,16 @@ test('gateway: невалидное тело -> 400 и audit bad_request', async
   assert.equal(bad.status, 400);
 });
 
+test('gateway: слишком большое тело -> 413', async (t) => {
+  const { gw, audit } = await start(undefined, { maxBodyBytes: 50 });
+  t.after(() => gw.close());
+  const res = await post(gw, {
+    messages: [{ role: 'user', content: 'x'.repeat(200) }],
+  });
+  assert.equal(res.status, 413);
+  assert.equal(audit.records[0]!.status, 'bad_request');
+});
+
 test('gateway: health и stats', async (t) => {
   const { gw } = await start();
   t.after(() => gw.close());
