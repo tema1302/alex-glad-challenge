@@ -18,7 +18,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import readline from 'node:readline';
 
-import { loadEnvUpward } from './core/env.js';
+import { loadEnvUpward, getGatewayConfig, getGatewayUpstreamConfig } from './core/env.js';
 import { dataPath } from './core/paths.js';
 loadEnvUpward();
 
@@ -122,6 +122,8 @@ import type {
   Day12DemoReport,
   DemoBucket,
 } from './core/security/securityDemo.js';
+import { runCaseMatrix, matrixSummary } from './core/gateway/cases.js';
+import { startGateway } from './core/gateway/server.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -211,6 +213,12 @@ function printHelp(): void {
   console.log('    --auto 11|12|all   live-демо без ручного ввода: скрипт сам шлёт атаки,');
   console.log('                       меняет профили и стримит ответы модели');
   console.log('    --pause <ms>       пауза между ходами live-демо (по умолчанию 700)');
+  console.log('  llm-gateway      ADVANCED day-13: LLM-прокси с input/output guard, audit, rate-limit, cost');
+  console.log('    --port <N>         порт loopback (по умолчанию GATEWAY_PORT или 3040)');
+  console.log('    --rate <N>         запросов в минуту на IP (по умолчанию GATEWAY_RATE_LIMIT или 30)');
+  console.log('    --mode block|mask  Input Guard: блокировать или маскировать секреты (default block)');
+  console.log('    --model <name>     override upstream-модели (по умолчанию GATEWAY_MODEL)');
+  console.log('    --self-test        офлайн-матрица 14 guard-кейсов, без сети и ключей');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
   console.log('    --chat <ref>        стартовый TG-чат: chatKey | t.me/c/<id> | alias (force strategy=telegram)');
@@ -703,6 +711,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- ADVANCED day-13: LLM Gateway (input/output guard, audit, rate-limit, cost) ---
+  if (arg === 'llm-gateway') {
+    await runLlmGatewayCommand(argv.slice(1));
+    return;
+  }
+
   // --- Бот «Медиум» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
   if (arg === 'tg-bot') {
     const rest = argv.slice(1);
@@ -801,7 +815,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -3149,6 +3163,139 @@ async function runRagIndexTgCommand(argv: string[]): Promise<void> {
     tg.close();
     store.close();
   }
+}
+
+function parseGatewayCliArgs(
+  argv: readonly string[],
+): { flags: Map<string, string>; selfTest: boolean } {
+  const valueFlags = new Set(['port', 'rate', 'mode', 'model']);
+  const flags = new Map<string, string>();
+  let selfTest = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i] ?? '';
+    if (token === '--self-test') {
+      selfTest = true;
+      continue;
+    }
+    if (!token.startsWith('--')) {
+      console.error(`Неожиданный аргумент: ${token}`);
+      process.exit(1);
+    }
+    const name = token.slice(2);
+    if (!valueFlags.has(name)) {
+      console.error(
+        `Неизвестный флаг: --${name}. Доступно: --port, --rate, --mode, --model, --self-test`,
+      );
+      process.exit(1);
+    }
+    const val = argv[i + 1];
+    if (val === undefined || val.startsWith('--')) {
+      console.error(`Флаг --${name} требует значения`);
+      process.exit(1);
+    }
+    flags.set(name, val);
+    i += 1;
+  }
+  return { flags, selfTest };
+}
+
+function parsePositiveInt(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    console.error(`--${name} должен быть положительным целым: ${raw}`);
+    process.exit(1);
+  }
+  return n;
+}
+
+// ADVANCED day-13: LLM Gateway. --self-test гоняет офлайн-матрицу guard-кейсов;
+// запуск без флага поднимает loopback-прокси с audit/intercepted JSONL.
+async function runLlmGatewayCommand(argv: string[]): Promise<void> {
+  const { flags, selfTest } = parseGatewayCliArgs(argv);
+  const results = runCaseMatrix();
+  if (selfTest) {
+    console.log('▶ llm-gateway self-test (ADVANCED day-13): офлайн, без сети\n');
+    console.log('   ID       dir     expect   result    kinds');
+    for (const r of results) {
+      const result = r.found ? 'caught' : 'allowed';
+      const mark = r.passed ? 'PASS' : 'FAIL';
+      console.log(
+        `   ${r.id.padEnd(8)} ${r.direction.padEnd(7)} ${r.expect.padEnd(8)} ${result.padEnd(9)} ${r.kinds.join(',') || '-'}  [${mark}]`,
+      );
+    }
+    const summary = matrixSummary(results);
+    console.log(
+      `\nИтог: ${summary.passed}/${summary.total} passed; caught=${summary.caught}; missed=${summary.missed}`,
+    );
+    const missed = results.filter((r) => !r.found);
+    if (missed.length > 0) {
+      console.log('Пропущено:');
+      for (const r of missed) console.log(`  - ${r.id} ${r.title}: ${r.note}`);
+    }
+    if (summary.unexpectedMisses.length > 0) {
+      console.log('Неожиданные провалы:');
+      for (const r of summary.unexpectedMisses) {
+        console.log(`  - ${r.id} ${r.title}: expected=${r.expect}, found=${r.found}`);
+      }
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  const baseConfig = getGatewayConfig();
+  const port = parsePositiveInt(flags.get('port'), baseConfig.port, 'port');
+  const rate = parsePositiveInt(flags.get('rate'), baseConfig.rateLimitPerMin, 'rate');
+  const modeRaw = flags.get('mode');
+  if (modeRaw !== undefined && modeRaw !== 'block' && modeRaw !== 'mask') {
+    console.error(`--mode должен быть block|mask: ${modeRaw}`);
+    process.exit(1);
+  }
+  const guardMode = modeRaw === 'mask' ? 'mask' : modeRaw === 'block' ? 'block' : baseConfig.guardMode;
+  const config = {
+    ...baseConfig,
+    port,
+    rateLimitPerMin: rate,
+    guardMode,
+  };
+
+  let upstream: ReturnType<typeof getGatewayUpstreamConfig>;
+  try {
+    upstream = getGatewayUpstreamConfig();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+  const modelOverride = flags.get('model');
+  const gateway = await startGateway({
+    config,
+    upstream: { ...upstream, ...(modelOverride ? { model: modelOverride } : {}) },
+    logger: (line) => console.error(line),
+  });
+
+  console.log(`▶ llm-gateway: ${gateway.url}`);
+  console.log(
+    `  provider=${upstream.provider} model=${modelOverride ?? upstream.model} guard=${config.guardMode} rate=${config.rateLimitPerMin}/min`,
+  );
+  console.log('  POST /v1/chat/completions | GET /healthz | GET /stats');
+  console.log('  audit: challenge/.data/gateway/{audit,intercepted}.jsonl');
+  console.log('  Ctrl+C — остановить.');
+
+  await new Promise<void>((resolve) => {
+    const stop = (): void => {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+      resolve();
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+  });
+
+  await gateway.close();
+  const stats = gateway.stats();
+  console.log(
+    `\n■ llm-gateway остановлен: requests=${stats.requests} blocked_input=${stats.blockedInput} blocked_output=${stats.blockedOutput} masked=${stats.masked} rate_limited=${stats.rateLimited} cost=$${stats.totalCostUsd.toFixed(6)}`,
+  );
 }
 
 main().catch((err) => {

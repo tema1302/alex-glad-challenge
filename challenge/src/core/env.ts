@@ -358,6 +358,92 @@ export function getPrivateLlmServiceConfig(): PrivateLlmServiceConfig {
   };
 }
 
+/**
+ * Конфиг LLM-gateway (ADVANCED day-13): loopback bind, лимит запросов на IP,
+ * режим Input Guard (block/mask), лимит тела. Секретов здесь нет.
+ */
+export type GatewayGuardMode = 'block' | 'mask';
+
+export interface GatewayConfig {
+  host: string;
+  port: number;
+  rateLimitPerMin: number;
+  guardMode: GatewayGuardMode;
+  maxBodyBytes: number;
+}
+
+export function getGatewayConfig(): GatewayConfig {
+  const num = (name: string, def: number): number => {
+    const raw = process.env[name]?.trim();
+    if (!raw) return def;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : def;
+  };
+  const mode = process.env.GATEWAY_GUARD_MODE?.trim().toLowerCase() === 'mask' ? 'mask' : 'block';
+  return {
+    host: process.env.GATEWAY_HOST?.trim() || '127.0.0.1',
+    port: num('GATEWAY_PORT', 3040),
+    rateLimitPerMin: num('GATEWAY_RATE_LIMIT', 30),
+    guardMode: mode,
+    maxBodyBytes: num('GATEWAY_MAX_BODY_BYTES', 1_000_000),
+  };
+}
+
+/**
+ * Upstream-провайдер gateway: OpenAI-compatible (DeepSeek/OpenRouter/OpenAI) или
+ * Anthropic Messages API. GATEWAY_PROVIDER форсирует выбор; иначе приоритет у
+ * уже настроенного deepseek/openrouter, затем Anthropic. Ключ НЕ логируется.
+ */
+export type GatewayProvider = 'openai' | 'anthropic';
+
+export interface GatewayUpstreamConfig {
+  provider: GatewayProvider;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+export function getGatewayUpstreamConfig(): GatewayUpstreamConfig {
+  const forced = process.env.GATEWAY_PROVIDER?.trim().toLowerCase();
+  if (forced && forced !== 'openai' && forced !== 'anthropic') {
+    throw new Error(
+      `Неизвестный GATEWAY_PROVIDER: ${forced}. Допустимо: openai | anthropic.`,
+    );
+  }
+  const baseOverride = process.env.GATEWAY_UPSTREAM_URL?.trim();
+  const modelOverride = process.env.GATEWAY_MODEL?.trim();
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  const hasOpenAiKey = Boolean(
+    process.env.DEEPSEEK_API_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim(),
+  );
+
+  if (forced === 'anthropic' || (!forced && !hasOpenAiKey && anthropicKey)) {
+    if (!anthropicKey) {
+      throw new Error('Нет ANTHROPIC_API_KEY для gateway (провайдер anthropic). См. .env.example.');
+    }
+    return {
+      provider: 'anthropic',
+      baseUrl:
+        baseOverride ||
+        process.env.ANTHROPIC_BASE_URL?.trim() ||
+        'https://api.anthropic.com',
+      apiKey: anthropicKey,
+      model:
+        modelOverride ||
+        process.env.ANTHROPIC_MODEL?.trim() ||
+        'claude-3-5-haiku-latest',
+    };
+  }
+
+  const base = getLlmProviderConfig();
+  return {
+    provider: 'openai',
+    baseUrl: baseOverride || base.baseUrl,
+    apiKey: base.apiKey,
+    model: modelOverride || base.defaultModel,
+  };
+}
+
 /** Google Calendar OAuth (сервер-к-серверу). null если хотя бы одно поле отсутствует. */
 export interface GoogleCalendarConfig {
   clientId: string;
