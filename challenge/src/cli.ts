@@ -113,6 +113,15 @@ import {
   runIndirectMatrix,
 } from './core/security/indirectLab.js';
 import type { DefenseMode, IndirectVector } from './core/security/indirectLab.js';
+import {
+  parseDemoDay,
+  runSecurityDemo,
+} from './core/security/securityDemo.js';
+import type {
+  Day11DemoReport,
+  Day12DemoReport,
+  DemoBucket,
+} from './core/security/securityDemo.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -186,6 +195,12 @@ function printHelp(): void {
   console.log('                        (matrix = все 5 режимов на выбранных векторах)');
   console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
   console.log('    --seed <N>         seed генерации для воспроизводимости');
+  console.log('  sec-demo         ADVANCED days 11-12: полный демо-прогон атак по дням отдельно');
+  console.log('    --day 11|12|all    день (по умолчанию all): day-11 = 4 профиля × 6 direct-атак,');
+  console.log('                       day-12 = 4 вектора × 5 режимов защиты');
+  console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
+  console.log('    --author <name>    имя автора для целей medium (по умолчанию Гоша)');
+  console.log('    --seed <N>         seed генерации для воспроизводимости');
   console.log('  sec-chat         ADVANCED days 11-12: интерактивная red-team оболочка (чат с локальной LLM)');
   console.log('                     в реальном времени: классификация атаки → ответ (стрим) → детекторы → вердикт');
   console.log('    --target bank|medium|hardened-bank|hardened-medium|custom  стартовая цель (по умолчанию bank)');
@@ -193,6 +208,9 @@ function printHelp(): void {
   console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
   console.log('    --author <name>    имя автора для целей medium (по умолчанию Гоша)');
   console.log('    --seed <N>         seed генерации для воспроизводимости');
+  console.log('    --auto 11|12|all   live-демо без ручного ввода: скрипт сам шлёт атаки,');
+  console.log('                       меняет профили и стримит ответы модели');
+  console.log('    --pause <ms>       пауза между ходами live-демо (по умолчанию 700)');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
   console.log('    --chat <ref>        стартовый TG-чат: chatKey | t.me/c/<id> | alias (force strategy=telegram)');
@@ -673,6 +691,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- Security week (ADVANCED days 11-12): полный демо-прогон по дням ---
+  if (arg === 'sec-demo') {
+    await runSecDemoCommand(argv.slice(1));
+    return;
+  }
+
   // --- Security week (ADVANCED days 11-12): интерактивная red-team оболочка ---
   if (arg === 'sec-chat') {
     await runSecChatCommand(argv.slice(1));
@@ -777,7 +801,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-chat, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -2498,6 +2522,16 @@ function parseSeedFlag(seedRaw: string | undefined): number | undefined {
   return n;
 }
 
+function parsePauseFlag(pauseRaw: string | undefined): number | undefined {
+  if (pauseRaw === undefined) return undefined;
+  const n = Number(pauseRaw);
+  if (pauseRaw.trim() === '' || !Number.isSafeInteger(n) || n < 0) {
+    console.error(`Некорректный --pause: ${pauseRaw} (ожидается целое число ≥ 0)`);
+    process.exit(1);
+  }
+  return n;
+}
+
 // ADVANCED day-11: лаборатория prompt injection. Все атаки — против локальной
 // LLM (фронтрирные модели для атак не используются). Промпты и ответы печатаются
 // целиком: stdout — это транскрипт для docs/advanced-day-11/.
@@ -2565,12 +2599,19 @@ async function runSecInjectCommand(argv: string[]): Promise<void> {
 // атакующего классифицируется в реальном времени, ответ модели проверяют
 // детекторы (canary/утечка/отказ) и вердикт. Журнал сессии пишется в .data/.
 async function runSecChatCommand(argv: string[]): Promise<void> {
-  const flags = parseSecCliFlags(argv, ['target', 'author', 'model', 'seed', 'sys']);
+  const flags = parseSecCliFlags(argv, ['target', 'author', 'model', 'seed', 'sys', 'auto', 'pause']);
   const targetName = flags.get('target') ?? 'bank';
   const author = flags.get('author') ?? 'Гоша';
   const modelOverride = flags.get('model');
   const seed = parseSeedFlag(flags.get('seed'));
   const sysFlag = flags.get('sys');
+  const autoRaw = flags.get('auto');
+  const auto = autoRaw === undefined ? undefined : parseDemoDay(autoRaw);
+  if (autoRaw !== undefined && auto === undefined) {
+    console.error(`Неизвестный --auto: ${autoRaw}. Доступно: 11 | 12 | all`);
+    process.exit(1);
+  }
+  const pauseMs = parsePauseFlag(flags.get('pause'));
 
   const cfg = localLlmConfig();
   const model = modelOverride ?? cfg.model;
@@ -2604,6 +2645,8 @@ async function runSecChatCommand(argv: string[]): Promise<void> {
     model,
     author,
     seed,
+    ...(auto !== undefined ? { auto } : {}),
+    ...(pauseMs !== undefined ? { pauseMs } : {}),
   });
 }
 
@@ -2695,6 +2738,152 @@ async function runSecIndirectCommand(argv: string[]): Promise<void> {
 
   const passedTotal = results.filter((r) => r.passed).length;
   console.log(`ИТОГО: атак прошло ${passedTotal} из ${results.length}`);
+}
+
+function formatDemoBucket(bucket: DemoBucket): string {
+  return `${bucket.passed}/${bucket.total}`;
+}
+
+function formatResponseBlock(text: string): string {
+  return text.split('\n').map((line) => `   | ${line}`).join('\n');
+}
+
+function printDay11Demo(report: Day11DemoReport): void {
+  console.log('══════ ADVANCED DAY 11 — DIRECT PROMPT INJECTION ══════');
+  console.log(
+    `Профилей: ${report.profiles.length} · атак: ${report.attacks.length} · прогонов: ${report.total}`,
+  );
+  console.log(
+    `Исходные: ${formatDemoBucket(report.initial)} · усиленные: ${formatDemoBucket(report.hardened)}\n`,
+  );
+
+  for (const profile of report.profiles) {
+    const kind = profile.hardened ? 'УСИЛЕННЫЙ' : 'ИСХОДНЫЙ';
+    console.log(`──── ${profile.target.id} · ${profile.target.title} [${kind}] ────`);
+    console.log('SYSTEM PROMPT:');
+    console.log(profile.target.systemPrompt);
+    console.log('');
+    for (const r of profile.results) {
+      const attack = report.attacks.find((a) => a.id === r.attackId);
+      console.log(`── [${r.technique}] ${attack?.title ?? r.attackId}`);
+      console.log(`   Атака: ${r.attackId}`);
+      console.log(`   Детектор: ${r.detectHint}`);
+      console.log(`   Вердикт: ${r.succeeded ? 'АТАКА ПРОШЛА' : 'ЗАЩИТА УДЕРЖАЛА'}`);
+      console.log(`   Ответ модели:\n${formatResponseBlock(r.response)}`);
+      console.log('');
+    }
+    const byTechnique = [...profile.byTechnique.entries()]
+      .map(([technique, summary]) => `${technique} ${formatDemoBucket(summary)}`)
+      .join(' · ');
+    console.log(
+      `Сводка ${profile.target.id}: ${byTechnique} · итог ${formatDemoBucket(profile)}\n`,
+    );
+  }
+
+  console.log('──── Сводка дня 11 ────');
+  for (const profile of report.profiles) {
+    console.log(`  ${profile.target.id.padEnd(16)} ${formatDemoBucket(profile)}`);
+  }
+  console.log(
+    `Исходные: ${formatDemoBucket(report.initial)} · усиленные: ${formatDemoBucket(report.hardened)}`,
+  );
+  console.log(`ИТОГО day-11: атак прошло ${report.passed} из ${report.total}`);
+}
+
+function printDay12Demo(report: Day12DemoReport): void {
+  console.log('══════ ADVANCED DAY 12 — INDIRECT PROMPT INJECTION ══════');
+  console.log(
+    `Векторов: ${report.vectors.length} · режимов: ${report.modes.length} · прогонов: ${report.total}\n`,
+  );
+
+  let lastVector = '';
+  for (const r of report.results) {
+    if (r.vectorId !== lastVector) {
+      lastVector = r.vectorId;
+      const vector = report.vectors.find((v) => v.id === r.vectorId);
+      console.log(`──── ${vector?.title ?? r.vectorId} ────`);
+    }
+    console.log(`── режим защиты: ${r.mode}`);
+    console.log(
+      `   payload дожил до промпта: ${r.payloadSurvived ? 'ДА' : 'НЕТ'} | модель выполнила: ${r.succeeded ? 'ДА' : 'НЕТ'} | валидатор заблокировал: ${r.blocked ? 'ДА' : 'НЕТ'}`,
+    );
+    console.log(`   ИТОГ: ${r.passed ? 'АТАКА ПРОШЛА' : 'АТАКА НЕ ПРОШЛА'}`);
+    if (r.matchedMarkers.length > 0 && (r.succeeded || r.blocked)) {
+      console.log(`   маркеры: ${r.matchedMarkers.join(', ')}`);
+    }
+    console.log(`   Ответ модели:\n${formatResponseBlock(r.response)}`);
+    console.log('');
+  }
+
+  const shortLabel: Record<DefenseMode, string> = {
+    none: 'none',
+    sanitize: 'sntz',
+    boundary: 'bndr',
+    output: 'outp',
+    all: 'ALL',
+  };
+  console.log('Матрица (строки — векторы, столбцы — режимы):');
+  for (const vector of report.vectors) {
+    const cells = report.modes.map((mode) => {
+      const hit = report.results.find(
+        (r) => r.vectorId === vector.id && r.mode === mode,
+      );
+      return `${shortLabel[mode]}=${hit?.passed ? 'PASS' : 'fail'}`;
+    });
+    console.log(`  ${vector.id.padEnd(14)} ${cells.join(' ')}`);
+  }
+  console.log('');
+
+  console.log('Итог по режимам:');
+  for (const mode of report.modes) {
+    const summary = report.byMode.get(mode) ?? { passed: 0, total: 0 };
+    console.log(`  ${mode.padEnd(10)} ${formatDemoBucket(summary)}`);
+  }
+  console.log(`ИТОГО day-12: атак прошло ${report.passed} из ${report.total}`);
+}
+
+// ADVANCED days 11-12: полный демо-прогон. Дни запускаются отдельно:
+// day-11 — direct-атаки по всем профилям, day-12 — indirect-матрица
+// «вектор × защита». Все прогоны — против локальной LLM; stdout — транскрипт.
+async function runSecDemoCommand(argv: string[]): Promise<void> {
+  const flags = parseSecCliFlags(argv, ['day', 'author', 'model', 'seed']);
+  const dayRaw = flags.get('day') ?? 'all';
+  const day = parseDemoDay(dayRaw);
+  if (!day) {
+    console.error(`Неизвестный день: ${dayRaw}. Доступно: 11 | 12 | all`);
+    process.exit(1);
+  }
+  const author = flags.get('author') ?? 'Гоша';
+  const modelOverride = flags.get('model');
+  const seed = parseSeedFlag(flags.get('seed'));
+
+  const cfg = localLlmConfig();
+  const model = modelOverride ?? cfg.model;
+  const client = modelOverride
+    ? new OllamaNativeClient({ ...cfg, model: modelOverride })
+    : makeLocalLlmClient();
+
+  console.log(
+    `▶ sec-demo (ADVANCED days 11-12): day=${day} model=${model} seed=${seed ?? '-'}\n`,
+  );
+  const report = await runSecurityDemo((m, p) => client.chat(m, p), day, {
+    author,
+    seed,
+  });
+
+  if (report.day11) {
+    printDay11Demo(report.day11);
+    console.log('');
+  }
+  if (report.day12) {
+    printDay12Demo(report.day12);
+    console.log('');
+  }
+  if (report.day11 && report.day12) {
+    console.log(
+      `ИТОГО DEMO: day-11 ${report.day11.passed}/${report.day11.total} · day-12 ${report.day12.passed}/${report.day12.total}`,
+    );
+  }
 }
 
 // Whole-chat индексация (forum = все топики; не-forum = основной поток topic_id=0).

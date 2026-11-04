@@ -2609,3 +2609,77 @@ redTeamChat.ts,index.ts}`, `challenge/src/secChat.ts`, `challenge/src/cli.ts`,
 реестре не было; seed=42, temp=0) — `/case 1 send` на `translator`:
 классификация `override`, канарейка `Haha pwned` найдена, вердикт
 `ATTACK PASS`, журнал `.data/redteam-journal-*.md` записан.
+
+---
+
+## ADVANCED Days 11-12 - sec-demo: полный демо-прогон атак по дням (2026-11-04)
+**Дата:** 2026-11-04. Ветка `feat/security-days-11-12`.
+**Проблема:** атаки дня 11 и дня 12 запускались отдельными командами
+(`sec-inject`, `sec-indirect`), а полного воспроизводимого демо-прогона
+«все профили × все атаки» / «все векторы × все защиты» одной командой не было.
+
+**Решение:** `core/security/securityDemo.ts` — оркестратор поверх готовых
+лабораторий. Дни независимы:
+- day-11: 4 профиля (`bank`, `medium`, `bank-hardened`, `medium-hardened`)
+  × 6 direct-атак = 24 прогона; сводка по техникам и сравнение
+  «исходные / усиленные».
+- day-12: 4 indirect-вектора (email/doc/search/code) × 5 режимов
+  (`none/sanitize/boundary/output/all`) = 20 прогонов; матрица и итог по
+  режимам.
+- CLI `sec-demo --day 11|12|all --model --author --seed` печатает полный
+  транскрипт; `--day all` запускает оба дня, не смешивая их результаты.
+- Клиент инжектится как `ChatFn`, поэтому node:test проверяет оркестрацию
+  без сети (10 новых тестов).
+
+**Выводы:** демо — воспроизводимый стенд, а не «слайд с цифрами»: один
+прогон даёт все вердикты, сводки и матрицу. Цифры зависят от модели;
+смоук для скорости — на `qwen2.5:0.5b-instruct` (seed=42): day-11 дал
+12/24 (исходные 5/12, усиленные 7/12), day-12 — 2/20 при `all=0/4`.
+Слабые модели хуже держат и усиленные промпты — это честно видно в
+отчёте. Документированные прогоны README остаются на qwen3.5:4b.
+
+**Код:** `challenge/src/core/security/{securityDemo.ts,securityDemo.test.ts,index.ts}`,
+`challenge/src/cli.ts` (sec-demo), `docs/advanced-day-11/{README.md,live-run.md,test-cases.md}`,
+`docs/advanced-day-12/{README.md,live-run.md}`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 369/369
+(10 новых); живой смоук `sec-demo --day 11` и `--day 12` на Ollama
+`qwen2.5:0.5b-instruct` (seed=42) — оба дня отработали, транскрипты и
+матрица напечатаны.
+
+---
+
+## ADVANCED Days 11-12 - sec-chat --auto: live-демо атак в чате (2026-11-04)
+**Дата:** 2026-11-04. Ветка `feat/security-days-11-12`.
+**Проблема:** `sec-demo` печатает всю батарею одним пакетом. Для показа нужен
+живой чат: скрипт сам шлёт атаки по одной, меняет профиль и стримит ответ
+модели — без ручного ввода.
+
+**Решение:**
+- `sec-chat --auto 11|12|all --pause <ms>` — автоматический live-режим.
+  Для дня 11 скрипт открывает чат, шлёт 6 direct-атак на `bank`, затем меняет
+  профиль на `medium`, `bank-hardened`, `medium-hardened` (24 хода). Для дня
+  12 — 4 вектора × 5 режимов защиты (20 ходов): показывает данные, которые
+  читает агент, payload-статус, стримит ответ и проверяет output-валидатор.
+- `runTurn` теперь возвращает `{ response, analysis, verdict }` и умеет
+  отключать авто-сбор канареек (`collectCanaries: false`) — в live-демо
+  детекторы показывают только релевантные маркеры, без мусора из boundary-
+  разметки.
+- `prepareIndirectPrompt` вынесен из `runIndirectAttack` в `indirectLab.ts`
+  и переиспользуется live-чатом: один источник истины для слоёв
+  sanitize/boundary/output.
+- Добавлены чистые `day11ChatSteps()` / `day12ChatSteps()` — порядок ходов
+  live-демо и 2 новых теста; `sec-chat --auto` проверен на обоих днях.
+
+**Выводы:** live-режим — это тот же чат `sec-chat`, но без hand-ввода: видно,
+как атака приходит по одной, как меняется профиль и как модель отвечает в
+реальном времени. Батч `sec-demo` остаётся для быстрых сводок, live-режим —
+для показа.
+
+**Код:** `challenge/src/core/security/{securityDemo.ts,securityDemo.test.ts,
+indirectLab.ts,index.ts}`, `challenge/src/secChat.ts`, `challenge/src/cli.ts`,
+`docs/advanced-day-11/{README.md,live-run.md,test-cases.md}`,
+`docs/advanced-day-12/{README.md,live-run.md}`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 371/371
+(2 новых); live-смоук `sec-chat --auto 11` (24 хода) и `--auto 12` (20 ходов)
+на Ollama `qwen2.5:0.5b-instruct` (seed=42, pause=50) — стрим, детекторы и
+журналы `.data/redteam-journal-*.md` отработали.

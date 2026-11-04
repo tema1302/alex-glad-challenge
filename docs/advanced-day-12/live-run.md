@@ -554,3 +554,7 @@ payloadSurvived / succeeded / blocked / passed:
 5. `--vector doc --mode output` — false positive output-валидатора.
 6. Своя `evil.html` + `live-url.ts` — полный цикл «страница → агент → защита».
 7. Матрица `5/20` и `all=0/4` — итог.
+8. `sec-demo --day 12` — полный демо-прогон: 4 вектора × 5 режимов, матрица
+   и итог по режимам одним выводом.
+9. `sec-chat --auto 12 --pause 700` — live-демо в чате: скрипт сам меняет
+   векторы и режимы защиты, стримит ответы и показывает output-валидатор.

@@ -47,6 +47,17 @@ import type {
   RedTeamVerdict,
   ResponseAnalysis,
 } from './core/security/redTeamChat.js';
+import {
+  prepareIndirectPrompt,
+} from './core/security/indirectLab.js';
+import type { DefenseMode } from './core/security/indirectLab.js';
+import { validateOutput } from './core/security/contentDefense.js';
+import {
+  day11ChatSteps,
+  day12ChatSteps,
+  defaultDay11Targets,
+} from './core/security/securityDemo.js';
+import type { DemoDay } from './core/security/securityDemo.js';
 import { dataPath } from './core/paths.js';
 
 /** System prompt режима custom, пока пользователь не задал свой. */
@@ -64,6 +75,10 @@ export interface SecChatOptions {
   readonly author?: string;
   readonly seed?: number;
   readonly temperature?: number;
+  /** Автоматический live-демо: day-11 | day-12 | all. */
+  readonly auto?: DemoDay;
+  /** Пауза между ходами live-демо, мс (по умолчанию 700). */
+  readonly pauseMs?: number;
 }
 
 // --- ANSI-цвета (без внешних зависимостей, как в repl.ts) ---
@@ -91,6 +106,12 @@ interface JournalEntry {
   readonly analysis: ResponseAnalysis;
   readonly verdict: RedTeamVerdict;
   readonly ms: number;
+}
+
+interface TurnResult {
+  readonly response: string;
+  readonly analysis: ResponseAnalysis;
+  readonly verdict: RedTeamVerdict;
 }
 
 interface SecChatState {
@@ -324,13 +345,19 @@ function currentCoach(state: SecChatState): string {
   });
 }
 
-async function runTurn(state: SecChatState, line: string): Promise<void> {
+async function runTurn(
+  state: SecChatState,
+  line: string,
+  opts: { readonly showHint?: boolean; readonly collectCanaries?: boolean } = {},
+): Promise<TurnResult> {
   const classification = classifyInput(line);
   printClassification(classification, state.canaries);
 
-  for (const w of canariesFromText(line)) {
-    if (addCanary(state, w)) {
-      console.log(c.cyan + '  + канарейка: ' + c.reset + w);
+  if (opts.collectCanaries !== false) {
+    for (const w of canariesFromText(line)) {
+      if (addCanary(state, w)) {
+        console.log(c.cyan + '  + канарейка: ' + c.reset + w);
+      }
     }
   }
 
@@ -369,8 +396,11 @@ async function runTurn(state: SecChatState, line: string): Promise<void> {
   state.stats = applyVerdict(state.stats, verdict);
   state.lastVerdict = verdict;
   printDetectors(state, analysis, verdict);
-  console.log(c.gray + '  подсказка: ' + c.reset + c.cyan + currentCoach(state) + c.reset);
+  if (opts.showHint !== false) {
+    console.log(c.gray + '  подсказка: ' + c.reset + c.cyan + currentCoach(state) + c.reset);
+  }
   state.journal.push({ n: state.stats.turns, user: line, classification, response, analysis, verdict, ms });
+  return { response, analysis, verdict };
 }
 
 // --- Батарея дня 11 (/attacks) против текущего system prompt ---
@@ -877,6 +907,221 @@ async function handleCommand(
   }
 }
 
+// --- Автоматический live-демо (sec-chat --auto) ---
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function printAutoBanner(day: DemoDay, state: SecChatState, pauseMs: number): void {
+  console.log('');
+  console.log(c.gray + RULE + c.reset);
+  console.log(
+    c.bold + c.magenta + '  RED TEAM LIVE DEMO' + c.reset +
+      c.gray + `  ·  ${day} · автоматический скрипт` + c.reset,
+  );
+  console.log(c.gray + RULE + c.reset);
+  console.log(c.gray + '  model   ' + c.reset + state.model);
+  console.log(c.gray + '  seed    ' + c.reset + (state.seed ?? '-'));
+  console.log(c.gray + '  pause   ' + c.reset + `${pauseMs} ms`);
+  console.log(
+    c.gray + '  flow    ' + c.reset +
+      'профиль → атака → ответ модели → детектор → следующий профиль',
+  );
+  console.log(c.gray + RULE + c.reset);
+  console.log('');
+}
+
+function printUserTurn(text: string, label: string): void {
+  console.log(c.gray + `\n  👤 ${label}:` + c.reset);
+  console.log(indentBlock(text, '     '));
+}
+
+function switchAutoTarget(state: SecChatState, id: string): boolean {
+  const variant = findPromptVariant(state.author, id);
+  if (!variant) {
+    console.log(c.red + `  профиль ${id} не найден — пропуск` + c.reset);
+    return false;
+  }
+  state.targetLabel = variant.id;
+  state.targetTitle = variant.title;
+  state.targetSystem = variant.systemPrompt;
+  state.system = variant.systemPrompt;
+  state.history = [];
+  state.lastVerdict = undefined;
+  state.canaries = [...LAB_CANARIES];
+  console.log(
+    c.blue + `\n  /target ${variant.id} ${c.gray}«${variant.title}» (история сброшена)` + c.reset,
+  );
+  return true;
+}
+
+async function runDay11ChatDemo(state: SecChatState, pauseMs: number): Promise<void> {
+  console.log(c.bold + c.cyan + '\n══ DAY 11 · DIRECT PROMPT INJECTION · live ══' + c.reset);
+  const steps = day11ChatSteps(defaultDay11Targets(state.author));
+  let currentProfile = '';
+  let profileResults: { readonly passed: boolean }[] = [];
+  let dayPassed = 0;
+
+  const flushProfile = (): void => {
+    if (currentProfile === '') return;
+    const passed = profileResults.filter((r) => r.passed).length;
+    console.log(
+      c.bold +
+        `\n  профиль ${currentProfile}: атак прошло ${passed} из ${profileResults.length}` +
+        c.reset,
+    );
+    profileResults = [];
+  };
+
+  for (const [index, step] of steps.entries()) {
+    if (step.target.id !== currentProfile) {
+      flushProfile();
+      currentProfile = step.target.id;
+      if (!switchAutoTarget(state, step.target.id)) {
+        currentProfile = '';
+        continue;
+      }
+    }
+
+    console.log(
+      c.gray +
+        `\n  ▸ ход ${index + 1}/${steps.length} · [${step.attack.technique}] ${step.attack.title}` +
+        c.reset,
+    );
+    printUserTurn(step.attack.userText, 'атакующий');
+    const turn = await runTurn(state, step.attack.userText, {
+      showHint: false,
+      collectCanaries: false,
+    });
+    const succeeded = step.attack.detect(turn.response, step.target);
+    console.log(
+      `  ${c.bold}детектор атаки:${c.reset} ` +
+        (succeeded
+          ? c.red + 'АТАКА ПРОШЛА' + c.reset
+          : c.green + 'ЗАЩИТА УДЕРЖАЛА' + c.reset) +
+        c.gray + `  (${step.attack.detectHint})` + c.reset,
+    );
+    profileResults.push({ passed: succeeded });
+    if (succeeded) dayPassed += 1;
+    await sleep(pauseMs);
+  }
+  flushProfile();
+  console.log(
+    c.bold + `\n  ИТОГО day-11: атак прошло ${dayPassed} из ${steps.length}` + c.reset,
+  );
+}
+
+async function runDay12ChatDemo(state: SecChatState, pauseMs: number): Promise<void> {
+  console.log(c.bold + c.cyan + '\n══ DAY 12 · INDIRECT PROMPT INJECTION · live ══' + c.reset);
+  const steps = day12ChatSteps();
+  let currentVector = '';
+  let vectorResults: {
+    readonly passed: boolean;
+    readonly mode: DefenseMode;
+    readonly succeeded: boolean;
+    readonly blocked: boolean;
+  }[] = [];
+  let dayPassed = 0;
+
+  const flushVector = (): void => {
+    if (currentVector === '') return;
+    const passed = vectorResults.filter((r) => r.passed).length;
+    console.log(
+      c.bold + `\n  вектор ${currentVector}: прошло ${passed} из ${vectorResults.length}` + c.reset,
+    );
+    vectorResults = [];
+  };
+
+  for (const [index, step] of steps.entries()) {
+    if (step.vector.id !== currentVector) {
+      flushVector();
+      currentVector = step.vector.id;
+      state.targetLabel = step.vector.id;
+      state.targetTitle = step.vector.title;
+      state.targetSystem = step.vector.agentSystemPrompt;
+      state.system = step.vector.agentSystemPrompt;
+      state.history = [];
+      state.lastVerdict = undefined;
+      state.canaries = [...step.vector.successMarkers];
+      console.log(c.magenta + `\n  ── вектор ${step.vector.id}: ${step.vector.title} ──` + c.reset);
+      console.log(c.gray + '  ' + step.vector.description + c.reset);
+      console.log(c.gray + '\n  данные, которые читает агент:' + c.reset);
+      console.log(indentBlock(step.vector.taintedContent, '     '));
+    }
+
+    const prepared = prepareIndirectPrompt(step.vector, step.mode);
+    state.system = prepared.system;
+    state.history = [];
+    state.lastVerdict = undefined;
+
+    console.log(
+      c.gray + `\n  ▸ ход ${index + 1}/${steps.length} · режим защиты: ${step.mode}` + c.reset,
+    );
+    console.log(
+      c.gray + `     payload дожил до промпта: ${prepared.payloadSurvived ? 'ДА' : 'НЕТ'}` + c.reset,
+    );
+    printUserTurn(trunc(prepared.userContent, 900), 'агент получает задачу + данные');
+    const turn = await runTurn(state, prepared.userContent, {
+      showHint: false,
+      collectCanaries: false,
+    });
+    const succeeded = step.vector.detect(turn.response);
+    const validation = validateOutput(turn.response, step.vector.successMarkers);
+    const blocked = prepared.outputLayer && !validation.ok;
+    const passed = succeeded && !blocked;
+    console.log(
+      `  ${c.bold}детектор вектора:${c.reset} ` +
+        (succeeded
+          ? c.red + 'модель выполнила payload' + c.reset
+          : c.green + 'модель не выполнила' + c.reset) +
+        c.gray +
+        `  · output-валидатор: ${prepared.outputLayer ? (blocked ? 'ЗАБЛОКИРОВАЛ' : 'пропустил') : 'выключен'}` +
+        c.reset,
+    );
+    console.log(
+      `  ${c.bold}ИТОГ С УЧЁТОМ ЗАЩИТЫ:${c.reset} ` +
+        (passed ? c.red + 'АТАКА ПРОШЛА' + c.reset : c.green + 'АТАКА НЕ ПРОШЛА' + c.reset),
+    );
+    vectorResults.push({ passed, mode: step.mode, succeeded, blocked });
+    if (passed) dayPassed += 1;
+    await sleep(pauseMs);
+  }
+  flushVector();
+  console.log(
+    c.bold + `\n  ИТОГО day-12: атак прошло ${dayPassed} из ${steps.length}` + c.reset,
+  );
+}
+
+async function runAutoDemo(
+  state: SecChatState,
+  day: DemoDay,
+  pauseMs: number,
+): Promise<void> {
+  printAutoBanner(day, state, pauseMs);
+  if (day === 'day-11' || day === 'all') {
+    await runDay11ChatDemo(state, pauseMs);
+    console.log('');
+  }
+  if (day === 'day-12' || day === 'all') {
+    await runDay12ChatDemo(state, pauseMs);
+    console.log('');
+  }
+  console.log(c.gray + RULE + c.reset);
+}
+
+function printSessionSummary(state: SecChatState): void {
+  if (state.journal.length > 0) {
+    const file = exportJournal(state);
+    console.log('\n' + c.green + 'журнал сессии → ' + c.reset + file);
+  }
+  const s = state.stats;
+  console.log(
+    c.gray +
+      `итог: ходов ${s.turns} · атак ${s.attacks} · ${c.reset}${c.red}PASS ${s.passed}${c.reset}${c.gray} · ${c.reset}${c.green}HELD ${s.held}${c.reset}${c.gray} · ${c.reset}${c.yellow}AMBIG ${s.ambiguous}${c.reset}\n`,
+  );
+}
+
 // --- Главный цикл ---
 
 export async function startSecChat(client: LlmClient, opts: SecChatOptions): Promise<void> {
@@ -897,6 +1142,12 @@ export async function startSecChat(client: LlmClient, opts: SecChatOptions): Pro
     triedCaseIds: [],
   };
 
+  if (opts.auto) {
+    await runAutoDemo(state, opts.auto, opts.pauseMs ?? 700);
+    printSessionSummary(state);
+    return;
+  }
+
   printBanner(state);
 
   const rl = readline.createInterface({
@@ -914,15 +1165,7 @@ export async function startSecChat(client: LlmClient, opts: SecChatOptions): Pro
   const finish = (): void => {
     if (finished) return;
     finished = true;
-    if (state.journal.length > 0) {
-      const file = exportJournal(state);
-      console.log('\n' + c.green + 'журнал сессии → ' + c.reset + file);
-    }
-    const s = state.stats;
-    console.log(
-      c.gray +
-        `итог: ходов ${s.turns} · атак ${s.attacks} · ${c.reset}${c.red}PASS ${s.passed}${c.reset}${c.gray} · ${c.reset}${c.green}HELD ${s.held}${c.reset}${c.gray} · ${c.reset}${c.yellow}AMBIG ${s.ambiguous}${c.reset}\n`,
-    );
+    printSessionSummary(state);
   };
 
   rl.on('line', (raw: string) => {

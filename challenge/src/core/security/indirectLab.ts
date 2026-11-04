@@ -255,13 +255,24 @@ function layersOf(mode: DefenseMode): readonly ('sanitize' | 'boundary' | 'outpu
   }
 }
 
-/** Прогон одного вектора с выбранным режимом защиты. Клиент инжектится. */
-export async function runIndirectAttack(
-  chat: ChatFn,
+export interface PreparedIndirectPrompt {
+  /** Итоговый system prompt (с boundary-правилами, если включены). */
+  readonly system: string;
+  /** Санитизированный контент (что осталось от tainted-данных). */
+  readonly content: string;
+  /** Готовое user-сообщение: задача + обработанные данные. */
+  readonly userContent: string;
+  /** payload дожил до промпта. */
+  readonly payloadSurvived: boolean;
+  /** Включён output-валидатор (mode=output|all). */
+  readonly outputLayer: boolean;
+}
+
+/** Подготовка промпта вектора с выбранными защитными слоями. Чистая функция. */
+export function prepareIndirectPrompt(
   vector: IndirectVector,
   mode: DefenseMode,
-  opts: IndirectRunOptions = {},
-): Promise<IndirectAttackResult> {
+): PreparedIndirectPrompt {
   const layers = layersOf(mode);
 
   let content = vector.taintedContent;
@@ -281,9 +292,27 @@ export async function runIndirectAttack(
     content.toLowerCase().includes(m.toLowerCase()),
   );
 
+  return {
+    system,
+    content,
+    userContent,
+    payloadSurvived,
+    outputLayer: layers.includes('output'),
+  };
+}
+
+/** Прогон одного вектора с выбранным режимом защиты. Клиент инжектится. */
+export async function runIndirectAttack(
+  chat: ChatFn,
+  vector: IndirectVector,
+  mode: DefenseMode,
+  opts: IndirectRunOptions = {},
+): Promise<IndirectAttackResult> {
+  const prepared = prepareIndirectPrompt(vector, mode);
+
   const messages: ChatMessage[] = [
-    msg.system(system),
-    msg.user(userContent),
+    msg.system(prepared.system),
+    msg.user(prepared.userContent),
   ];
   const params: ChatParams = {
     temperature: opts.temperature ?? 0.7,
@@ -296,13 +325,12 @@ export async function runIndirectAttack(
 
   const succeeded = vector.detect(response);
   const validation = validateOutput(response, vector.successMarkers);
-  const outputLayer = layers.includes('output');
-  const blocked = outputLayer && !validation.ok;
+  const blocked = prepared.outputLayer && !validation.ok;
   return {
     vectorId: vector.id,
     mode,
-    processedContent: content,
-    payloadSurvived,
+    processedContent: prepared.content,
+    payloadSurvived: prepared.payloadSurvived,
     response,
     succeeded,
     blocked,

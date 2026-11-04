@@ -45,6 +45,7 @@ export {
   copilotCodeVector,
   defaultVectors,
   allVectors,
+  prepareIndirectPrompt,
   runIndirectAttack,
   runIndirectMatrix,
 } from './indirectLab.js';
@@ -53,6 +54,7 @@ export type {
   DefenseMode,
   IndirectRunOptions,
   IndirectAttackResult,
+  PreparedIndirectPrompt,
 } from './indirectLab.js';
 
 export {
@@ -94,3 +96,28 @@ export type {
   GlossaryEntry,
   CoachContext,
 } from './redTeamCases.js';
+
+export {
+  ALL_DEFENSE_MODES,
+  defaultDay11Targets,
+  isHardenedTarget,
+  runDay11Demo,
+  runDay12Demo,
+  runSecurityDemo,
+  parseDemoDay,
+  day11ChatSteps,
+  day12ChatSteps,
+} from './securityDemo.js';
+export type {
+  DemoDay,
+  DemoBucket,
+  Day11ProfileResult,
+  Day11DemoReport,
+  Day11DemoOptions,
+  Day12DemoReport,
+  Day12DemoOptions,
+  SecurityDemoOptions,
+  SecurityDemoReport,
+  Day11ChatStep,
+  Day12ChatStep,
+} from './securityDemo.js';
