@@ -5,6 +5,47 @@
 
 ---
 
+## ADVANCED Day 13 — LLM Gateway (2026-11-04)
+**Ветка:** `feat/llm-gateway-day-13` (loop run-2026-11-04, эпик #206)
+
+**Задание (полный текст):**
+> Поднимите прокси между пользователем и LLM: HTTP-сервер, который проверяет
+> запрос и проксирует в OpenAI / Anthropic, логирует запросы/ответы для аудита.
+> Input Guard: секреты (sk-, ghp_, AKIA), email, карты, телефоны; block или
+> mask. Output Guard: сгенерированные секреты, утечка system prompt,
+> подозрительные URL/команды. Минимум 10 тест-кейсов. Усиление: rate limiting
+> на IP и cost tracking по токенам.
+
+**Что сделано:**
+- `challenge/src/core/gateway/` — `secrets`, `inputGuard`, `outputGuard`,
+  `rateLimit`, `cost`, `auditLog`, `upstream`, `server`, `cases`.
+- HTTP: `POST /v1/chat/completions`, `GET /healthz`, `GET /stats`; провайдеры
+  OpenAI-compatible (DeepSeek/OpenRouter/OpenAI) и Anthropic Messages API.
+- Input Guard: regex-детекторы ключей/ПДн, Luhn для карт, base64 и split
+  (`"sk-" + "proj-abc"`), режимы `block`/`mask`.
+- Output Guard: секреты и утечка system prompt → block; подозрительные URL и
+  shell-команды → redact.
+- Audit JSONL (`challenge/.data/gateway/audit.jsonl`,
+  `intercepted.jsonl`) без сырых секретов; rate limit N/мин на IP; стоимость по
+  usage и прайсу модели.
+- CLI `llm-gateway` (`--port`, `--rate`, `--mode`, `--model`, `--self-test`);
+  env — `GATEWAY_*`/`ANTHROPIC_*` в `.env.example`.
+
+**Результаты:**
+- Self-test: 14/14 passed; caught=11, missed=3 (2 чистых контроля + 16 цифр без
+  Luhn — осознанный пропуск).
+- 42 gateway-теста: secrets/input/output/rate/cost/audit/upstream/server.
+- Live smoke: `/healthz` 200, секрет → 422 без вызова upstream, `/stats`
+  `blockedInput=1`, audit/intercepted без сырого ключа.
+
+**Код:** `challenge/src/core/gateway/**`, `challenge/src/cli.ts`,
+`challenge/src/core/env.ts`, `.env.example`.
+**Документы:** `docs/advanced-day-13/{README,test-cases,live-run}.md`.
+**Риски:** эвристики (не DLP), один слой base64, нет стриминга, нет auth на
+gateway (только loopback), audit-файлы без ротации.
+
+---
+
 ## День 1 — Первый запрос к LLM через API
 **Дата:** 2026-06-01
 
