@@ -2511,3 +2511,50 @@ boundary markers, output validation); ретест атак после защи�
 `challenge/src/core/index.ts`, `challenge/src/cli.ts` (sec-indirect), `docs/advanced-day-12/**`.
 **Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 44/44
 (security-модули), 329/329 всего; реальные смоуки sec-inject/sec-indirect на Ollama (seed=42).
+
+---
+
+## ADVANCED Days 11–12 (доработка) — sec-chat: интерактивная red-team оболочка (2026-11-04)
+**Дата:** 2026-11-04. Ветка `feat/security-days-11-12` (loop run-2026-11-04).
+Фронтрирные модели не используются — чат идёт с локальной LLM (Ollama,
+`think:false`), стриминг токенов в реальном времени.
+
+**Задание:** красивая интерактивная CLI-оболочка для живых атак на локальную
+модель 3–4B в security-дни 11–12: внедрение своего system prompt, атаки с
+клавиатуры, и в реальном времени — классификация атаки, сработавшие детекторы
+и вердикт.
+
+**Сделано:**
+- `core/security/redTeamChat.ts` (чистые функции): классификатор ввода по 7
+  техникам (`extraction | override | canary | role-play | delimiter | encoding |
+  social`) на статических паттернах RU/EN (без LLM-вызова, без новых
+  зависимостей), эвристика извлечения канареек из текста атаки («начни со
+  слова X» / "reply with exactly Y" / CAPS-слова), анализ ответа поверх
+  детекторов дня 11 (`refuses`/`hasCanary`/`leaksSystemPrompt`), вердикт по
+  словарю live-run: `ATTACK PASS` (маркер/утечка) · `DEFENSE HELD` (отказ) ·
+  `AMBIGUOUS` (ответил без отказа — решает человек) · `DIALOG`, накопление
+  статистики сессии. Тесты node:test (17).
+- CLI `sec-chat --target bank|medium|hardened-bank|hardened-medium|custom
+  --sys <text> --model --author --seed` (`challenge/src/secChat.ts`): панели
+  banner → классификация (до ответа модели) → стриминг ответа с таймером →
+  панель детекторов (канарейки/утечка/отказ) → цветной вердикт; слэш-команды с
+  tab-дополнением: `/target`, `/sys show|set|file|reset`, `/canary
+  list|<word>|rm`, `/attacks` (батарея 6 атак дня 11 против текущего промпта),
+  `/stats`, `/history`, `/reset`, `/temp`, `/seed`, `/model`, `/export`;
+  markdown-журнал сессии автосохраняется в `.data/redteam-journal-*.md`
+  (транскрипт для docs/advanced-day-11/live-run.md §7).
+- Публичный реэкспорт red-team API в `core/security/index.ts`.
+
+**Выводы:** связка «классификация до генерации + детекторы после» даёт живую
+петлю обучения без фронтрирных моделей; честный вердикт `AMBIGUOUS` важнее
+агрессивного PASS — модель может подчиниться частично (ответить на вшитый
+вопрос, не произнеся канарейку); захват канареек из текста атаки снимает
+ручную регистрацию маркеров.
+
+**Код:** `challenge/src/core/security/{redTeamChat.ts,redTeamChat.test.ts}`,
+`challenge/src/secChat.ts`, `challenge/src/cli.ts` (sec-chat),
+`challenge/src/core/security/index.ts`.
+**Проверка:** `pnpm --filter challenge typecheck` чисто; node:test 346/346
+всего (17 новых); смоуки: offline (`/help`, `/stats`, `/quit`) и живой прогон
+на Ollama qwen3.5:4b (bank, seed=42) — DIALOG на benign-вопрос, классификация
+`override + canary` и вердикт `AMBIGUOUS` на атаку, журнал записан.

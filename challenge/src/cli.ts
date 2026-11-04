@@ -29,6 +29,7 @@ import { runDay20Server } from './demos/day-20-server.js';
 import { runDay25Server } from './demos/day-25-server.js';
 import { runDay20 } from './demos/day-20.js';
 import { startRepl } from './repl.js';
+import { startSecChat, SEC_CHAT_DEFAULT_SYSTEM } from './secChat.js';
 import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
@@ -184,7 +185,13 @@ function printHelp(): void {
   console.log('                        (matrix = все 5 режимов на выбранных векторах)');
   console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
   console.log('    --seed <N>         seed генерации для воспроизводимости');
-  console.log('  rag eval         10 контрольных вопросов: RAG vs без RAG');
+  console.log('  sec-chat         ADVANCED days 11-12: интерактивная red-team оболочка (чат с локальной LLM)');
+  console.log('                     в реальном времени: классификация атаки → ответ (стрим) → детекторы → вердикт');
+  console.log('    --target bank|medium|hardened-bank|hardened-medium|custom  стартовая цель (по умолчанию bank)');
+  console.log('    --sys <text>       свой system-промпт поверх цели (или /sys внутри)');
+  console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
+  console.log('    --author <name>    имя автора для целей medium (по умолчанию Гоша)');
+  console.log('    --seed <N>         seed генерации для воспроизводимости');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
   console.log('    --chat <ref>        стартовый TG-чат: chatKey | t.me/c/<id> | alias (force strategy=telegram)');
@@ -665,6 +672,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- Security week (ADVANCED days 11-12): интерактивная red-team оболочка ---
+  if (arg === 'sec-chat') {
+    await runSecChatCommand(argv.slice(1));
+    return;
+  }
+
   // --- Бот «Медиум» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
   if (arg === 'tg-bot') {
     const rest = argv.slice(1);
@@ -763,7 +776,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-chat, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -2544,6 +2557,59 @@ async function runSecInjectCommand(argv: string[]): Promise<void> {
   }
 
   console.log(`ИТОГО: атак прошло ${passed} из ${total}`);
+}
+
+// ADVANCED days 11-12: интерактивная red-team оболочка. Живой чат с локальной
+// LLM: системный промпт цели настраивается флагами или слэш-командами, ввод
+// атакующего классифицируется в реальном времени, ответ модели проверяют
+// детекторы (canary/утечка/отказ) и вердикт. Журнал сессии пишется в .data/.
+async function runSecChatCommand(argv: string[]): Promise<void> {
+  const flags = parseSecCliFlags(argv, ['target', 'author', 'model', 'seed', 'sys']);
+  const targetName = flags.get('target') ?? 'bank';
+  const author = flags.get('author') ?? 'Гоша';
+  const modelOverride = flags.get('model');
+  const seed = parseSeedFlag(flags.get('seed'));
+  const sysFlag = flags.get('sys');
+
+  const cfg = localLlmConfig();
+  const model = modelOverride ?? cfg.model;
+  const client = modelOverride
+    ? new OllamaNativeClient({ ...cfg, model: modelOverride })
+    : makeLocalLlmClient();
+
+  const targets = new Map<string, InjectionTarget>([
+    ['bank', bankTarget()],
+    ['medium', mediumTarget(author)],
+    ['hardened-bank', hardenedBankTarget()],
+    ['hardened-medium', hardenedMediumTarget(author)],
+  ]);
+  const target = targets.get(targetName);
+  let targetLabel: string;
+  let targetTitle: string;
+  let system: string;
+  if (target) {
+    targetLabel = target.id;
+    targetTitle = target.title;
+    system = sysFlag ?? target.systemPrompt;
+  } else if (targetName === 'custom') {
+    targetLabel = 'custom';
+    targetTitle = 'Свой системный промпт';
+    system = sysFlag ?? SEC_CHAT_DEFAULT_SYSTEM;
+  } else {
+    console.error(
+      `Неизвестная цель: ${targetName}. Доступно: bank | medium | hardened-bank | hardened-medium | custom`,
+    );
+    process.exit(1);
+  }
+
+  await startSecChat(client, {
+    targetLabel,
+    targetTitle,
+    system,
+    model,
+    author,
+    seed,
+  });
 }
 
 // ADVANCED day-12: indirect prompt injection. Векторы (email/документ/поиск/код)

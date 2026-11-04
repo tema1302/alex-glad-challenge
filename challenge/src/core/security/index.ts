@@ -54,3 +54,22 @@ export type {
   IndirectRunOptions,
   IndirectAttackResult,
 } from './indirectLab.js';
+
+export {
+  RED_TEAM_TECHNIQUES,
+  classifyInput,
+  canariesFromText,
+  analyzeResponse,
+  decideVerdict,
+  verdictTitle,
+  emptyStats,
+  applyVerdict,
+} from './redTeamChat.js';
+export type {
+  RedTeamTechnique,
+  TechniqueHit,
+  AttackClassification,
+  ResponseAnalysis,
+  RedTeamVerdict,
+  RedTeamStats,
+} from './redTeamChat.js';
