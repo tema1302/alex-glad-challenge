@@ -16,6 +16,8 @@ CLI `sec-indirect`.
 
 **Сборник тест-кейсов:** indirect-кейсы 4–7, промпты и глоссарий —
 [`../advanced-day-11/test-cases.md`](../advanced-day-11/test-cases.md).
+Наборы атак и команды дня 11 / дня 12 / `sec-chat` разведены в
+[`test-cases.md` §0.1](../advanced-day-11/test-cases.md#01-наборы-атак-разные-дни--разные-команды).
 
 ## Задание
 

@@ -41,6 +41,50 @@ pnpm --filter challenge start -- sec-chat --target translator --model qwen3.5:4b
 
 ---
 
+## 0.1. Наборы атак: разные дни — разные команды
+
+Это не один общий список. У дня 11, дня 12 и библиотеки `sec-chat` разные
+наборы атак и разные точки запуска. Число атак зависит от команды, а не от
+документа.
+
+| Набор | Что внутри | Где в коде | Сколько | Запуск |
+|---|---|---|---|---|
+| Direct-лаборатория (день 11) | role-play ×2, override ×2, extraction ×2 | `challenge/src/core/security/injectionLab.ts` → `defaultAttacks()` | 6 атак; `--target all` = 6 × 4 цели = 24 прогона | `sec-inject` |
+| Indirect-лаборатория (день 12) | email, doc, search, code | `challenge/src/core/security/indirectLab.ts` → `allVectors()` | 4 вектора; `--mode matrix` = 4 × 5 = 20 прогонов | `sec-indirect` |
+| Библиотека кейсов `sec-chat` | 5 реальных инъекций + 2 бонусных | `challenge/src/core/security/redTeamCases.ts` → `RED_TEAM_CASES` | 7 кейсов, по одному за ход | `sec-chat` → `/cases`, `/case <n> send` |
+| Банк payload'ов (ручной) | override, role-play, extraction, canary, delimiter, social, indirect, contextual | этот файл, §4 | не отдельный CLI-набор | вставлять в `sec-chat` вручную |
+
+Полные команды:
+
+```powershell
+# День 11: 6 direct-атак на выбранную цель
+pnpm --filter challenge start -- sec-inject --target bank --model qwen3.5:4b --seed 42
+pnpm --filter challenge start -- sec-inject --target all --model qwen3.5:4b --author Гоша --seed 42
+
+# День 12: 4 indirect-вектора × режимы защиты
+pnpm --filter challenge start -- sec-indirect --vector all --mode matrix --model qwen3.5:4b --seed 42
+
+# Библиотека 7 кейсов: интерактивно
+pnpm --filter challenge start -- sec-chat --target bank --model qwen3.5:4b --seed 42
+```
+
+Ключевые различия:
+
+- **6** — это `defaultAttacks()`; только их прогоняет `sec-inject`.
+- **7** — это `RED_TEAM_CASES`; только их показывает `/cases` в `sec-chat`.
+  Это другие payload'ы, не те же 6 атак.
+- **4** — это `allVectors()`; `sec-indirect --vector all` берёт все четыре
+  вектора. `defaultVectors()` возвращает 3 (без `repo-code`) — это внутренний
+  набор тестов, а не значение CLI.
+- **11** (если встретится в обсуждении) — это 6 кодовых direct-атак плюс
+  5 семейств из §4 (`canary-only`, `delimiter`, `obfuscation`, `contextual`,
+  `crescendo`). Отдельной командой такой набор не запускается.
+
+Итог: `sec-inject`, `sec-indirect` и `sec-chat` — три разные программы с
+разными флагами, разными наборами атак и разными детекторами.
+
+---
+
 ## 1. Глоссарий: термины без тумана
 
 | Термин | Простыми словами | Зачем знать |
