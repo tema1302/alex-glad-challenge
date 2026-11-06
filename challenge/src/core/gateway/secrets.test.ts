@@ -135,13 +135,76 @@ test('scanSecrets: base64 с пробелами внутри токена', () =
   const spaced = `${flat.slice(0, 10)} ${flat.slice(10, 20)} ${flat.slice(20)}`;
   const findings = scanSecrets(`const KEY = "${spaced}";`);
   assert.equal(findings.length, 1);
-  assert.equal(findings[0]!.kind, 'base64_secret');
+  // Один задедупленный спан: ws-base64-путь или более широкий split-кандидат.
+  assert.ok(
+    findings[0]!.kind === 'base64_secret' || findings[0]!.kind === 'split_secret',
+    `unexpected kind ${findings[0]!.kind}`,
+  );
 });
 
 test('scanSecrets: чистые join/template не дают ложных срабатываний', () => {
   assert.deepEqual(scanSecrets(`const msg = ['Hello', 'World'].join(', ');`), []);
   assert.deepEqual(scanSecrets('const msg = `Привет, ${name}, тебе ${age} лет`;'), []);
   assert.deepEqual(scanSecrets(`const label = 'a'.concat('b', 'c');`), []);
+});
+
+// ── Day 15 red team round 2: fromCharCode / reverse / ws-строка / rot13 / base64url ──
+
+const rot13 = (s: string): string =>
+  s.replace(/[a-zA-Z]/g, (c) => {
+    const base = c <= 'Z' ? 65 : 97;
+    return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+  });
+
+test('scanSecrets: n-ary цепочка «a»+«b»+«c» со сплитом ключа', () => {
+  const code = 'const KEY = "sk-testABC" + "DEF" + "GHIJKLMNOPQRSTUVWXYZ1234";';
+  const findings = scanSecrets(code);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: String.fromCharCode с ключом', () => {
+  const codes = [...FAKE_SK].map((c) => c.charCodeAt(0)).join(',');
+  const findings = scanSecrets(`const K = String.fromCharCode(${codes});`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: перевёрнутая строка через split/reverse/join', () => {
+  const reversed = [...FAKE_SK].reverse().join('');
+  const findings = scanSecrets(`const K = "${reversed}".split('').reverse().join('');`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: секрет с пробелами внутри строки', () => {
+  const findings = scanSecrets('const KEY = "sk-test ABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: ROT13-строка с AWS-ключом', () => {
+  const findings = scanSecrets(`const K = "${rot13('AKIAIOSFODNNEXAMPLEQ')}".replace(/g, rotDecode);`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: base64url-токен сканируется как base64', () => {
+  const urlSafe = b64(FAKE_SK).replaceAll('+', '-').replaceAll('/', '_');
+  const findings = scanSecrets(`const KEY = "${urlSafe}";`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'base64_secret');
+});
+
+test('scanSecrets: FP — slug/тексты со скобками и ротациями не детектятся', () => {
+  assert.deepEqual(scanSecrets('const slug = "naive-bayes-classifier-v2-stable";'), []);
+  assert.deepEqual(scanSecrets('const phrase = "the quick brown fox jumps over";'), []);
+  assert.deepEqual(scanSecrets(`const r = "${rot13('Internationalization')}";`), []);
+  assert.deepEqual(
+    scanSecrets('const codes = String.fromCharCode(104, 101, 108, 108, 111);'),
+    [],
+  );
+  assert.deepEqual(scanSecrets('const label = "iteration-count-v2".split("").length;'), []);
 });
 
 test('maskSecrets: маскирует split/hex/ws-base64', () => {
@@ -157,6 +220,10 @@ test('maskSecrets: маскирует split/hex/ws-base64', () => {
   const flat = b64(FAKE_SK);
   const spaced = `${flat.slice(0, 10)} ${flat.slice(10, 20)} ${flat.slice(20)}`;
   const wsMasked = maskSecrets(`const KEY = "${spaced}";`);
-  assert.ok(wsMasked.includes(REDACTION.base64));
+  // Секрет нейтрализован: split-кандидатом (шире спан) или ws-base64-маской.
+  assert.ok(
+    wsMasked.includes(REDACTION.split) || wsMasked.includes(REDACTION.base64),
+    wsMasked,
+  );
   assert.ok(!wsMasked.includes(flat.slice(0, 10)));
 });

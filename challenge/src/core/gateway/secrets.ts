@@ -122,7 +122,9 @@ const DETECTORS: readonly Detector[] = [
 const CARD_RE = /\b(?:\d[ -]?){12,18}\d\b/g;
 const PHONE_RE =
   /(?:\+\d{1,3}[\s-]?(?:\(?\d{2,4}\)?[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{2,4}|\b[78][\s(-]?\d{3}[\s)-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b)/g;
-const BASE64_RE = /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{16,}={0,2}(?![A-Za-z0-9+/=])/g;
+// - и _ включены: base64url-токены («секрет» может быть не-ASCII) сканируются
+// так же, как стандартные; Node-декодер base64 принимает url-safe алфавит.
+const BASE64_RE = /(?<![A-Za-z0-9+/\-_])[A-Za-z0-9+/\-_]{16,}={0,2}(?![A-Za-z0-9+/\-_=])/g;
 
 /** Максимальная глубина рекурсивного декодирования (base64 внутри base64 и т.п.). */
 const MAX_DECODE_DEPTH = 2;
@@ -135,18 +137,23 @@ interface SplitCandidate {
 }
 
 /**
- * Кандидаты на split-обфускацию секрета в коде: 'a' + 'b',
- * ['a','b'].join(''), 'a'.concat('b'), template literal с ${…}.
+ * Кандидаты на split-обфускацию секрета в коде: 'a' + 'b' (в т.ч. цепочки),
+ * [a,b].join(''), a.concat(b), template literal с ${…}, String.fromCharCode,
+ * reverse-цепочка, строка с пробелами внутри, ROT13-строка.
  * Каждый кандидат матчится по оригинальному тексту, чтобы находку можно
- * было точно замаскировать. Индексы групп: [0] весь матч, далее capture-группы.
- * Точность держится на scanJoined: находка засчитывается, только если
- * склеенная строка реально содержит секрет (в любой кодировке).
+ * было точно замаскировать. Точность держится на scanJoined: находка
+ * засчитывается, только если расшифрованная строка реально содержит секрет
+ * (в любой кодировке) — FP-safe по построению.
  */
 const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
   {
-    label: 'quoted concat',
-    re: /(["'])([^"']*)\1\s*\+\s*(["'])([^"']*)\3/g,
-    joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+    label: 'quoted concat chain',
+    re: /((["'])([^"'\n]*)\2(?:\s*\+\s*(["'])([^"'\n]*)\4)+)/g,
+    joined: (g) => {
+      // Цепочка из 2+ строк через +: склеиваем все строковые сегменты матча.
+      const segs = [...(g[0] ?? '').matchAll(/(["'])([^"']*)\1/g)].map((x) => x[2] ?? '');
+      return segs.length >= 2 ? segs.join('') : null;
+    },
   },
   {
     label: 'array join',
@@ -157,6 +164,42 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
     label: 'concat call',
     re: /(["'])([^"']*)\1\s*\.\s*concat\s*\(\s*(["'])([^"']*)\3/g,
     joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+  },
+  {
+    label: 'fromCharCode',
+    re: /String\.fromCharCode\(\s*\d{1,7}(?:\s*,\s*\d{1,7}){7,}\s*\)/g,
+    joined: (g) => {
+      const codes = (g[0] ?? '').match(/\d{1,7}/g) ?? [];
+      let out = '';
+      for (const c of codes) {
+        const n = Number(c);
+        if (!Number.isFinite(n) || n < 0x20 || n > 0x10ffff) return null;
+        out += String.fromCodePoint(n);
+      }
+      return out;
+    },
+  },
+  {
+    label: 'reversed string',
+    re: /(["'])([^"'\n]{8,})\1\s*\.\s*split\s*\(\s*(["'])\s*\3\s*\)\s*\.\s*reverse\s*\(\s*\)\s*\.\s*join\s*\(\s*(["'])\s*\4\s*\)/g,
+    joined: (g) => [...(g[2] ?? '')].reverse().join(''),
+  },
+  {
+    label: 'rot13 string',
+    re: /(["'])([A-Za-z]{12,})\1/g,
+    joined: (g) =>
+      (g[2] ?? '').replace(/[a-zA-Z]/g, (c) => {
+        const base = c <= 'Z' ? 65 : 97;
+        return String.fromCharCode(((c.charCodeAt(0) - base + 13) % 26) + base);
+      }),
+  },
+  {
+    label: 'string with inner whitespace',
+    re: /(["'])([^"'\n]{16,})\1/g,
+    joined: (g) => {
+      const s = g[2] ?? '';
+      return /\s/.test(s) ? s.replace(/\s+/g, '') : null;
+    },
   },
   {
     label: 'template literal',
