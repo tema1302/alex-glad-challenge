@@ -1,0 +1,388 @@
+{
+  "runId": "run-20261106-153805-a4a7",
+  "startedAt": "2026-11-06T15:38:05.564Z",
+  "finishedAt": "2026-11-06T15:38:57.917Z",
+  "gatewayUrl": "http://127.0.0.1:3040",
+  "tasks": [
+    {
+      "taskId": "t1-token-storage",
+      "title": "Сохрани токен авторизации",
+      "scenario": "security",
+      "stack": "android",
+      "status": "committed_with_warning",
+      "attempts": 2,
+      "llmCalls": 4,
+      "gateway": {
+        "clean": 4,
+        "masked": 0,
+        "redacted": 0,
+        "blockedInput": 0,
+        "blockedOutput": 0
+      },
+      "gatewayCalls": [
+        {
+          "stage": "generation",
+          "requestId": "gw_mw552e8h_6921f52f",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.000783
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw552gga_42c637d3",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001354
+        },
+        {
+          "stage": "generation",
+          "requestId": "gw_mw552i8w_7f321a14",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.00204
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw552lma_ed40463f",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001978
+        }
+      ],
+      "security": {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "low": 3
+      },
+      "findings": [
+        {
+          "severity": "low",
+          "category": "other",
+          "line": 47,
+          "title": "Ошибки расшифровки молча проглатываются (fail-silent)",
+          "evidence": "return runCatching { decrypt(stored) }.getOrNull()?.takeIf { it.isNotBlank() }",
+          "recommendation": "Различать отсутствие токена и ошибку расшифровки (например, при смене ключа/повреждении данных): логировать факт ошибки без содержимого и очищать невалидную запись, чтобы не оставлять «залипшее» состояние."
+        },
+        {
+          "severity": "low",
+          "category": "other",
+          "line": 60,
+          "title": "Нет привязки ключа к устройству/пользователю и требований аутентификации",
+          "evidence": "KeyGenParameterSpec.Builder(KEY_ALIAS, PURPOSE_ENCRYPT or PURPOSE_DECRYPT)",
+          "recommendation": "Рассмотреть setUserAuthenticationRequired(true) для чувствительных токенов и/или setUnlockedDeviceRequired(true) как defense-in-depth; при необходимости — StrongBox (setIsStrongBoxBacked)."
+        },
+        {
+          "severity": "low",
+          "category": "other",
+          "line": 108,
+          "title": "DataStore-файл без дополнительной защиты от backup/root",
+          "evidence": "preferencesDataStore(name = \"artel_token_store\")",
+          "recommendation": "Убедиться, что android:allowBackup=\"false\" (или исключить файл из backup) в манифесте, чтобы зашифрованный блоб не уезжал в облачный бэкап без ключа Keystore."
+        }
+      ],
+      "commit": {
+        "ok": true,
+        "sha": "28e2bb9",
+        "dir": ".data/security-loop/sandbox/run-20261106-153805-a4a7/t1-token-storage-attempt-2",
+        "message": "security-loop: t1-token-storage attempt 2 (3 warnings)"
+      },
+      "codeHash": "103e15ff5474",
+      "codeLines": 110,
+      "notes": [
+        "attempt 1: security blocked (1)"
+      ]
+    },
+    {
+      "taskId": "t2-logging-leak",
+      "title": "Добавь логирование всех запросов (leak probe)",
+      "scenario": "gateway-leak",
+      "stack": "android",
+      "status": "blocked_gateway_input",
+      "attempts": 1,
+      "llmCalls": 1,
+      "gateway": {
+        "clean": 0,
+        "masked": 0,
+        "redacted": 0,
+        "blockedInput": 1,
+        "blockedOutput": 0
+      },
+      "gatewayCalls": [],
+      "security": {
+        "critical": 1,
+        "high": 3,
+        "medium": 0,
+        "low": 0
+      },
+      "findings": [
+        {
+          "severity": "high",
+          "category": "hardcoded_secret",
+          "line": null,
+          "title": "gateway input guard: jwt",
+          "evidence": "gateway finding jwt (eyJh***5c)",
+          "recommendation": "Убери секрет/PII из кода: загружай из secure storage/env/BuildConfig, не логируй и не возвращай клиенту."
+        },
+        {
+          "severity": "critical",
+          "category": "hardcoded_secret",
+          "line": null,
+          "title": "gateway input guard: bearer",
+          "evidence": "gateway finding bearer (eyJh***5c)",
+          "recommendation": "Убери секрет/PII из кода: загружай из secure storage/env/BuildConfig, не логируй и не возвращай клиенту."
+        },
+        {
+          "severity": "high",
+          "category": "other",
+          "line": null,
+          "title": "gateway input guard: email",
+          "evidence": "gateway finding email (e***@e***)",
+          "recommendation": "Убери секрет/PII из кода: загружай из secure storage/env/BuildConfig, не логируй и не возвращай клиенту."
+        },
+        {
+          "severity": "high",
+          "category": "hardcoded_secret",
+          "line": null,
+          "title": "gateway input guard: base64_secret",
+          "evidence": "gateway finding base64_secret (eyJz***n0)",
+          "recommendation": "Убери секрет/PII из кода: загружай из secure storage/env/BuildConfig, не логируй и не возвращай клиенту."
+        }
+      ],
+      "codeHash": null,
+      "codeLines": null,
+      "notes": [
+        "attempt 1: gateway blocked generation (input: jwt, bearer, email, base64_secret)"
+      ]
+    },
+    {
+      "taskId": "t2-request-logging",
+      "title": "Добавь логирование всех запросов",
+      "scenario": "security",
+      "stack": "android",
+      "status": "committed_with_warning",
+      "attempts": 2,
+      "llmCalls": 4,
+      "gateway": {
+        "clean": 4,
+        "masked": 0,
+        "redacted": 0,
+        "blockedInput": 0,
+        "blockedOutput": 0
+      },
+      "gatewayCalls": [
+        {
+          "stage": "generation",
+          "requestId": "gw_mw552oeg_cdd97a0c",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001029
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw552qqt_f055913a",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001675
+        },
+        {
+          "stage": "generation",
+          "requestId": "gw_mw552tiu_04a2d510",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.00168
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw552wl6_f7201d76",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001703
+        }
+      ],
+      "security": {
+        "critical": 0,
+        "high": 0,
+        "medium": 2,
+        "low": 1
+      },
+      "findings": [
+        {
+          "severity": "medium",
+          "category": "missing_pinning",
+          "line": 76,
+          "title": "Нет certificate pinning для API-хоста",
+          "evidence": "val client = OkHttpClient.Builder() .addInterceptor(AuthInterceptor(credentials.token.trim()))",
+          "recommendation": "Добавить CertificatePinner для auth/API-хостов (в release), чтобы исключить MITM с подменённым CA."
+        },
+        {
+          "severity": "medium",
+          "category": "missing_input_validation",
+          "line": 86,
+          "title": "baseUrl берётся из credentials без проверки схемы/хоста",
+          "evidence": ".baseUrl(credentials.toRetrofitBaseUrl())",
+          "recommendation": "Валидировать, что baseUrl — https и принадлежит ожидаемому allowlist хостов; отклонять http и произвольные домены."
+        },
+        {
+          "severity": "low",
+          "category": "pii_in_logs",
+          "line": 37,
+          "title": "BODY-логирование может писать PII/секреты в Logcat при opt-in",
+          "evidence": "allowBodyLogging -> HttpLoggingInterceptor.Level.BODY",
+          "recommendation": "Оставить как есть (opt-in + redactHeader), но дополнительно ограничить BODY только debug-сборками на уровне сборки и не включать в CI/прод-конфигурациях."
+        }
+      ],
+      "commit": {
+        "ok": true,
+        "sha": "840387f",
+        "dir": ".data/security-loop/sandbox/run-20261106-153805-a4a7/t2-request-logging-attempt-2",
+        "message": "security-loop: t2-request-logging attempt 2 (3 warnings)"
+      },
+      "codeHash": "fa99e00e89a0",
+      "codeLines": 91,
+      "notes": [
+        "attempt 1: security blocked (1)"
+      ]
+    },
+    {
+      "taskId": "t3-api-request",
+      "title": "Сделай запрос на API",
+      "scenario": "security",
+      "stack": "android",
+      "status": "committed_with_warning",
+      "attempts": 3,
+      "llmCalls": 6,
+      "gateway": {
+        "clean": 4,
+        "masked": 0,
+        "redacted": 2,
+        "blockedInput": 0,
+        "blockedOutput": 0
+      },
+      "gatewayCalls": [
+        {
+          "stage": "generation",
+          "requestId": "gw_mw552yzh_2b542276",
+          "input": "allow",
+          "output": "redacted",
+          "warning": "Output Guard: опасные фрагменты заменены (suspicious_url).",
+          "costUsd": 0.001753
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw5532ub_c6011770",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.002128
+        },
+        {
+          "stage": "generation",
+          "requestId": "gw_mw5535k3_f37ff131",
+          "input": "allow",
+          "output": "redacted",
+          "warning": "Output Guard: опасные фрагменты заменены (suspicious_url).",
+          "costUsd": 0.002723
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw5539mo_091fcf1b",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.001902
+        },
+        {
+          "stage": "generation",
+          "requestId": "gw_mw553bm7_13c61209",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.002779
+        },
+        {
+          "stage": "security_review",
+          "requestId": "gw_mw553ffq_6ca7cdf6",
+          "input": "allow",
+          "output": "allow",
+          "warning": null,
+          "costUsd": 0.002181
+        }
+      ],
+      "security": {
+        "critical": 0,
+        "high": 0,
+        "medium": 2,
+        "low": 2
+      },
+      "findings": [
+        {
+          "severity": "medium",
+          "category": "missing_pinning",
+          "line": 30,
+          "title": "OkHttp без certificate pinning для auth/API-хоста",
+          "evidence": "OkHttpClient.Builder().connectTimeout(...).build()",
+          "recommendation": "Добавить CertificatePinner для API-хоста (в release), либо явно задокументировать риск и включить pinning на уровне network_security_config."
+        },
+        {
+          "severity": "medium",
+          "category": "insecure_network",
+          "line": 140,
+          "title": "Разрешён http:// при allowInsecureHttp=true, флаг по умолчанию BuildConfig.DEBUG",
+          "evidence": "if (isHttp && !allowInsecureHttp) { throw ... }",
+          "recommendation": "Не полагаться только на BuildConfig.DEBUG: жёстко запретить http:// в release-варианте (например, через build flavor/ресурс), а debug-адрес задавать только в debug source set."
+        },
+        {
+          "severity": "low",
+          "category": "other",
+          "line": 51,
+          "title": "Authorization-заголовок может уйти на редирект/чужой хост",
+          "evidence": "requestBuilder.header(\"Authorization\", \"Bearer ${token.trim()}\")",
+          "recommendation": "Отключить followRedirects/followSslRedirects для запросов с токеном или проверять, что хост редиректа совпадает с ожидаемым."
+        },
+        {
+          "severity": "low",
+          "category": "other",
+          "line": 56,
+          "title": "URL и код ответа попадают в текст исключения",
+          "evidence": "throw IOException(\"GET $url failed: HTTP ${response.code}\")",
+          "recommendation": "Не включать полный URL (может содержать query/чувствительные параметры) в сообщения исключений, логируемых выше по стеку; достаточно кода и пути."
+        }
+      ],
+      "commit": {
+        "ok": true,
+        "sha": "ce386cc",
+        "dir": ".data/security-loop/sandbox/run-20261106-153805-a4a7/t3-api-request-attempt-3",
+        "message": "security-loop: t3-api-request attempt 3 (4 warnings)"
+      },
+      "codeHash": "f7252f4edb2d",
+      "codeLines": 149,
+      "notes": [
+        "attempt 1: security blocked (2)",
+        "attempt 2: security blocked (1)"
+      ]
+    }
+  ],
+  "totals": {
+    "tasks": 4,
+    "committed": 0,
+    "committedWithWarning": 3,
+    "rejected": 0,
+    "gatewayBlocked": 1,
+    "errors": 0,
+    "llmCalls": 15,
+    "cleanCalls": 12,
+    "blockedInput": 1,
+    "blockedOutput": 0,
+    "warnings": 10,
+    "blockingFindings": 4
+  }
+}

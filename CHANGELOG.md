@@ -46,6 +46,74 @@ gateway (только loopback), audit-файлы без ротации.
 
 ---
 
+## ADVANCED Day 14 — Execution Loop + Security Step (2026-11-06)
+**Профиль:** изначально `business-feature`; corrective — loop-run с milestone
+и issues. **Live-run:** `run-20261106-153805-a4a7` (локальный gateway, guard
+`block`, model `deepseek-flash`).
+
+**Задание (полный текст):**
+> Возьмите execution loop из Недели 2: промпт → генерация → тесты → результат.
+> Добавьте security step между генерацией и коммитом: после тестов отправьте
+> код на security review вторым вызовом LLM с отдельным security-промптом.
+> Critical/High → вернуть цикл на генерацию с фидбеком «исправь: … в строке N»;
+> Medium/Low → пропустить с warning; чисто → коммит. Весь loop — через LLM
+> Gateway Дня 3; зафиксировать, что gateway поймал/заблокировал, а что
+> пропустил чистым. Security-промпт под стек: iOS (Keychain/ATS/pinning),
+> Android (encrypted SharedPreferences/network config/root), общее (hardcoded
+> secrets, PII в логах, HTTP, input validation). Проверить на 3 задачах:
+> «сохрани токен авторизации», «добавь логирование всех запросов», «сделай
+> запрос на API».
+
+**Что сделано:**
+- `challenge/src/core/securityLoop/` — gateway-клиент, generation + security
+  prompt, JSON-парсер review с fail-closed, severity policy, static/command
+  test runners, sandbox git commit, JSONL events/report.
+- CLI `sec-loop`: локальный gateway (или внешний loopback), 4 demo-прогона на
+  3 задачи, `--task/--max-attempts/--no-commit/--mode/--rate`.
+- Security-промпт для `android`/`ios`/`web`/`generic`; Android-вариант —
+  `docs/advanced-day-14/security-prompt.md`.
+- Все LLM-вызовы — только `GatewayClient` → `POST /v1/chat/completions`;
+  provider key не покидает gateway, external URL проверяется на loopback.
+- Feedback: `[CRITICAL] строка 21: …`; previous code маскируется перед retry;
+  gateway input block на review превращается в security feedback с локальной
+  строкой.
+
+**Результаты:**
+- Live: 15 LLM-вызовов (12 clean, 2 redacted, 1 blocked input), 3 sandbox
+  commit с warning, 0 errors; 10 warning-findings.
+- Security review поймал 1 critical + 4 high за попытки: plaintext DataStore,
+  BODY-логирование Authorization/тел, HTTP base URL с Bearer, cleartext для
+  auth — все возвращены на генерацию.
+- Gateway поймал T2 leak-probe (jwt/bearer/email/base64, HTTP 422, upstream не
+  вызван) и отредактировал HTTP URL в T3 (5 × suspicious_url).
+- «Не заблокировали оба»: только Medium/Low (T1 3 low; T2 2 medium + 1 low;
+  T3 2 medium + 2 low) — commit с warning по политике; полностью
+  необнаруженных Critical/High нет.
+- Проверки: typecheck OK; challenge 478/478; focused 64/64; gateway self-test
+  14/14; `scanSecrets` по логам/sandbox = 0; абсолютных путей в логах нет.
+
+**Трекер:** milestone `run-2026-11-06`, эпик #218, stories #211–#216,
+process-retro #217.
+**Skill:** `.omp/skills/security-execution-loop/SKILL.md` (добавлен в
+`AGENTS.md` §11); фиксирует loop-run и tracker-before-edit для будущих
+security-step задач.
+
+**Процесс:** изначально задача была выполнена как `business-feature` — без
+milestone/epic/stories, потому что в запросе не было токена `loop-run` и
+существующего milestone. Это ошибка интерпретации для задачи, которая прямо
+описывает execution loop; corrective — skill, ретроспективный milestone и
+issues #211–#218, зафиксировано в #217.
+
+**Код:** `challenge/src/core/securityLoop/**`, `challenge/src/cli.ts`,
+`challenge/src/core/index.ts`.
+**Документы:** `docs/advanced-day-14/{README,test-cases,live-run,security-prompt}.md`,
+`docs/advanced-day-14/logs/**`.
+**Риски:** LLM-review недетерминирован; gateway — эвристики, не SAST/DLP;
+Android demo не компилируется (нет JDK/SDK), тестовый шаг — static
+lint/contract; sandbox commit не попадает в историю проекта.
+
+---
+
 ## День 1 — Первый запрос к LLM через API
 **Дата:** 2026-06-01
 
