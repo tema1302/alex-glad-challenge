@@ -124,6 +124,19 @@ import type {
 } from './core/security/securityDemo.js';
 import { runCaseMatrix, matrixSummary } from './core/gateway/cases.js';
 import { startGateway } from './core/gateway/server.js';
+import {
+  assertLoopbackGatewayUrl,
+  GatewayClient,
+  JsonlLoopLogger,
+  SecurityExecutionLoop,
+  listDemoTasks,
+  selectDemoTasks,
+} from './core/securityLoop/index.js';
+import type {
+  LoopEvent,
+  LoopLogger,
+  RunReport,
+} from './core/securityLoop/index.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -219,6 +232,16 @@ function printHelp(): void {
   console.log('    --mode block|mask  Input Guard: блокировать или маскировать секреты (default block)');
   console.log('    --model <name>     override upstream-модели (по умолчанию GATEWAY_MODEL)');
   console.log('    --self-test        офлайн-матрица 14 guard-кейсов, без сети и ключей');
+  console.log('  sec-loop         ADVANCED day-14: generation -> tests -> security review -> commit через LLM Gateway');
+  console.log('    --gateway <url>    внешний gateway (по умолчанию поднять локальный loopback)');
+  console.log('    --port <N>         порт локального gateway (по умолчанию GATEWAY_PORT или 3040)');
+  console.log('    --rate <N>         запросов/мин локального gateway (default 120 для demo)');
+  console.log('    --mode block|mask  Input Guard локального gateway (default block)');
+  console.log('    --model <name>     override upstream-модели');
+  console.log('    --max-attempts <N> попыток generation (default 3)');
+  console.log('    --task <id>        t1 | t2 | t2-leak | t3 | all (default all)');
+  console.log('    --list             показать demo-задачи и выйти');
+  console.log('    --no-commit        dry-run: не создавать sandbox git commit');
   console.log('  rag chat         Интерактивный RAG-сеанс: /chat /topic /local /cloud /list /alias /norag /help /quit');
   console.log('    --strategy <name>   стартовая стратегия (default fixed) | telegram (для --chat)');
   console.log('    --chat <ref>        стартовый TG-чат: chatKey | t.me/c/<id> | alias (force strategy=telegram)');
@@ -717,6 +740,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- ADVANCED day-14: execution loop с security review через gateway ---
+  if (arg === 'sec-loop') {
+    await runSecurityLoopCommand(argv.slice(1));
+    return;
+  }
+
   // --- Бот «Медиум» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
   if (arg === 'tg-bot') {
     const rest = argv.slice(1);
@@ -815,7 +844,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, sec-loop, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -3296,6 +3325,284 @@ async function runLlmGatewayCommand(argv: string[]): Promise<void> {
   console.log(
     `\n■ llm-gateway остановлен: requests=${stats.requests} blocked_input=${stats.blockedInput} blocked_output=${stats.blockedOutput} masked=${stats.masked} rate_limited=${stats.rateLimited} cost=$${stats.totalCostUsd.toFixed(6)}`,
   );
+}
+
+interface SecLoopCliOptions {
+  gateway?: string;
+  port?: number;
+  rate?: number;
+  mode: 'block' | 'mask';
+  model?: string;
+  maxAttempts: number;
+  task?: string;
+  list: boolean;
+  noCommit: boolean;
+  help: boolean;
+}
+
+function parseSecLoopCliArgs(argv: readonly string[]): SecLoopCliOptions {
+  const opts: SecLoopCliOptions = {
+    mode: 'block',
+    maxAttempts: 3,
+    list: false,
+    noCommit: false,
+    help: false,
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const token = argv[i] ?? '';
+    if (token === '--list') {
+      opts.list = true;
+      continue;
+    }
+    if (token === '--no-commit') {
+      opts.noCommit = true;
+      continue;
+    }
+    if (token === '--help' || token === '-h') {
+      opts.help = true;
+      continue;
+    }
+    const value = argv[i + 1];
+    if (!value || value.startsWith('--')) {
+      console.error(`Флаг ${token} требует значения`);
+      process.exit(1);
+    }
+    switch (token) {
+      case '--gateway':
+        opts.gateway = value;
+        break;
+      case '--port':
+        opts.port = parsePositiveInt(value, 3040, 'port');
+        break;
+      case '--rate':
+        opts.rate = parsePositiveInt(value, 120, 'rate');
+        break;
+      case '--mode':
+        if (value !== 'block' && value !== 'mask') {
+          console.error(`--mode должен быть block|mask: ${value}`);
+          process.exit(1);
+        }
+        opts.mode = value;
+        break;
+      case '--model':
+        opts.model = value;
+        break;
+      case '--max-attempts':
+        opts.maxAttempts = parsePositiveInt(value, 3, 'max-attempts');
+        break;
+      case '--task':
+        opts.task = value;
+        break;
+      default:
+        console.error(`Неизвестный флаг: ${token}`);
+        process.exit(1);
+    }
+    i += 1;
+  }
+  return opts;
+}
+
+function printSecLoopHelp(): void {
+  console.log('sec-loop — ADVANCED day-14: generation -> tests -> security review -> commit');
+  console.log('');
+  console.log('  --gateway <url>    внешний gateway (по умолчанию локальный loopback)');
+  console.log('  --port <N>         порт локального gateway (default GATEWAY_PORT или 3040)');
+  console.log('  --rate <N>         запросов/мин локального gateway (default 120 для demo)');
+  console.log('  --mode block|mask  Input Guard локального gateway (default block)');
+  console.log('  --model <name>     override upstream-модели');
+  console.log('  --max-attempts <N> попыток generation (default 3)');
+  console.log('  --task <id>        t1 | t2 | t2-leak | t3 | all (default all)');
+  console.log('  --list             показать demo-задачи и выйти');
+  console.log('  --no-commit        dry-run без sandbox git commit');
+  console.log('');
+  console.log('Примеры (одной строкой):');
+  console.log('  pnpm --filter challenge start -- sec-loop');
+  console.log('  pnpm --filter challenge start -- sec-loop --task t1 --no-commit');
+  console.log('  pnpm --filter challenge start -- sec-loop --gateway http://127.0.0.1:3040');
+}
+
+function printSecLoopTasks(): void {
+  console.log('Demo-задачи ADVANCED day-14:');
+  for (const task of listDemoTasks()) {
+    console.log(
+      `  ${task.id.padEnd(22)} ${task.stack.padEnd(8)} ${task.scenario.padEnd(12)} ${task.title}`,
+    );
+  }
+}
+
+function secLoopRunId(date: Date): string {
+  const stamp = date
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, '')
+    .replace('T', '-');
+  return `run-${stamp}-${Math.random().toString(16).slice(2, 6)}`;
+}
+
+function printLoopEvent(event: LoopEvent): void {
+  const data = event.data ?? {};
+  switch (event.type) {
+    case 'run_start':
+      console.log(`\n▶ security loop ${event.runId}: ${event.message}`);
+      break;
+    case 'task_start':
+      console.log(`\n[${event.taskId ?? '?'}] ${event.message}`);
+      break;
+    case 'generation_result':
+      console.log(
+        `  · generation: ${event.message} (input=${String(data.input ?? '?')}, output=${String(data.output ?? '?')})`,
+      );
+      break;
+    case 'tests_result':
+      console.log(`  · tests: ${event.message}`);
+      break;
+    case 'security_review_result':
+      console.log(`  · security review: ${event.message}`);
+      break;
+    case 'security_decision':
+      console.log(`  · decision: ${event.message}`);
+      break;
+    case 'security_regenerate':
+      console.log('  ↻ regenerate with feedback');
+      break;
+    case 'gateway_blocked':
+      console.log(`  ! ${event.message}`);
+      break;
+    case 'commit':
+      console.log(`  ✓ commit: ${String(data.sha ?? event.message)}`);
+      break;
+    case 'task_end':
+      console.log(`  → ${event.message}`);
+      break;
+    case 'run_end':
+      console.log(`\n■ ${event.message}`);
+      break;
+    default:
+      break;
+  }
+}
+
+function printSecurityLoopReport(report: RunReport): void {
+  console.log('\n── Security loop report ──');
+  for (const task of report.tasks) {
+    console.log(`\n[${task.taskId}] ${task.title}`);
+    console.log(
+      `  status=${task.status} attempts=${task.attempts} llm_calls=${task.llmCalls} code=${task.codeHash ?? 'n/a'} (${task.codeLines ?? 0} lines)`,
+    );
+    console.log(
+      `  gateway: clean=${task.gateway.clean} masked=${task.gateway.masked} redacted=${task.gateway.redacted} blocked_in=${task.gateway.blockedInput} blocked_out=${task.gateway.blockedOutput}`,
+    );
+    console.log(
+      `  security: critical=${task.security.critical} high=${task.security.high} medium=${task.security.medium} low=${task.security.low}`,
+    );
+    for (const finding of task.findings) {
+      const where = finding.line === null ? 'line n/a' : `line ${finding.line}`;
+      console.log(`    - [${finding.severity.toUpperCase()}] ${where}: ${finding.title}`);
+    }
+    if (task.commit?.sha) {
+      console.log(`  commit=${task.commit.sha} sandbox=${task.commit.dir ?? 'n/a'}`);
+    }
+    for (const note of task.notes) console.log(`  note: ${note}`);
+  }
+
+  const t = report.totals;
+  console.log(
+    `\n■ summary: tasks=${t.tasks} committed=${t.committed} committed_with_warning=${t.committedWithWarning} rejected=${t.rejected} gateway_blocked=${t.gatewayBlocked} errors=${t.errors}`,
+  );
+  console.log(
+    `  llm_calls=${t.llmCalls} clean_calls=${t.cleanCalls} blocked_input=${t.blockedInput} blocked_output=${t.blockedOutput} warnings=${t.warnings} blocking_findings=${t.blockingFindings}`,
+  );
+  console.log(
+    `  report: ${repoRelativePath(dataPath('security-loop', report.runId, 'report.json'))}`,
+  );
+  console.log(
+    `  events: ${repoRelativePath(dataPath('security-loop', report.runId, 'events.jsonl'))}`,
+  );
+  console.log(`  gateway audit: ${repoRelativePath(dataPath('gateway', 'audit.jsonl'))}`);
+}
+
+function repoRelativePath(absPath: string): string {
+  return path.relative(findRepoRoot(), absPath).replace(/\\/g, '/');
+}
+
+async function runSecurityLoopCommand(argv: string[]): Promise<void> {
+  const opts = parseSecLoopCliArgs(argv);
+  if (opts.help) {
+    printSecLoopHelp();
+    return;
+  }
+  if (opts.list) {
+    printSecLoopTasks();
+    return;
+  }
+
+  let tasks: ReturnType<typeof selectDemoTasks>;
+  try {
+    tasks = selectDemoTasks(opts.task);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  let gatewayUrl = opts.gateway;
+  let gatewayHandle: Awaited<ReturnType<typeof startGateway>> | null = null;
+  if (!gatewayUrl) {
+    const base = getGatewayConfig();
+    const port = opts.port ?? base.port;
+    let upstream: ReturnType<typeof getGatewayUpstreamConfig>;
+    try {
+      upstream = getGatewayUpstreamConfig();
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+    gatewayHandle = await startGateway({
+      config: {
+        ...base,
+        port,
+        guardMode: opts.mode,
+        rateLimitPerMin: opts.rate ?? Math.max(base.rateLimitPerMin, 120),
+      },
+      upstream,
+      logger: (line) => console.error(line),
+    });
+    gatewayUrl = gatewayHandle.url;
+    console.log(`▶ local gateway: ${gatewayUrl} mode=${opts.mode}`);
+  }
+
+  try {
+    gatewayUrl = assertLoopbackGatewayUrl(gatewayUrl);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    if (gatewayHandle) await gatewayHandle.close();
+    process.exit(1);
+  }
+
+  const runId = secLoopRunId(new Date());
+  const fileLogger = new JsonlLoopLogger(dataPath('security-loop', runId, 'events.jsonl'));
+  const logger: LoopLogger = {
+    log(event: LoopEvent): void {
+      fileLogger.log(event);
+      printLoopEvent(event);
+    },
+  };
+  const client = new GatewayClient({ baseUrl: gatewayUrl, model: opts.model });
+  const loop = new SecurityExecutionLoop({
+    runId,
+    gatewayUrl,
+    llm: client,
+    maxAttempts: opts.maxAttempts,
+    commit: !opts.noCommit,
+    logger,
+  });
+
+  try {
+    const report = await loop.run(tasks);
+    printSecurityLoopReport(report);
+  } finally {
+    if (gatewayHandle) await gatewayHandle.close();
+  }
 }
 
 main().catch((err) => {

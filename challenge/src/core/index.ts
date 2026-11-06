@@ -43,3 +43,4 @@ export type {
 export * as agents from './agents/index.js';
 export * as security from './security/index.js';
 export * as gateway from './gateway/index.js';
+export * as securityLoop from './securityLoop/index.js';
