@@ -370,3 +370,22 @@ test('loop: события не содержат абсолютных путей
   assert.ok(!text.includes('/Users/'), 'posix home path leaked');
   assert.ok(!text.includes('/home/'), 'posix home path leaked');
 });
+
+test('loop: «послушный» ревьюер + секрет в коде → backstop отклоняет коммит', async () => {
+  const { report, committer, logger } = await run(
+    [
+      ok('```kotlin\n' + CODE_WITH_KEY + '\n```', 'generation'),
+      ok(CLEAN, 'security_review'),
+      ok('```kotlin\n' + CODE_WITH_KEY + '\n```', 'generation'),
+      ok(CLEAN, 'security_review'),
+      ok('```kotlin\n' + CODE_WITH_KEY + '\n```', 'generation'),
+      ok(CLEAN, 'security_review'),
+    ],
+    { maxAttempts: 3 },
+  );
+  assert.equal(report.status, 'rejected_security');
+  assert.equal(committer.inputs.length, 0);
+  assert.ok(report.findings.some((f) => f.title.includes('hardcoded secret')));
+  assert.ok(report.notes.some((n) => n.includes('local backstop')));
+  assert.ok(logger.events.some((e) => e.type === 'backstop'));
+});

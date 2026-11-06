@@ -137,6 +137,7 @@ export type LoopEventType =
   | 'tests_result'
   | 'security_review_start'
   | 'security_review_result'
+  | 'backstop'
   | 'security_decision'
   | 'security_regenerate'
   | 'gateway_blocked'

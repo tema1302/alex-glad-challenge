@@ -126,13 +126,14 @@ export function parseSecurityReview(raw: string): ParseResult {
     findings.push(finding);
   }
 
-  return {
-    ok: true,
-    review: {
-      summary: safeText(root.summary, 300),
-      findings,
-    },
+  const review: SecurityReview = {
+    summary: safeText(root.summary, 300),
+    findings,
   };
+  if (reviewTextContainsLeak(review)) {
+    return { ok: false, error: 'security review: leak phrase in review text (fail-closed)' };
+  }
+  return { ok: true, review };
 }
 
 /** critical/high блокируют коммит; medium/low — warning. */
@@ -165,12 +166,33 @@ export function formatSecurityFeedback(findings: readonly SecurityFinding[]): st
   ].join('\n');
 }
 
+const LEAK_IN_REVIEW_RE =
+  /(?:вот|показываю|вывожу|раскрываю)\s+(?:мой\s+)?системн[а-яё]*\s+промпт[а-яё]*|системн[а-яё]*\s+промпт[а-яё]*\s*[:—-]\s*\S+|my\s+system\s+(?:prompt|message)\s+(?:is|was|says)/i;
+
 function lineAt(text: string, index: number): number {
   let line = 1;
   for (let i = 0; i < index && i < text.length; i += 1) {
     if (text[i] === '\n') line += 1;
   }
   return line;
+}
+
+/** Номер строки (1-based) по индексу символа; экспорт для backstop. */
+export function codeLineAt(text: string, index: number): number {
+  return lineAt(text, index);
+}
+
+/**
+ * Ответ ревьюера с инструкцией «слить system prompt» — не результат ревьюа:
+ * fail-closed (review_error), коммит запрещён. Текст уже проходит maskSecrets,
+ * но фраза утечки секретом не является и остаётся.
+ */
+function reviewTextContainsLeak(review: SecurityReview): boolean {
+  const parts: string[] = [review.summary];
+  for (const f of review.findings) {
+    parts.push(f.title, f.evidence, f.recommendation);
+  }
+  return parts.some((p) => LEAK_IN_REVIEW_RE.test(p));
 }
 
 function isSecretKind(kind: string): boolean {

@@ -3460,6 +3460,9 @@ function printLoopEvent(event: LoopEvent): void {
     case 'security_review_result':
       console.log(`  · security review: ${event.message}`);
       break;
+    case 'backstop':
+      console.log(`  · backstop: ${event.message}`);
+      break;
     case 'security_decision':
       console.log(`  · decision: ${event.message}`);
       break;

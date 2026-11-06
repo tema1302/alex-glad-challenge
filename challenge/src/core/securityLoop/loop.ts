@@ -16,14 +16,13 @@ import { createHash, randomBytes } from 'node:crypto';
 import { maskSecrets } from '../gateway/secrets.js';
 import { dataPath } from '../paths.js';
 import { SandboxCommitter } from './commit.js';
+import { evaluateSecurityReview } from './backstop.js';
 import { GatewayBlockedError } from './gatewayClient.js';
 import { JsonlLoopLogger, writeJsonReport } from './logger.js';
 import { extractCode, generationPrompt, securityReviewPrompt } from './prompt.js';
 import {
-  classifySecurityReview,
   formatSecurityFeedback,
   gatewayFindingsToSecurity,
-  parseSecurityReview,
 } from './review.js';
 import { StaticTestRunner } from './tests.js';
 import type {
@@ -428,21 +427,29 @@ export class SecurityExecutionLoop {
         return finish('error');
       }
 
-      const parsed = parseSecurityReview(reviewResult.content);
-      if (!parsed.ok) {
-        notes.push(`attempt ${attempt}: ${parsed.error}`);
-        emit('security_review_result', parsed.error, attempt, { ok: false });
+      const evaluation = evaluateSecurityReview(reviewResult.content, code);
+      if (!evaluation.ok) {
+        notes.push(`attempt ${attempt}: ${evaluation.error}`);
+        emit('security_review_result', evaluation.error, attempt, { ok: false });
         return finish('review_error');
       }
 
-      lastReview = parsed.review;
-      findings = parsed.review.findings;
-      const decision = classifySecurityReview(parsed.review);
+      lastReview = evaluation.review;
+      findings = evaluation.findings;
+      const decision = evaluation.decision;
+      if (evaluation.backstop.length > 0) {
+        emit('backstop', `local backstop: ${evaluation.backstop.length} finding(s)`, attempt, {
+          findings: evaluation.backstop.map(findingSummary),
+        });
+        notes.push(
+          `attempt ${attempt}: local backstop added ${evaluation.backstop.length} finding(s)`,
+        );
+      }
       emit('security_review_result', `${findings.length} finding(s)`, attempt, {
         requestId: reviewResult.info.requestId,
         input: reviewResult.info.input,
         output: reviewResult.info.output,
-        summary: parsed.review.summary,
+        summary: evaluation.review.summary,
         findings: findings.map(findingSummary),
         decision: decision.action,
       });

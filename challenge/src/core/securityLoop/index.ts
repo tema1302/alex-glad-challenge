@@ -31,6 +31,12 @@ export type { CommandTestRunnerOptions } from './tests.js';
 export { NoopCommitter, SandboxCommitter } from './commit.js';
 export type { SandboxCommitterOptions } from './commit.js';
 
+export {
+  evaluateSecurityReview,
+  localSecurityFindings,
+} from './backstop.js';
+export type { EvaluatedSecurityReview } from './backstop.js';
+
 export { JsonlLoopLogger, MemoryLoopLogger, writeJsonReport } from './logger.js';
 
 export { SecurityExecutionLoop } from './loop.js';
