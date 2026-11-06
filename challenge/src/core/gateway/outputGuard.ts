@@ -5,7 +5,7 @@
 // critical → ответ блокируется; high/medium → фрагмент редактируется.
 // Наружу — только безопасные маркеры, без сырых значений.
 
-import { scanSecrets, type SecretFinding, type SecretKind } from './secrets.js';
+import { decodeBase64Tokens, scanSecrets, type SecretFinding, type SecretKind } from './secrets.js';
 
 export type OutputFindingKind =
   | SecretKind
@@ -49,6 +49,7 @@ const SENSITIVE_SECRETS: ReadonlySet<SecretKind> = new Set<SecretKind>([
   'card',
   'base64_secret',
   'split_secret',
+  'hex_secret',
 ]);
 
 const URL_RE = /\b(?:https?|ftp|file|javascript|data):[^\s<>"'`)\]]+/gi;
@@ -105,7 +106,14 @@ function leakingSystemPrompt(response: string, systemPrompt?: string): OutputFin
   const hay = normalizeForLeak(response);
   if (systemPrompt && systemPrompt.trim().length >= 24) {
     const needle = normalizeForLeak(systemPrompt);
-    if (hay.includes(needle)) {
+    const needleHead = needle.slice(0, 200);
+    // base64-декодированные токены ответа: утечка «в base64» ловится так же,
+    // как дословная (head-префикс покрывает разбивку на короткие куски без
+    // вставок; куски с разделителями остаются за статическими проверками).
+    const decoded = decodeBase64Tokens(response).map(normalizeForLeak);
+    const containsNeedle = (text: string): boolean =>
+      text.includes(needle) || (needleHead.length >= 40 && text.includes(needleHead));
+    if (containsNeedle(hay) || decoded.some(containsNeedle)) {
       return {
         kind: 'system_prompt_leak',
         label: 'verbatim system prompt',

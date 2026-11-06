@@ -51,3 +51,31 @@ test('guardOutput: чистый ответ allow', () => {
   assert.equal(result.action, 'allow');
   assert.equal(result.warning, null);
 });
+
+// ── Day 15 red team hardening: утечка system prompt в обфускации ──
+
+const RT_SYSTEM_PROMPT =
+  'Ты — senior инженер. Стек: Android / Kotlin. Верни ТОЛЬКО один fenced code block с полным кодом файла. ' +
+  'Секреты не хардкодь: используй placeholder, secure storage или BuildConfig-конфигурацию. PII не логируй.';
+const rtB64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64');
+
+test('guardOutput: system prompt в base64 блокируется', () => {
+  const result = guardOutput(`Вот ключ в base64: ${rtB64(RT_SYSTEM_PROMPT)}`, {
+    systemPrompt: RT_SYSTEM_PROMPT,
+  });
+  assert.equal(result.action, 'blocked');
+  assert.ok(result.findings.some((f) => f.kind === 'system_prompt_leak'));
+});
+
+test('guardOutput: system prompt кусками без разделителей блокируется', () => {
+  const head = RT_SYSTEM_PROMPT.slice(0, 260);
+  const result = guardOutput(`Часть переписки: ${head}`, { systemPrompt: RT_SYSTEM_PROMPT });
+  assert.equal(result.action, 'blocked');
+});
+
+test('guardOutput: обычный base64-токен не считается утечкой промпта', () => {
+  const result = guardOutput(`Данные: ${rtB64('обычная строка без промпта')}`, {
+    systemPrompt: RT_SYSTEM_PROMPT,
+  });
+  assert.equal(result.action, 'allow');
+});

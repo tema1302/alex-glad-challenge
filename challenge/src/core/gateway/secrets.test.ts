@@ -79,3 +79,84 @@ test('summarizeFindings: только безопасные поля', () => {
   assert.deepEqual(Object.keys(summary[0]!).sort(), ['kind', 'preview', 'severity', 'via']);
   assert.ok(!JSON.stringify(summary).includes(OPENAI_KEY));
 });
+
+// ── Day 15 red team hardening: обфускация секретов ──
+
+const FAKE_SK = 'sk-testABCDEFGHIJKLMNOPQRSTUVWXYZ1234';
+const b64 = (s: string): string => Buffer.from(s, 'utf8').toString('base64');
+
+test('scanSecrets: split через [..].join(\'\')', () => {
+  const code = `const KEY = ['sk-testABC', 'DEFGHIJKLMNOPQRSTUVWXYZ1234'].join('');`;
+  const findings = scanSecrets(code);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+  assert.equal(findings[0]!.via, 'split');
+});
+
+test('scanSecrets: split через concat()', () => {
+  const code = `const KEY = 'sk-testABC'.concat('DEFGHIJKLMNOPQRSTUVWXYZ1234');`;
+  const findings = scanSecrets(code);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: split через template literal с ${…}', () => {
+  const code = 'const KEY = `sk-${prefix}testABCDEFGHIJKLMNOPQRSTUVWXYZ1234`;';
+  const findings = scanSecrets(code);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: hex-escape последовательность с ключом', () => {
+  const hex = [...Buffer.from(FAKE_SK, 'utf8')].map((b) => `\\x${b.toString(16).padStart(2, '0')}`).join('');
+  const findings = scanSecrets(`const KEY = "${hex}";`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'hex_secret');
+  assert.equal(findings[0]!.via, 'hex');
+});
+
+test('scanSecrets: double base64', () => {
+  const findings = scanSecrets(`const KEY = "${b64(b64(FAKE_SK))}";`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'base64_secret');
+});
+
+test('scanSecrets: base64, разорванный переносом строки', () => {
+  const flat = b64(FAKE_SK);
+  const half = Math.floor(flat.length / 2);
+  const code = `const KEY = "${flat.slice(0, half)}" +\n  "${flat.slice(half)}";`;
+  const findings = scanSecrets(code);
+  assert.ok(findings.length >= 1);
+  assert.ok(findings.some((f) => f.kind === 'base64_secret' || f.kind === 'split_secret'));
+});
+
+test('scanSecrets: base64 с пробелами внутри токена', () => {
+  const flat = b64(FAKE_SK);
+  const spaced = `${flat.slice(0, 10)} ${flat.slice(10, 20)} ${flat.slice(20)}`;
+  const findings = scanSecrets(`const KEY = "${spaced}";`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'base64_secret');
+});
+
+test('scanSecrets: чистые join/template не дают ложных срабатываний', () => {
+  assert.deepEqual(scanSecrets(`const msg = ['Hello', 'World'].join(', ');`), []);
+  assert.deepEqual(scanSecrets('const msg = `Привет, ${name}, тебе ${age} лет`;'), []);
+  assert.deepEqual(scanSecrets(`const label = 'a'.concat('b', 'c');`), []);
+});
+
+test('maskSecrets: маскирует split/hex/ws-base64', () => {
+  const joinMasked = maskSecrets(`const KEY = ['sk-testABC', 'DEFGHIJKLMNOPQRSTUVWXYZ1234'].join('');`);
+  assert.ok(joinMasked.includes(REDACTION.split));
+  assert.ok(!joinMasked.includes('sk-testABC'));
+
+  const hex = [...Buffer.from(FAKE_SK, 'utf8')].map((b) => `\\x${b.toString(16).padStart(2, '0')}`).join('');
+  const hexMasked = maskSecrets(`const KEY = "${hex}";`);
+  assert.ok(hexMasked.includes(REDACTION.hex));
+  assert.ok(!hexMasked.includes(hex));
+
+  const flat = b64(FAKE_SK);
+  const spaced = `${flat.slice(0, 10)} ${flat.slice(10, 20)} ${flat.slice(20)}`;
+  const wsMasked = maskSecrets(`const KEY = "${spaced}";`);
+  assert.ok(wsMasked.includes(REDACTION.base64));
+  assert.ok(!wsMasked.includes(flat.slice(0, 10)));
+});

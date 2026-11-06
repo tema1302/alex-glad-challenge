@@ -2,8 +2,10 @@
 //
 // Инвариант: наружу и в audit-логи попадают только kind/severity/preview —
 // сырое значение секрета никогда не покидает этот модуль.
-// Детекторы чистые, без I/O. Base64-кодированные и «разбитые» секреты
-// проверяются нормализацией и повторным сканом.
+// Детекторы чистые, без I/O. Обфускация проверяется декодированием и повторным
+// сканом с ограничением глубины: base64 (включая двойной и с пробелами),
+// split-конкатенация ('a'+'b', [a,b].join(''), a.concat(b), template literal),
+// hex/unicode-escape последовательности.
 
 import type { ChatMessage } from '../types.js';
 
@@ -20,11 +22,12 @@ export type SecretKind =
   | 'card'
   | 'phone'
   | 'base64_secret'
-  | 'split_secret';
+  | 'split_secret'
+  | 'hex_secret';
 
 export type SecretSeverity = 'critical' | 'high' | 'medium';
 
-export type DetectionVia = 'direct' | 'base64' | 'split';
+export type DetectionVia = 'direct' | 'base64' | 'split' | 'hex';
 
 export interface SecretFinding {
   readonly kind: SecretKind;
@@ -120,7 +123,53 @@ const CARD_RE = /\b(?:\d[ -]?){12,18}\d\b/g;
 const PHONE_RE =
   /(?:\+\d{1,3}[\s-]?(?:\(?\d{2,4}\)?[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{2,4}|\b[78][\s(-]?\d{3}[\s)-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b)/g;
 const BASE64_RE = /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{16,}={0,2}(?![A-Za-z0-9+/=])/g;
-const SPLIT_EXPR_RE = /(["'])([^"']*)\1\s*\+\s*(["'])([^"']*)\3/g;
+
+/** Максимальная глубина рекурсивного декодирования (base64 внутри base64 и т.п.). */
+const MAX_DECODE_DEPTH = 2;
+
+interface SplitCandidate {
+  readonly label: string;
+  readonly re: RegExp;
+  /** Собранная («склеенная») строка из групп матча; null — кандидат не про конкатенацию. */
+  readonly joined: (groups: readonly (string | undefined)[]) => string | null;
+}
+
+/**
+ * Кандидаты на split-обфускацию секрета в коде: 'a' + 'b',
+ * ['a','b'].join(''), 'a'.concat('b'), template literal с ${…}.
+ * Каждый кандидат матчится по оригинальному тексту, чтобы находку можно
+ * было точно замаскировать. Индексы групп: [0] весь матч, далее capture-группы.
+ * Точность держится на scanJoined: находка засчитывается, только если
+ * склеенная строка реально содержит секрет (в любой кодировке).
+ */
+const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
+  {
+    label: 'quoted concat',
+    re: /(["'])([^"']*)\1\s*\+\s*(["'])([^"']*)\3/g,
+    joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+  },
+  {
+    label: 'array join',
+    re: /\[\s*(["'])([^"'\[\]]*)\1\s*,\s*(["'])([^"'\[\]]*)\3\s*\]\s*\.\s*join\s*\(\s*(["'])\5?\s*\)/g,
+    joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+  },
+  {
+    label: 'concat call',
+    re: /(["'])([^"']*)\1\s*\.\s*concat\s*\(\s*(["'])([^"']*)\3/g,
+    joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+  },
+  {
+    label: 'template literal',
+    re: /`([^`\\]{4,240})`/g,
+    joined: (g) => {
+      const content = g[1] ?? '';
+      return content.includes('${') ? content.replace(/\$\{[^}]{0,32}\}/g, '') : null;
+    },
+  },
+];
+
+const HEX_SEQ_RE = /(?:\\x[0-9a-fA-F]{2}){8,}/g;
+const UNICODE_SEQ_RE = /(?:\\u\{?[0-9a-fA-F]{2,4}\}?){8,}/g;
 
 export const REDACTION = {
   apiKey: '[REDACTED_API_KEY]',
@@ -136,6 +185,7 @@ export const REDACTION = {
   phone: '[REDACTED_PHONE]',
   base64: '[REDACTED_BASE64_SECRET]',
   split: '[REDACTED_SPLIT_SECRET]',
+  hex: '[REDACTED_HEX_SECRET]',
 } as const;
 
 function previewFor(kind: SecretKind, raw: string): string {
@@ -169,12 +219,11 @@ function finding(
 function findDirect(text: string): SecretFinding[] {
   const out: SecretFinding[] = [];
   for (const d of DETECTORS) {
-    d.re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = d.re.exec(text)) !== null) {
+    // matchAll: рекурсивные вызовы scanSecrets внутри циклов не сбивают
+    // lastIndex общего regex (реентерабельность).
+    for (const m of text.matchAll(d.re)) {
       const raw = d.group ? (m[d.group] ?? m[0]) : m[0];
       out.push(finding(d, raw, m.index));
-      if (m[0].length === 0) d.re.lastIndex += 1;
     }
   }
   return out;
@@ -197,9 +246,7 @@ function isLuhnValid(digits: string): boolean {
 
 function findCards(text: string): SecretFinding[] {
   const out: SecretFinding[] = [];
-  CARD_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = CARD_RE.exec(text)) !== null) {
+  for (const m of text.matchAll(CARD_RE)) {
     const digits = m[0].replace(/\D/g, '');
     if (digits.length < 13 || digits.length > 19) continue;
     if (!isLuhnValid(digits)) continue;
@@ -214,9 +261,7 @@ function overlaps(findings: readonly SecretFinding[], start: number, end: number
 
 function findPhones(text: string, cardFindings: readonly SecretFinding[]): SecretFinding[] {
   const out: SecretFinding[] = [];
-  PHONE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = PHONE_RE.exec(text)) !== null) {
+  for (const m of text.matchAll(PHONE_RE)) {
     if (overlaps(cardFindings, m.index, m.index + m[0].length)) continue;
     out.push(
       finding({ kind: 'phone', label: 'phone number', severity: 'medium', redaction: REDACTION.phone }, m[0], m.index),
@@ -235,15 +280,14 @@ function isPrintable(s: string): boolean {
   return true;
 }
 
-function findBase64(text: string): SecretFinding[] {
+function findBase64(text: string, depth: number): SecretFinding[] {
   const out: SecretFinding[] = [];
-  BASE64_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = BASE64_RE.exec(text)) !== null) {
+  for (const m of text.matchAll(BASE64_RE)) {
     const token = m[0];
-    if (!isPrintable(Buffer.from(token, 'base64').toString('utf8'))) continue;
     const decoded = Buffer.from(token, 'base64').toString('utf8');
-    const inner = [...findDirect(decoded), ...findCards(decoded)];
+    if (!isPrintable(decoded)) continue;
+    // Рекурсия с ограничением глубины ловит double-base64.
+    const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
     if (inner.length === 0) continue;
     out.push(
       finding(
@@ -257,45 +301,131 @@ function findBase64(text: string): SecretFinding[] {
   return out;
 }
 
-function normalizeSplit(text: string): string {
-  return text.replace(/(["'])\s*\+\s*(["'])/g, '');
-}
-
-function findSplit(text: string): SecretFinding[] {
+/** base64, разорванный пробелами/переносами: склеиваем с картой обратных индексов. */
+function findBase64Whitespace(text: string, depth: number): SecretFinding[] {
+  if (!/\s/.test(text)) return [];
+  const chars: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\s/.test(text[i]!)) continue;
+    chars.push(text[i]!);
+    map.push(i);
+  }
+  const normalized = chars.join('');
   const out: SecretFinding[] = [];
-  const normalized = normalizeSplit(text);
-  const directOnNormalized = [...findDirect(normalized), ...findCards(normalized)];
-  if (directOnNormalized.length === 0) return out;
-
-  SPLIT_EXPR_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = SPLIT_EXPR_RE.exec(text)) !== null) {
-    const joined = `${m[2] ?? ''}${m[4] ?? ''}`;
-    const inner = [...findDirect(joined), ...findCards(joined)];
+  for (const m of normalized.matchAll(BASE64_RE)) {
+    const token = m[0];
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    if (!isPrintable(decoded)) continue;
+    const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
     if (inner.length === 0) continue;
+    const start = map[m.index] ?? 0;
+    const last = map[m.index + token.length - 1] ?? start;
+    // Длина в оригинале — от первого до последнего символа токена.
     out.push(
       finding(
-        {
-          kind: 'split_secret',
-          label: `split(${inner[0]!.label})`,
-          severity: inner[0]!.severity,
-          redaction: REDACTION.split,
-        },
-        m[0],
-        m.index,
-        'split',
+        { kind: 'base64_secret', label: `base64-ws(${inner[0]!.label})`, severity: inner[0]!.severity, redaction: REDACTION.base64 },
+        text.slice(start, last + 1),
+        start,
+        'base64',
       ),
     );
   }
   return out;
 }
 
-/** Все находки в строке, включая base64- и split-обфускацию. */
-export function scanSecrets(text: string): SecretFinding[] {
+/** hex/unicode-escape последовательности, собирающиеся в секрет. */
+function findEscaped(text: string, depth: number): SecretFinding[] {
+  const out: SecretFinding[] = [];
+  for (const re of [HEX_SEQ_RE, UNICODE_SEQ_RE]) {
+    for (const m of text.matchAll(re)) {
+      const decoded = decodeEscaped(m[0]);
+      if (decoded.length < 4) continue;
+      const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
+      if (inner.length === 0) continue;
+      out.push(
+        finding(
+          { kind: 'hex_secret', label: `escaped(${inner[0]!.label})`, severity: inner[0]!.severity, redaction: REDACTION.hex },
+          m[0],
+          m.index,
+          'hex',
+        ),
+      );
+    }
+  }
+  return out;
+}
+
+/** Декодирует \xNN / \uNNNN(…)-последовательность в строку; невалидный токен — '' */
+function decodeEscaped(raw: string): string {
+  let out = '';
+  const tokenRe = /\\x([0-9a-fA-F]{2})|\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})/g;
+  for (const m of raw.matchAll(tokenRe)) {
+    const hex = m[1] ?? m[2] ?? m[3];
+    if (!hex) return '';
+    const code = parseInt(hex, 16);
+    if (!Number.isFinite(code) || code < 0x20 || code > 0x10ffff) return '';
+    out += String.fromCodePoint(code);
+  }
+  return out;
+}
+
+function scanJoined(joined: string, depth: number): SecretFinding[] {
+  return scanSecrets(joined, depth + 1);
+}
+
+function findSplit(text: string, depth: number): SecretFinding[] {
+  const out: SecretFinding[] = [];
+  for (const candidate of SPLIT_CANDIDATES) {
+    for (const m of text.matchAll(candidate.re)) {
+      const joined = candidate.joined(m);
+      if (!joined) continue;
+      const inner = scanJoined(joined, depth);
+      if (inner.length === 0) continue;
+      out.push(
+        finding(
+          {
+            kind: 'split_secret',
+            label: `split(${inner[0]!.label})`,
+            severity: inner[0]!.severity,
+            redaction: REDACTION.split,
+          },
+          m[0],
+          m.index,
+          'split',
+        ),
+      );
+    }
+  }
+  return out;
+}
+/** Убирает находки, чьи спаны полностью перекрыты более длинными (base64-ws поверх base64 и т.п.). */
+function dedupeOverlaps(findings: readonly SecretFinding[]): SecretFinding[] {
+  const sorted = [...findings].sort((a, b) => a.index - b.index || b.length - a.length);
+  const out: SecretFinding[] = [];
+  for (const f of sorted) {
+    const last = out[out.length - 1];
+    if (last && f.index < last.index + last.length && last.index < f.index + f.length) continue;
+    out.push(f);
+  }
+  return out;
+}
+
+/** Все находки в строке, включая base64-, split- и escape-обфускацию. */
+export function scanSecrets(text: string, depth = 0): SecretFinding[] {
   const direct = findDirect(text);
   const cards = findCards(text);
   const phones = findPhones(text, cards);
-  return [...direct, ...cards, ...phones, ...findBase64(text), ...findSplit(text)];
+  const deep = depth < MAX_DECODE_DEPTH;
+  return dedupeOverlaps([
+    ...direct,
+    ...cards,
+    ...phones,
+    ...(deep ? findBase64(text, depth) : []),
+    ...(deep ? findBase64Whitespace(text, depth) : []),
+    ...(deep ? findEscaped(text, depth) : []),
+    ...(deep ? findSplit(text, depth) : []),
+  ]);
 }
 
 export interface MessageSecretFinding extends SecretFinding {
@@ -309,6 +439,25 @@ export function scanMessages(messages: readonly ChatMessage[]): MessageSecretFin
       out.push({ ...f, messageIndex });
     }
   });
+  return out;
+}
+
+/** Заменяет матчи, для которых decide вернул замену; спаны собираются заранее. */
+function replaceWhen(
+  text: string,
+  re: RegExp,
+  decide: (m: RegExpMatchArray) => string | null,
+): string {
+  const spans: Array<{ start: number; end: number; redaction: string }> = [];
+  for (const m of text.matchAll(re)) {
+    const redaction = decide(m);
+    if (redaction === null) continue;
+    spans.push({ start: m.index, end: m.index + m[0].length, redaction });
+  }
+  let out = text;
+  for (const span of spans.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + span.redaction + out.slice(span.end);
+  }
   return out;
 }
 
@@ -329,22 +478,73 @@ export function maskSecrets(text: string): string {
     return digits.length >= 13 && digits.length <= 19 && isLuhnValid(digits) ? REDACTION.card : m;
   });
   out = out.replace(PHONE_RE, REDACTION.phone);
-  out = out.replace(BASE64_RE, (m) => {
-    const decoded = Buffer.from(m, 'base64').toString('utf8');
-    if (!isPrintable(decoded)) return m;
-    const inner = [...findDirect(decoded), ...findCards(decoded)];
-    return inner.length > 0 ? REDACTION.base64 : m;
+  // replaceWhen: callback вызывает scanSecrets → рекурсия в тот же regex,
+  // поэтому замена не через replace-коллбэк, а по заранее собранным спанам.
+  out = replaceWhen(out, BASE64_RE, (m) => {
+    const decoded = Buffer.from(m[0], 'base64').toString('utf8');
+    if (!isPrintable(decoded)) return null;
+    return scanSecrets(decoded, 1).length > 0 ? REDACTION.base64 : null;
   });
-  out = out.replace(SPLIT_EXPR_RE, (whole, _q1: string, part1: string, _q2: string, part2: string) => {
-    const inner = [...findDirect(`${part1}${part2}`), ...findCards(`${part1}${part2}`)];
-    return inner.length > 0 ? REDACTION.split : whole;
+  for (const candidate of SPLIT_CANDIDATES) {
+    out = replaceWhen(out, candidate.re, (m) => {
+      const joined = candidate.joined(m);
+      if (!joined) return null;
+      return scanJoined(joined, 0).length > 0 ? REDACTION.split : null;
+    });
+  }
+  out = maskWhitespaceBase64(out);
+  out = replaceWhen(out, HEX_SEQ_RE, (m) => {
+    const decoded = decodeEscaped(m[0]);
+    return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
   });
+  out = replaceWhen(out, UNICODE_SEQ_RE, (m) => {
+    const decoded = decodeEscaped(m[0]);
+    return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
+  });
+  return out;
+}
+
+/** Маскирует base64, разорванный пробелами/переносами (замена по карте индексов). */
+function maskWhitespaceBase64(text: string): string {
+  if (!/\s/.test(text)) return text;
+  const chars: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\s/.test(text[i]!)) continue;
+    chars.push(text[i]!);
+    map.push(i);
+  }
+  const normalized = chars.join('');
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const m of normalized.matchAll(BASE64_RE)) {
+    const token = m[0];
+    const decoded = Buffer.from(token, 'base64').toString('utf8');
+    if (!isPrintable(decoded)) continue;
+    if (scanSecrets(decoded, 1).length === 0) continue;
+    const start = map[m.index] ?? 0;
+    const last = map[m.index + token.length - 1] ?? start;
+    spans.push({ start, end: last + 1 });
+  }
+  let out = text;
+  for (const span of spans.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + REDACTION.base64 + out.slice(span.end);
+  }
   return out;
 }
 
 /** Маскирует каждый message и возвращает копию массива. */
 export function maskMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   return messages.map((m) => ({ ...m, content: maskSecrets(m.content) }));
+}
+
+/** Печатные base64-токены в декодированном виде (для проверки утечек и обфускации). */
+export function decodeBase64Tokens(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(BASE64_RE)) {
+    const decoded = Buffer.from(m[0], 'base64').toString('utf8');
+    if (isPrintable(decoded)) out.push(decoded);
+  }
+  return out;
 }
 
 /** Сводка для логов: только kind/severity/preview, без сырых значений. */

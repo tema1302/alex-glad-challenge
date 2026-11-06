@@ -184,7 +184,8 @@ function isSecretKind(kind: string): boolean {
     kind === 'bearer' ||
     kind === 'private_key' ||
     kind === 'base64_secret' ||
-    kind === 'split_secret'
+    kind === 'split_secret' ||
+    kind === 'hex_secret'
   );
 }
 
