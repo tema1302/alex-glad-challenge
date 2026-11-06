@@ -4,7 +4,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import type { LoopEvent, LoopLogger, RunReport } from './types.js';
+import type { LoopEvent, LoopLogger } from './types.js';
 
 export class JsonlLoopLogger implements LoopLogger {
   readonly events: LoopEvent[] = [];
@@ -29,7 +29,8 @@ export class MemoryLoopLogger implements LoopLogger {
   }
 }
 
-export function writeJsonReport(filePath: string, report: RunReport): void {
+/** Пишет JSON-отчёт (loop run или red team); содержимое не должно нести секретов. */
+export function writeJsonReport(filePath: string, report: object): void {
   mkdirSync(path.dirname(filePath), { recursive: true });
   writeFileSync(filePath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 }

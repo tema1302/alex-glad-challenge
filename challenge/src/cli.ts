@@ -137,6 +137,8 @@ import type {
   LoopLogger,
   RunReport,
 } from './core/securityLoop/index.js';
+import { ATTACK_CASES, PipelineTarget, runRedTeam } from './core/redteam/index.js';
+import type { RedTeamReport } from './core/redteam/index.js';
 import { indexDocuments, formatDuration } from './core/rag/pipeline.js';
 import { embedConfigFromEnv } from './core/rag/index.js';
 import { clean } from './core/sanitize.js';
@@ -237,6 +239,8 @@ function printHelp(): void {
   console.log('    --port <N>         порт локального gateway (по умолчанию GATEWAY_PORT или 3040)');
   console.log('    --rate <N>         запросов/мин локального gateway (default 120 для demo)');
   console.log('    --mode block|mask  Input Guard локального gateway (default block)');
+  console.log('  red-team         ADVANCED day-15: 17 атак по пайплайну (guards, обфускация, backstop), офлайн');
+  console.log('    --list             показать каталог атак и выйти');
   console.log('    --model <name>     override upstream-модели');
   console.log('    --max-attempts <N> попыток generation (default 3)');
   console.log('    --task <id>        t1 | t2 | t2-leak | t3 | all (default all)');
@@ -746,6 +750,12 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- ADVANCED day-15: red team — набор атак по своему пайплайну ---
+  if (arg === 'red-team') {
+    await runRedTeamCommand(argv.slice(1));
+    return;
+  }
+
   // --- Бот «Медиум» (M1): long polling Bot API, цитаты/сказал/игра из tg.sqlite ---
   if (arg === 'tg-bot') {
     const rest = argv.slice(1);
@@ -844,7 +854,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, sec-loop, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, sec-loop, red-team, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -3612,3 +3622,54 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
+
+function printRedTeamHelp(): void {
+  console.log('red-team — ADVANCED day-15: набор атак по своему пайплайну (офлайн)');
+  console.log('');
+  console.log('Проверяет детерминированный слой защиты: input/output guard,');
+  console.log('секрет-детекторы (обфускация) и security backstop в loop.');
+  console.log('LLM подменены scripted-версиями, сеть не нужна.');
+  console.log('');
+  console.log('  --list   показать каталог атак и выйти');
+  console.log('');
+  console.log('Примеры (одной строкой):');
+  console.log('  pnpm --filter challenge start -- red-team');
+  console.log('  pnpm --filter challenge start -- red-team --list');
+}
+
+function printRedTeamCatalog(): void {
+  console.log('Каталог атак red team (ADVANCED day-15):');
+  for (const attack of ATTACK_CASES) {
+    const kind =
+      attack.kind === 'residual' ? 'residual' : attack.kind === 'baseline' ? 'baseline' : 'hardening';
+    console.log(`  ${attack.id.padEnd(6)} ${attack.vector.padEnd(19)} ${kind.padEnd(9)} ${attack.title}`);
+  }
+}
+
+function printRedTeamReport(report: RedTeamReport): void {
+  console.log(`\n▶ red team ${report.runId}: ${report.results.length} attack(s) vs ${report.target}`);
+  for (const r of report.results) {
+    const mark = r.defended ? '✓ остановлено' : r.kind === 'residual' ? '~ residual' : '✗ ПРОБИТО';
+    console.log(`  ${r.id.padEnd(6)} ${mark.padEnd(14)} ${r.title}`);
+    if (r.kinds.length > 0) console.log(`         kinds: ${r.kinds.join(', ')}`);
+  }
+  const t = report.totals;
+  console.log(
+    `\n■ summary: attacks=${t.attacks} defended=${t.defended} breached=${t.breached} residual=${t.residual} → ${t.pass ? 'PASS' : 'FAIL'}`,
+  );
+  console.log(`  report: ${repoRelativePath(dataPath('red-team', report.runId, 'report.json'))}`);
+}
+
+async function runRedTeamCommand(argv: string[]): Promise<void> {
+  if (argv.includes('--help')) {
+    printRedTeamHelp();
+    return;
+  }
+  if (argv.includes('--list')) {
+    printRedTeamCatalog();
+    return;
+  }
+  const report = await runRedTeam(new PipelineTarget(), ATTACK_CASES);
+  printRedTeamReport(report);
+  if (!report.totals.pass) process.exitCode = 1;
+}
