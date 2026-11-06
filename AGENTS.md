@@ -5,7 +5,8 @@
 реальность репозитория**, а не историю первых десяти дней.
 
 Этот проект использует workflow-пак [Agent Skills](https://github.com/addyosmani/agent-skills)
-(26 скиллов: 24 workflow + `agent-profiles` + `project-bootstrap`; 4 review-персоны).
+(26 pack-скиллов: 24 workflow + `agent-profiles` + `project-bootstrap`
+и проектный `security-execution-loop`; 4 review-персоны).
 Проектные факты (стек, структура, границы, конвенции, команды валидации) остаются
 в этом файле; сами процессы живут в `.omp/skills/` и `.omp/agents/`.
 
@@ -21,7 +22,8 @@
 - **Sticky-правила:** `.omp/RULES.md` — короткие жёсткие инварианты, которые
   должны оставаться в контексте даже в длинной сессии.
 - **Скиллы:** `.omp/skills/*/SKILL.md` — 24 workflow-скилла + `agent-profiles`
-  (профили) + `project-bootstrap` (перенос pack'а).
+  (профили) + `project-bootstrap` (перенос pack'а) + проектный
+  `security-execution-loop` (loop-run с security review).
 - **Pack:** `.omp/pack.json` (v1.0.0) и `.omp/README.md` — переносимый слой;
   проектная адаптация живёт только в этом `AGENTS.md`.
 - **Персоны агентов:** `.omp/agents/*.md` — `code-reviewer`, `test-engineer`,
@@ -121,7 +123,7 @@ alex-glad-challenge/
     pack.json                # pack manifest/version
     README.md                # pack install/adapt guide
     agents/                  # code-reviewer, test-engineer, ...
-    skills/                  # 26: 24 workflow + agent-profiles + project-bootstrap
+    skills/                  # 26 pack + security-execution-loop (project)
     references/              # shared checklists
     docs/agents.md           # orchestration/composition guide
   challenge/
@@ -644,6 +646,7 @@ debugging-and-error-recovery    code-simplification          ci-cd-and-automatio
 | Ship | `observability-and-instrumentation` | Логи, метрики, трейсы |
 | Ship | `shipping-and-launch` | Чек-лист запуска, мониторинг, откат |
 | Process | `agent-profiles` | Выбрать профиль, вести стадии, loop и Report; project adapter — `AGENTS.md` §13 |
+| Process | `security-execution-loop` | Проектный: loop-run + security review через gateway; tracker (epic/stories/milestone) до первой правки |
 | Pack | `project-bootstrap` | Перенести pack в новый проект и адаптировать `AGENTS.md` |
 
 Составление персон: см. `.omp/docs/agents.md`.
