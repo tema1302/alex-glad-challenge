@@ -26,12 +26,17 @@ test('red team: все hardening-атаки остановлены после da
   }
 });
 
-test('red team: residual-атака RT-12 остаётся пробитием (документировано)', async () => {
+test('red team: residual-атаки остаются пробитием (документированные риски)', async () => {
   const residual = ATTACK_CASES.filter((c) => c.kind === 'residual');
-  assert.equal(residual.length, 1);
-  const result = await residual[0]!.run(target);
-  assert.equal(result.defended, false);
-  assert.equal(result.id, 'RT-12');
+  assert.ok(residual.length >= 1, 'должен быть хотя бы один документированный residual');
+  for (const attack of residual) {
+    const result = await attack.run(target);
+    assert.equal(result.defended, false, `${attack.id}: residual остаётся пробитием (см. README)`);
+  }
+  assert.ok(
+    residual.some((c) => c.id === 'RT-12'),
+    'RT-12 (system prompt кусками) остаётся в residual-наборе',
+  );
 });
 
 test('red team: полный прогон — pass, отчёт без сырых секретов', async () => {

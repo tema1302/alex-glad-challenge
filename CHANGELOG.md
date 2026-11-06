@@ -46,6 +46,23 @@
 - Red-team прогоны: `swarm-report/day15-before-evidence.json` (до),
   `challenge/.data/red-team/rt-20261106-*/report.json` (после).
 
+### Round 2 — расширение red team (2026-11-06, run-2026-11-06-3, эпик #227)
+
+- Сут расширен с 18 до 64 атак (RT-20..RT-65): таксономия секретов
+  (AWS/Google/Slack/JWT/Bearer/PEM), PII (карта/телефон/email) на входе и
+  выходе, 10 destructive-команд + 7 suspicious URL, leak-фразы EN/RU,
+  review fail-closed (не-JSON ревьюер), backstop-кейсы с послушным ревьюером,
+  обфускации round-2 (n-ary concat, `String.fromCharCode`, reverse, ROT13,
+  пробелы в литерале, base64url, unicode-escape).
+- Два реальных пробития найдены обстрелом и закрыты: RT-36 «голое» `rm -rf /`
+  (dead-regex с `\b` после несловесных символов) и RT-51 RU disclosure-фразы
+  (`\w` не покрывает кириллицу — паттерны не матчились с Дня 13).
+- Детекторы round-2 — decode-and-scan, FP-safe по построению: находка только
+  если расшифровка содержит секрет; FP-тесты на slug/фразы/rot13-junk.
+- Итог: `attacks=64 defended=63 breached=0 residual=1 → PASS`; 517/517
+  тестов; typecheck чисто; self-test 14/14. Коммиты f9034ca, cffcfff,
+  1215f36, 738f260.
+
 ---
 
 ## ADVANCED Day 13 — LLM Gateway (2026-11-04)

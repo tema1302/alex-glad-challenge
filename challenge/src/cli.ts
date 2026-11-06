@@ -239,7 +239,7 @@ function printHelp(): void {
   console.log('    --port <N>         порт локального gateway (по умолчанию GATEWAY_PORT или 3040)');
   console.log('    --rate <N>         запросов/мин локального gateway (default 120 для demo)');
   console.log('    --mode block|mask  Input Guard локального gateway (default block)');
-  console.log('  red-team         ADVANCED day-15: 17 атак по пайплайну (guards, обфускация, backstop), офлайн');
+  console.log('  red-team         ADVANCED day-15: 64 атаки по пайплайну (guards, обфускация, backstop), офлайн');
   console.log('    --list             показать каталог атак и выйти');
   console.log('    --model <name>     override upstream-модели');
   console.log('    --max-attempts <N> попыток generation (default 3)');
