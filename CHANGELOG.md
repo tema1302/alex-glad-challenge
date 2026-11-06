@@ -5,6 +5,49 @@
 
 ---
 
+## ADVANCED Day 15 — Red Team Challenge (2026-11-06)
+**Ветка:** `feat/day-15-red-team` (loop run-2026-11-06-2, эпик #219)
+
+**Задание (полный текст):**
+> Подготовьте свой пайплайн к бою: проверьте gateway, execution loop, security
+> step; напишите README (запуск, endpoint, вход/выход); откройте доступ
+> партнёру. Обменяйтесь пайплайнами и ломайте друг друга: prompt injection,
+> indirect injection, обход security review, утечка секрета мимо regex
+> (base64, разбиение, комментарии). Итог: отчёт атакующего + отчёт защитника +
+> пайплайн после hardening loop-run.
+
+**Что сделано:**
+- Верификация боеспособности: baseline 478/478 тестов, gateway self-test
+  14/14, live smoke `sec-loop --task t1` (committed_with_warning, 4 LLM-вызова
+  через gateway, run-20261106-162634-0441).
+- Red team офлайн: `challenge/src/core/redteam/` — AttackTarget/PipelineTarget
+  (реальные guards + evaluate, scripted-LLM), 18 атак RT-01..RT-19, runner с
+  отчётом без сырых значений. CLI `red-team [--list]`.
+- Gateway hardening (`challenge/src/core/gateway/secrets.ts`,
+  `outputGuard.ts`): детекторы `[..].join('')`, `.concat()`, template literal
+  с `${…}`, hex/unicode-escape, double base64 (глубина ≤2), base64 с
+  пробелами/переносами; утечка system prompt в base64 и кусками без
+  разделителей; дедупликация перекрытий; exec-циклы → matchAll (fix reentrancy
+  OOM).
+- Loop hardening (`challenge/src/core/securityLoop/backstop.ts`):
+  детерминированный security backstop (секреты, `[REDACTED_*]`-маркеры,
+  injection/exfil-фразы с FP-контролем) + `evaluateSecurityReview` — единая
+  точка решения; leak-фраза в JSON ревью → fail-closed `review_error`;
+  событие `backstop` в логах.
+- README боя: `docs/advanced-day-15/README.md`; отчёты атакующего/защитника в
+  том же каталоге.
+
+**Результаты:**
+- До hardening: 5/16 атак остановлено, 11 пробитий (join/concat/template/hex/
+  double-base64/b64-split, system prompt в base64/кусками, review bypass ×3).
+- После hardening: `attacks=18 defended=17 breached=0 residual=1 → PASS`
+  (RT-12 — system prompt кусками с разделителями, осознанный residual).
+- Тесты: 505/505 (было 478); gateway self-test 14/14.
+- Red-team прогоны: `swarm-report/day15-before-evidence.json` (до),
+  `challenge/.data/red-team/rt-20261106-*/report.json` (после).
+
+---
+
 ## ADVANCED Day 13 — LLM Gateway (2026-11-04)
 **Ветка:** `feat/llm-gateway-day-13` (loop run-2026-11-04, эпик #206)
 
