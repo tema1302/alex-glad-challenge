@@ -80,3 +80,6 @@ tools/
 # Одноразовые темп-артефакты (скриншоты/стартовые скрипты)
 .wb-tmp/
 
+# Harness run-continuation state (omo)
+.omo/
+
