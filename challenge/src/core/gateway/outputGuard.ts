@@ -66,7 +66,9 @@ const SHORTENERS = new Set([
 ]);
 
 const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
-  /\brm\s+-rf\s+(?:\/|~|\*|\$HOME)\b/gi,
+  // Trailing \b после несловесных символов (/, ~, *) никогда не матчится —
+  // голое «rm -rf /» проходило насквозь (RT-36, round-2 red team).
+  /\brm\s+-rf\s+(?:\/|~|\*|\$HOME)/gi,
   /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/g,
   /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh\b/gi,
   /\bbase64\s+(?:-d|--decode)\b[^\n|]{0,120}\|\s*(?:ba)?sh\b/gi,

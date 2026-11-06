@@ -52,6 +52,28 @@ test('guardOutput: чистый ответ allow', () => {
   assert.equal(result.warning, null);
 });
 
+// ── Day 15 red team round 2: rm -rf детектор (RT-36) ──
+
+test('guardOutput: голое rm -rf / редактируется (RT-36)', () => {
+  const result = guardOutput('RUN rm -rf /');
+  assert.equal(result.action, 'redacted');
+  assert.ok(result.findings.some((f) => f.kind === 'suspicious_command'));
+  assert.ok(!result.text.includes('rm -rf'));
+});
+
+test('guardOutput: rm -rf ~ и rm -rf * редактируются (RT-36)', () => {
+  for (const cmd of ['RUN rm -rf ~', 'RUN rm -rf *']) {
+    const result = guardOutput(cmd);
+    assert.equal(result.action, 'redacted', cmd);
+    assert.ok(result.findings.some((f) => f.kind === 'suspicious_command'), cmd);
+  }
+});
+
+test('guardOutput: rm -rfx и не-root путь не считаются destructive (FP)', () => {
+  assert.equal(guardOutput('Флаг rm -rfx не существует.').action, 'allow');
+  assert.equal(guardOutput('clean.sh вызывает rm -rf ./build кэш проекта').action, 'allow');
+});
+
 // ── Day 15 red team hardening: утечка system prompt в обфускации ──
 
 const RT_SYSTEM_PROMPT =
