@@ -83,8 +83,9 @@ const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
 const LEAK_PATTERNS: ReadonlyArray<RegExp> = [
   /\b(?:here(?:'s| is)|reveal(?:ing)?|print(?:ing)?|display(?:ing)?|show(?:ing)?|leak(?:ing)?)\s+(?:my|the)\s+system\s+(?:prompt|message)\b/gi,
   /\bmy\s+system\s+(?:prompt|message)\s+(?:is|was|says)\b/gi,
-  /(?:вот|показываю|вывожу|раскрываю)\s+(?:мой\s+)?системн\w*\s+промпт\w*/gi,
-  /системн\w*\s+промпт\s*[:—-]\s*\S+/gi,
+  // \w в JS не покрывает кириллицу: «системный» ломал паттерн до [а-яё] (RT-51, round-2).
+  /(?:вот|показываю|вывожу|раскрываю)\s+(?:мой\s+)?системн[а-яё]*\s+промпт[а-яё]*/gi,
+  /системн[а-яё]*\s+промпт\s*[:—-]\s*\S+/gi,
 ];
 
 function normalizeForLeak(s: string): string {
