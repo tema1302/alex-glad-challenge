@@ -51,7 +51,7 @@ pnpm --filter challenge start -- sec-chat --target translator --model qwen3.5:4b
 |---|---|---|---|---|
 | Direct-лаборатория (день 11) | override ×2, role-play ×2, extraction ×2 (от простой к сложной) | `challenge/src/core/security/injectionLab.ts` → `defaultAttacks()` | 6 атак; `--target all` = 6 × 4 цели = 24 прогона | `sec-inject` |
 | Indirect-лаборатория (день 12) | email, doc, search, code | `challenge/src/core/security/indirectLab.ts` → `allVectors()` | 4 вектора; `--mode matrix` = 4 × 5 = 20 прогонов | `sec-indirect` |
-| Полный демо-прогон | день 11: 4 профиля × 6 атак; день 12: 4 вектора × 5 режимов | `challenge/src/core/security/securityDemo.ts` | 24 + 20 = 44 прогона, дни независимы | `sec-demo --day 11\|12\|all` |
+| Полный батч-прогон (без стрима) | день 11: 4 профиля × 6 атак; день 12: 4 вектора × 5 режимов | `challenge/src/core/security/securityDemo.ts` | 24 + 20 = 44 прогона, дни независимы; печатает только в конце | `sec-demo --day 11\|12\|all` |
 | Live-демо в чате | те же наборы, по одному ходу с паузами и стримом | `challenge/src/core/security/securityDemo.ts` → `day11ChatSteps()`/`day12ChatSteps()` + `challenge/src/secChat.ts` | 24 или 20 ходов | `sec-chat --auto 11\|12\|all` |
 | Библиотека кейсов `sec-chat` | 5 реальных инъекций + 2 бонусных | `challenge/src/core/security/redTeamCases.ts` → `RED_TEAM_CASES` | 7 кейсов, по одному за ход | `sec-chat` → `/cases`, `/case <n> send` |
 | Банк payload'ов (ручной) | override, role-play, extraction, canary, delimiter, social, indirect, contextual | этот файл, §4 | не отдельный CLI-набор | вставлять в `sec-chat` вручную |
@@ -66,7 +66,7 @@ pnpm --filter challenge start -- sec-inject --target all --model qwen3.5:4b --au
 # День 12: 4 indirect-вектора × режимы защиты
 pnpm --filter challenge start -- sec-indirect --vector all --mode matrix --model qwen3.5:4b --seed 42
 
-# Полный демо-прогон по дням отдельно (24 + 20 прогонов)
+# Батч-прогон по дням отдельно (24 + 20 прогонов; без стрима — вывод в конце)
 pnpm --filter challenge start -- sec-demo --day 11 --model qwen3.5:4b --seed 42
 pnpm --filter challenge start -- sec-demo --day 12 --model qwen3.5:4b --seed 42
 pnpm --filter challenge start -- sec-demo --day all --model qwen3.5:4b --seed 42
@@ -79,6 +79,11 @@ pnpm --filter challenge start -- sec-chat --auto all --model qwen3.5:4b --seed 4
 # Библиотека 7 кейсов: интерактивно
 pnpm --filter challenge start -- sec-chat --target bank --model qwen3.5:4b --seed 42
 ```
+
+> `sec-demo` не стримит: первый вывод появляется только после завершения всех
+> прогонов дня (24 или 20). На qwen3.5:4b это может занять несколько минут —
+> команда выглядит как зависшая. Для живого показа используйте
+> `sec-chat --auto ... --pause 700`: он печатает ход за ходом.
 
 Ключевые различия:
 

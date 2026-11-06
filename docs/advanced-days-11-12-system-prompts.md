@@ -28,7 +28,8 @@
 
 ## День 11 — direct prompt injection: профили
 
-В `sec-demo --day 11` участвуют 4 профиля: `bank`, `medium`, `bank-hardened`,
+В `sec-demo --day 11` (батч, без стрима) и `sec-chat --auto 11` (live, со
+стримом) участвуют 4 профиля: `bank`, `medium`, `bank-hardened`,
 `medium-hardened`. В меню `sec-chat` (`/prompts`) к ним добавлены ещё три:
 `translator`, `reviewer`, `support`. Порядок — от слабого промпта к усиленному.
 
