@@ -8,7 +8,7 @@
 // Точность важнее полноты: каждый паттерн проверен FP-тестом на легитимном
 // коде. Сырые значения секретов не попадают в evidence (maskSecrets).
 
-import { decodeLayers, maskSecrets, normalizeUnicode, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
+import { decodeLayers, maskSecrets, normalizeText, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
 import {
   classifySecurityReview,
   codeLineAt,
@@ -162,10 +162,10 @@ function codeViews(code: string): CodeView[] {
     seen.add(text);
     views.push({ text, source, exact });
   };
-  const normalized = normalizeUnicode(code);
+  const normalized = normalizeText(code);
   add(normalized, 'normalized', normalized.length === code.length);
   for (const decoded of decodeLayers(code)) {
-    add(normalizeUnicode(decoded), 'decoded', false);
+    add(normalizeText(decoded), 'decoded', false);
   }
   return views;
 }

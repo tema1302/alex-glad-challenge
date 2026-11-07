@@ -167,7 +167,7 @@ RT-82..RT-99 (suite 80 → 98). Методика та же: офлайн, script
 
 После фикса: те же 18 кейсов — «остановлено»
 (`attacks=98 defended=97 breached=0 residual=1 → PASS`, run
-`rt-20261107-143355-79a5`). Before-доказательства:
+`rt-20261107-162014-5438`). Before-доказательства:
 `swarm-report/day15-rt4-before.mts` (17 кейсов RT-82..RT-98: `found:0` /
 `allow` / `commit` по каждому). RT-99 найден при добавлении base32-декода
 в том же фиксе: до него base32 в проверке system prompt не декодировался.

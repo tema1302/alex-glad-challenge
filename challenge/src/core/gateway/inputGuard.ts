@@ -13,7 +13,7 @@ import type { ChatMessage } from '../types.js';
 import {
   decodeLayers,
   maskMessages,
-  normalizeUnicode,
+  normalizeText,
   scanMessages,
   summarizeFindings,
   type FindingSummary,
@@ -140,13 +140,22 @@ function findingForInstruction(p: InstructionPattern, raw: string, index: number
  * что finding используется только для block/preview.
  */
 function instructionView(text: string): string {
-  return normalizeUnicode(text);
+  return normalizeText(text);
+}
+
+/** «never reveal…», «do not print…» — политика, а не запрос на exfil. */
+function isNegatedExfil(text: string, index: number): boolean {
+  const before = text.slice(Math.max(0, index - 28), index).toLowerCase();
+  return /(?:never|not|don'?t|do\s+not|не)\s*$/i.test(before);
 }
 
 function matchInstructionPatterns(text: string): InstructionFinding[] {
   const out: InstructionFinding[] = [];
   for (const p of INSTRUCTION_PATTERNS) {
     for (const m of text.matchAll(p.re)) {
+      // Негативная политика в user/assistant-истории — FP, не атака
+      // (audit F9). Для prompt_injection/role_spoof фильтр не применяется.
+      if (p.kind === 'exfil_request' && isNegatedExfil(text, m.index)) continue;
       out.push(findingForInstruction(p, m[0], m.index));
     }
   }

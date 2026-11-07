@@ -16,16 +16,57 @@ import type { ChatMessage } from '../types.js';
 
 // Default_Ignorable покрывает zero-width/BOM/soft hyphen/variation selectors/
 // tag-characters — не только короткий список U+200B..U+200F.
-const DEFAULT_IGNORABLE_RE = /\p{Default_Ignorable_Code_Point}/gu;
+const DEFAULT_IGNORABLE_RE = /[\p{Default_Ignorable_Code_Point}\u2800]/gu;
 
 /** Убрать невидимые кодовые точки (code-point aware, включая astral tags). */
 export function stripInvisible(text: string): string {
   return text.replace(DEFAULT_IGNORABLE_RE, '');
 }
 
-/** NFKC + удаление невидимых — общая нормализация для guard/backstop. */
+/** NFKC + удаление невидимых — для секретов (invisible внутри токена). */
 export function normalizeUnicode(text: string): string {
   return stripInvisible(text.normalize('NFKC'));
+}
+
+/**
+ * NFKC + invisible→space — для инструкций/утечек: невидимый разделитель
+ * между словами должен остаться границей слова, а не склеить их.
+ */
+export function normalizeText(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(DEFAULT_IGNORABLE_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+interface NormalizedView {
+  readonly text: string;
+  /** Карта «нормализованный индекс → исходный UTF-16 offset». */
+  readonly map: readonly number[];
+}
+
+/** Code-point-aware NFKC + strip с картой обратно в исходную строку. */
+function normalizeWithMap(text: string): NormalizedView {
+  let out = '';
+  const map: number[] = [];
+  let changed = false;
+  let offset = 0;
+  for (const ch of text) {
+    const start = offset;
+    offset += ch.length;
+    if (stripInvisible(ch) !== ch) {
+      changed = true;
+      continue;
+    }
+    const normalized = ch.normalize('NFKC');
+    if (normalized !== ch) changed = true;
+    for (const c of normalized) {
+      out += c;
+      map.push(start);
+    }
+  }
+  return { text: changed ? out : text, map: changed ? map : [] };
 }
 
 export type SecretKind =
@@ -467,38 +508,53 @@ function findBase32(text: string, depth: number): SecretFinding[] {
   return out;
 }
 
-/** base32, разорванный пробелами/переносами: склейка с картой индексов. */
+/**
+ * base32, разорванный пробелами/переносами. Compact-all склеивал соседние
+ * слова и ломал декод (Audit F2); вместо этого идём по последовательностям
+ * base32-токенов и пробуем окна до 16 токенов.
+ */
 function findBase32Whitespace(text: string, depth: number): SecretFinding[] {
   if (!/\s/.test(text)) return [];
-  const chars: string[] = [];
-  const map: number[] = [];
-  for (let i = 0; i < text.length; i += 1) {
-    if (/\s/.test(text[i]!)) continue;
-    chars.push(text[i]!);
-    map.push(i);
+  const tokens: Array<{ value: string; start: number; end: number }> = [];
+  for (const m of text.matchAll(/[A-Za-z2-7]{2,}/g)) {
+    tokens.push({ value: m[0], start: m.index, end: m.index + m[0].length });
   }
-  const normalized = chars.join('');
+  if (tokens.length < 2) return [];
   const out: SecretFinding[] = [];
-  for (const m of normalized.matchAll(BASE32_RE)) {
-    const decoded = decodeBase32(m[0]);
-    if (!decoded) continue;
-    const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
-    if (inner.length === 0) continue;
-    const start = map[m.index] ?? 0;
-    const last = map[m.index + m[0].length - 1] ?? start;
-    out.push(
-      finding(
-        {
-          kind: 'base32_secret',
-          label: `base32-ws(${inner[0]!.label})`,
-          severity: inner[0]!.severity,
-          redaction: REDACTION.base32,
-        },
-        text.slice(start, last + 1),
-        start,
-        'base32',
-      ),
-    );
+  let attempts = 0;
+  for (let i = 0; i < tokens.length; i += 1) {
+    let joined = '';
+    for (let j = i; j < tokens.length && j < i + 16; j += 1) {
+      if (j > i) {
+        const gap = text.slice(tokens[j - 1]!.end, tokens[j]!.start);
+        if (/[^\s]/.test(gap)) break;
+      }
+      joined += tokens[j]!.value;
+      if (joined.length < 16) continue;
+      if (joined.length > 240) break;
+      attempts += 1;
+      if (attempts > 2_000) return out;
+      const decoded = decodeBase32(joined);
+      if (!decoded) continue;
+      const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
+      if (inner.length === 0) continue;
+      const start = tokens[i]!.start;
+      const end = tokens[j]!.end;
+      out.push(
+        finding(
+          {
+            kind: 'base32_secret',
+            label: `base32-ws(${inner[0]!.label})`,
+            severity: inner[0]!.severity,
+            redaction: REDACTION.base32,
+          },
+          text.slice(start, end),
+          start,
+          'base32',
+        ),
+      );
+      break;
+    }
   }
   return out;
 }
@@ -634,6 +690,32 @@ function dedupeOverlaps(findings: readonly SecretFinding[]): SecretFinding[] {
   return out;
 }
 
+/** Секрет, спрятанный fullwidth/invisible внутри текста без кавычек (Audit F3). */
+function findNormalized(text: string, depth: number): SecretFinding[] {
+  const view = normalizeWithMap(text);
+  if (view.text === text || view.text.length < 6) return [];
+  const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(view.text, depth + 1) : [];
+  const out: SecretFinding[] = [];
+  for (const f of inner) {
+    const start = view.map[f.index] ?? 0;
+    const last = view.map[f.index + f.length - 1] ?? start;
+    out.push(
+      finding(
+        {
+          kind: 'split_secret',
+          label: `normalized(${f.label})`,
+          severity: f.severity,
+          redaction: REDACTION.split,
+        },
+        text.slice(start, last + 1),
+        start,
+        'split',
+      ),
+    );
+  }
+  return out;
+}
+
 /** Все находки в строке, включая base64-, split- и escape-обфускацию. */
 export function scanSecrets(text: string, depth = 0): SecretFinding[] {
   const direct = findDirect(text);
@@ -650,6 +732,7 @@ export function scanSecrets(text: string, depth = 0): SecretFinding[] {
     ...(deep ? findBase32Whitespace(text, depth) : []),
     ...(deep ? findEscaped(text, depth) : []),
     ...(deep ? findSplit(text, depth) : []),
+    ...(deep ? findNormalized(text, depth) : []),
   ]);
 }
 
@@ -781,29 +864,34 @@ export function maskSecrets(text: string): string {
     const decoded = decodeEscaped(m[0]);
     return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
   });
+  out = maskNormalized(out);
   return out;
 }
 
-/** Маскирует base32, разорванный пробелами/переносами (карта индексов). */
-function maskWhitespaceBase32(text: string): string {
-  if (!/\s/.test(text)) return text;
-  const chars: string[] = [];
-  const map: number[] = [];
-  for (let i = 0; i < text.length; i += 1) {
-    if (/\s/.test(text[i]!)) continue;
-    chars.push(text[i]!);
-    map.push(i);
-  }
-  const normalized = chars.join('');
+/** Маскирует fullwidth/invisible-секрет, найденный в нормализованном виде. */
+function maskNormalized(text: string): string {
+  const view = normalizeWithMap(text);
+  if (view.text === text) return text;
   const spans: Array<{ start: number; end: number }> = [];
-  for (const m of normalized.matchAll(BASE32_RE)) {
-    const decoded = decodeBase32(m[0]);
-    if (!decoded) continue;
-    if (scanSecrets(decoded, 1).length === 0) continue;
-    const start = map[m.index] ?? 0;
-    const last = map[m.index + m[0].length - 1] ?? start;
+  for (const f of scanSecrets(view.text, 1)) {
+    const start = view.map[f.index] ?? 0;
+    const last = view.map[f.index + f.length - 1] ?? start;
     spans.push({ start, end: last + 1 });
   }
+  let out = text;
+  for (const span of spans.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + REDACTION.split + out.slice(span.end);
+  }
+  return out;
+}
+
+/** Маскирует base32, разорванный пробелами/переносами. */
+function maskWhitespaceBase32(text: string): string {
+  if (!/\s/.test(text)) return text;
+  const spans = findBase32Whitespace(text, 0).map((f) => ({
+    start: f.index,
+    end: f.index + f.length,
+  }));
   let out = text;
   for (const span of spans.sort((a, b) => b.start - a.start)) {
     out = out.slice(0, span.start) + REDACTION.base32 + out.slice(span.end);
@@ -888,9 +976,9 @@ export function findDecodedBase32Tokens(text: string): DecodedBase32Token[] {
  */
 export function decodeLayers(
   text: string,
-  maxDepth = 2,
-  maxViews = 32,
-  maxChars = 16_000,
+  maxDepth = MAX_DECODE_DEPTH,
+  maxViews = 64,
+  maxChars = 100_000,
 ): string[] {
   const out: string[] = [];
   const seen = new Set<string>();

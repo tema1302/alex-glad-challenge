@@ -339,14 +339,18 @@ kind: hardening.
   NAT64, `::1`; системный промпт не сканируется как data (FP anti-disclosure).
 - P3: `rm`/`chmod` варианты без FP на `./build/*`; disclosure-фразы на
   нормализованном виде; пустой system prompt; severity wrapper-находок.
+- Re-audit F1–F9: critical/high не режутся cap-ом (100 medium + key/команда);
+  base32 в прозе; bare invisible/fullwidth/math-bold секрет; U+2800;
+  `decodeLayers` depth 3 / 64 views; NAT64 local-use/6to4; `java\nscript:`;
+  `$HOME/*`/`"${HOME}/"`/`/tmp/../*`; отрицательная anti-leak политика.
 
 ### Валидация round 4
 
 - `pnpm --filter challenge typecheck` — чисто.
-- `pnpm --filter challenge test` — 592/592.
+- `pnpm --filter challenge test` — 601/601.
 - `pnpm --filter challenge start -- red-team` —
   `attacks=98 defended=97 breached=0 residual=1 → PASS`
-  (run `rt-20261107-143355-79a5`).
+  (run `rt-20261107-162014-5438`).
 - `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
 
 ### Battle playbook

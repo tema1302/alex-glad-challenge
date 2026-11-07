@@ -105,7 +105,7 @@
   `normalizeUnicode`, многослойный decode-and-scan инструкций, bracketed
   URL-схемы/FQDN/NAT64, FP системного промпта; P3 command-варианты,
   disclosure-нормализация, severity wrapper-находок.
-- Итог: `attacks=98 defended=97 breached=0 residual=1 → PASS`; 592/592
+- Итог: `attacks=98 defended=97 breached=0 residual=1 → PASS`; 601/601
   тестов; typecheck чисто; self-test 14/14. Добавлен подробный
   `docs/advanced-day-15/battle-playbook.md` для боя с соперником.
 

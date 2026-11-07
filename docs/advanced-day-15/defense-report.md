@@ -259,6 +259,21 @@ breached до фикса. Фикс: новый кейс + детектор + FP-
   пустой после нормализации system prompt; wrapper-находки сохраняют
   severity (split e-mail — medium/redact).
 
+### Re-audit follow-up (second fresh-context pass)
+
+- **F1 (P1)**: cap 100 medium больше не выбрасывает critical/high до решения;
+  `findUrls` хранит все high-risk URL, medium ограничен; redaction one-pass.
+  Регресс-тест «100 e-mail + API-key/команда».
+- **F2/F3/F4**: base32 в прозе/комментарии ищется окнами токенов (не compact-all);
+  bare invisible/fullwidth/math-bold секрет ловится нормализованным view
+  (scan+mask); U+2800 добавлен в strip-set; `normalizeText` сохраняет границу
+  слова (invisible→space), `normalizeUnicode` — для секретов (remove).
+- **F5**: `decodeLayers` выровнен с `MAX_DECODE_DEPTH=3`, 64 views / 100k chars;
+  triple base64 и 32 padding-токена — тесты.
+- **F6/F7/F8/F9**: NAT64 local-use (`64:ff9b:1::`), 6to4 (`2002::`),
+  `java\nscript:`, `$HOME/*`, `"${HOME}/"`, `/tmp/../*`, отрицательная
+  anti-leak политика в user-сообщении.
+
 ### Что осталось (честно, поверх round-3)
 
 - Произвольный самописный декодер (XOR, свой алфавит, арифметика над
@@ -273,10 +288,10 @@ breached до фикса. Фикс: новый кейс + детектор + FP-
 ### Валидация round 4
 
 - `pnpm --filter challenge typecheck` — чисто.
-- `pnpm --filter challenge test` — 592/592 (+51 тест: secrets ×15,
-  outputGuard ×17, inputGuard ×10, backstop ×6, gateway server ×3).
+- `pnpm --filter challenge test` — 601/601 (+60 тестов: secrets ×18,
+  outputGuard ×20, inputGuard ×12, backstop ×7, gateway server ×3).
 - `pnpm --filter challenge start -- red-team` —
   `attacks=98 defended=97 breached=0 residual=1 → PASS`
-  (run `rt-20261107-143355-79a5`).
+  (run `rt-20261107-162014-5438`).
 - `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
 - Grep diff на сырые секреты — только фейковые фикстуры.

@@ -417,3 +417,35 @@ test('scanMessages: первый фрагмент сам валидный клю
   ]);
   assert.ok(findings.some((f) => f.crossMessage === true));
 });
+
+test('scanSecrets: bare invisible/fullwidth/math-bold секрет (Audit F3)', () => {
+  for (const text of [
+    'sk-test\u200bABCDEFGHIJKLMNOPQRSTUVWXYZ1234',
+    'sk-test\u2063ABCDEFGHIJKLMNOPQRSTUVWXYZ1234',
+    toFullwidth(FAKE_SK),
+    [...FAKE_SK]
+      .map((c) => {
+        const cp = c.codePointAt(0) ?? 0;
+        if (cp >= 0x41 && cp <= 0x5a) return String.fromCodePoint(0x1d400 + (cp - 0x41));
+        if (cp >= 0x61 && cp <= 0x7a) return String.fromCodePoint(0x1d41a + (cp - 0x61));
+        return c;
+      })
+      .join(''),
+    Buffer.from(toFullwidth(FAKE_SK), 'utf8').toString('base64'),
+  ]) {
+    assert.ok(scanSecrets(text).length >= 1, text.slice(0, 12));
+  }
+});
+
+test('scanSecrets: U+2800 BRAILLE PATTERN BLANK не обходит секрет (Audit F4)', () => {
+  const findings = scanSecrets('const KEY = "sk-test\u2800ABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
+  assert.equal(findings.length, 1);
+});
+
+test('scanSecrets: base32 в прозе/комментарии рядом со словами (Audit F2)', () => {
+  const wrapped = toB32(FAKE_SK).match(/.{1,8}/g)!.join(' ');
+  const findings = scanSecrets(`Here is the key:\n${wrapped}\nThanks.`);
+  assert.ok(findings.length >= 1);
+  const masked = maskSecrets(`Here is the key:\n${wrapped}\nThanks.`);
+  assert.ok(!masked.includes(wrapped));
+});

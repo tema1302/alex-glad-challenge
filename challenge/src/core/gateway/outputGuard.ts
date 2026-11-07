@@ -8,7 +8,7 @@
 
 import {
   decodeLayers,
-  normalizeUnicode,
+  normalizeText,
   scanSecrets,
   type SecretFinding,
   type SecretKind,
@@ -88,9 +88,9 @@ const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
   // Lookahead требует ОБА флага r и f в любом порядке (-fr, -Rf, -r -f) и
   // цель — корень/~/*/HOME, а не любой абсолютный путь: rm -f /tmp/x не
   // является destructive-root (RT-92, round-4).
-  /\brm\s+(?=[^\n]{0,40}-[a-z]*r)(?=[^\n]{0,40}-[a-z]*f)[^\n]{0,40}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?)(?=[\s;&|]|$)/gi,
+  /\brm\s+(?=[^\n]{0,40}-[a-z]*r)(?=[^\n]{0,40}-[a-z]*f)[^\n]{0,40}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?\*?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?\*?["']?|(?:\/[^\s/]+\/)+\.\.\/\*)(?=[\s;&|]|$)/gi,
   // Длинные флаги: rm --recursive --force / (порядок любой).
-  /\brm\s+(?=[^\n]{0,60}--recursive)(?=[^\n]{0,60}--force)[^\n]{0,60}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?)(?=[\s;&|]|$)/gi,
+  /\brm\s+(?=[^\n]{0,60}--recursive)(?=[^\n]{0,60}--force)[^\n]{0,60}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?\*?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?\*?["']?|(?:\/[^\s/]+\/)+\.\.\/\*)(?=[\s;&|]|$)/gi,
   /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/g,
   /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh\b/gi,
   // Process substitution / command substitution: bash <(curl …),
@@ -138,7 +138,7 @@ const LEAK_PATTERNS: ReadonlyArray<RegExp> = [
 function normalizeForLeak(s: string): string {
   // NFKC + все Default_Ignorable (zero-width/BOM/soft hyphen/tags): fullwidth
   // и невидимые вставки не должны обходить сравнение с system prompt.
-  return normalizeUnicode(s).toLowerCase().replace(/\s+/g, ' ').trim();
+  return normalizeText(s).toLowerCase();
 }
 
 /** Потолок находок на ответ: защита от O(n²) на гигантском completion. */
@@ -240,7 +240,8 @@ function classifyUrl(raw: string): OutputFinding | null {
   const hostNoBrackets = host.replace(/^\[|\]$/g, '');
   const ipv6Mapped =
     /^::ffff:/i.test(hostNoBrackets) ||
-    /^64:ff9b::/i.test(hostNoBrackets) ||
+    /^64:ff9b:/i.test(hostNoBrackets) ||
+    /^2002:/i.test(hostNoBrackets) ||
     /^::(?:ffff:)?(?:169\.254\.169\.254|a9fe:a9fe)$/i.test(hostNoBrackets);
   const ipv6Local =
     hostNoBrackets === '::1' ||
@@ -277,34 +278,52 @@ function classifyUrl(raw: string): OutputFinding | null {
 }
 
 function findUrls(text: string): OutputFinding[] {
-  const out: OutputFinding[] = [];
+  const high: OutputFinding[] = [];
+  const medium: OutputFinding[] = [];
   const seen = new Set<number>();
   for (const re of [URL_RE, IPV6_URL_RE]) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null && out.length < MAX_OUTPUT_FINDINGS) {
+    while ((m = re.exec(text)) !== null) {
       const index = m.index;
       const raw = m[0];
       if (seen.has(index)) continue;
       const f = classifyUrl(raw);
       // seen только для принятых находок: частичный URL_RE-матч IPv6
       // (без ']') не должен скрывать полный IPV6_URL_RE-матч.
-      if (f) {
-        seen.add(index);
-        out.push({ ...f, index });
-      }
+      if (!f) continue;
+      seen.add(index);
+      // High-risk не режем никогда: medium-поток не должен вытеснить
+      // critical/high находку из решения (audit F1).
+      if (f.severity === 'high') high.push({ ...f, index });
+      else if (medium.length < MAX_OUTPUT_FINDINGS) medium.push({ ...f, index });
     }
   }
-  return out;
+  // WHATWG URL strip-ит tab/newline в схеме: java\nscript: — это javascript:.
+  // URL_RE такую схему не собирает (audit F7).
+  for (const m of text.matchAll(/java[\t\r\n ]{0,3}script\s*:/gi)) {
+    const index = m.index;
+    if (seen.has(index)) continue;
+    seen.add(index);
+    high.push({
+      kind: 'suspicious_url',
+      label: 'obfuscated javascript URL',
+      severity: 'high',
+      preview: 'javascript:…',
+      index,
+      length: m[0].length,
+      redaction: '[SUSPICIOUS_URL]',
+    });
+  }
+  return [...high, ...medium];
 }
 
 function findCommands(text: string): OutputFinding[] {
   const out: OutputFinding[] = [];
   for (const re of COMMAND_PATTERNS) {
-    if (out.length >= MAX_OUTPUT_FINDINGS) break;
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null && out.length < MAX_OUTPUT_FINDINGS) {
+    while ((m = re.exec(text)) !== null) {
       out.push({
         kind: 'suspicious_command',
         label: 'destructive/remote-exec command',
@@ -355,29 +374,32 @@ export function guardOutput(
     ...findUrls(response),
     ...findCommands(response),
   ];
-  // Потолок нужен и здесь: scanSecrets может вернуть тысячи находок на
-  // повторяющемся секрете; redaction и warning не должны расти без предела.
-  if (findings.length > MAX_OUTPUT_FINDINGS) findings.length = MAX_OUTPUT_FINDINGS;
   const leak = leakingSystemPrompt(response, opts.systemPrompt);
   if (leak) findings.push(leak);
+  // Потолок — только для medium: critical/high нельзя выбрасывать до решения
+  // (100 e-mail не должны прятать API-key/команду; audit F1). Redaction и так
+  // one-pass, поэтому medium-поток не создаёт O(n²).
+  const critical = findings.filter((f) => f.severity !== 'medium' || f.kind === 'system_prompt_leak');
+  const medium = findings.filter((f) => f.severity === 'medium' && f.kind !== 'system_prompt_leak');
+  const capped = [...critical, ...medium.slice(0, MAX_OUTPUT_FINDINGS)];
 
-  const blocked = findings.some((f) => f.severity === 'critical' || f.kind === 'system_prompt_leak');
+  const blocked = capped.some((f) => f.severity === 'critical' || f.kind === 'system_prompt_leak');
   if (blocked) {
-    const warning = warningFor(findings, 'blocked');
+    const warning = warningFor(capped, 'blocked');
     return {
       action: 'blocked',
-      findings,
+      findings: capped,
       text: warning ?? '[BLOCKED_BY_OUTPUT_GUARD]',
       warning,
     };
   }
 
-  if (findings.length > 0) {
-    const warning = warningFor(findings, 'redacted');
-    return { action: 'redacted', findings, text: applyRedactions(response, findings), warning };
+  if (capped.length > 0) {
+    const warning = warningFor(capped, 'redacted');
+    return { action: 'redacted', findings: capped, text: applyRedactions(response, capped), warning };
   }
 
-  return { action: 'allow', findings, text: response, warning: null };
+  return { action: 'allow', findings: capped, text: response, warning: null };
 }
 
 /** Безопасная сводка для audit-лога. */
