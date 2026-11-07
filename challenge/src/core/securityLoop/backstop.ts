@@ -8,7 +8,7 @@
 // Точность важнее полноты: каждый паттерн проверен FP-тестом на легитимном
 // коде. Сырые значения секретов не попадают в evidence (maskSecrets).
 
-import { findDecodedBase64Tokens, maskSecrets, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
+import { decodeLayers, maskSecrets, normalizeUnicode, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
 import {
   classifySecurityReview,
   codeLineAt,
@@ -146,17 +146,26 @@ function markerFindings(code: string): SecurityFinding[] {
 
 interface CodeView {
   readonly text: string;
-  readonly source: 'raw' | 'nfkc' | 'base64';
+  readonly source: 'raw' | 'normalized' | 'decoded';
   readonly exact: boolean;
 }
 
-/** Виды кода для decode-and-scan: raw, NFKC, base64-токены (RT-97, round-4). */
+/**
+ * Виды кода для decode-and-scan: raw, NFKC+strip невидимых, base64/base32
+ * до глубины 2 (RT-97; audit follow-up). Дубликаты схлопываются по тексту.
+ */
 function codeViews(code: string): CodeView[] {
   const views: CodeView[] = [{ text: code, source: 'raw', exact: true }];
-  const nfkc = code.normalize('NFKC');
-  if (nfkc !== code) views.push({ text: nfkc, source: 'nfkc', exact: nfkc.length === code.length });
-  for (const token of findDecodedBase64Tokens(code)) {
-    if (token.decoded.length >= 8) views.push({ text: token.decoded, source: 'base64', exact: false });
+  const seen = new Set<string>([code]);
+  const add = (text: string, source: CodeView['source'], exact: boolean): void => {
+    if (text.length < 8 || seen.has(text)) return;
+    seen.add(text);
+    views.push({ text, source, exact });
+  };
+  const normalized = normalizeUnicode(code);
+  add(normalized, 'normalized', normalized.length === code.length);
+  for (const decoded of decodeLayers(code)) {
+    add(normalizeUnicode(decoded), 'decoded', false);
   }
   return views;
 }

@@ -100,7 +100,12 @@
   base64 decode-and-scan инструкций, NFKC/zero-width, склейка сообщений;
   `backstop.ts` — decode-and-scan инструкций из base64/NFKC.
 - Все 18 новых кейсов до фикса пробивали, после — hardening.
-- Итог: `attacks=98 defended=97 breached=0 residual=1 → PASS`; 570/570
+- Audit follow-up: P1 performance (cap/one-pass redaction, 32.6 s → 146 ms на
+  924 KB), P2 cross-message boundary, case-insensitive base32, общий
+  `normalizeUnicode`, многослойный decode-and-scan инструкций, bracketed
+  URL-схемы/FQDN/NAT64, FP системного промпта; P3 command-варианты,
+  disclosure-нормализация, severity wrapper-находок.
+- Итог: `attacks=98 defended=97 breached=0 residual=1 → PASS`; 592/592
   тестов; typecheck чисто; self-test 14/14. Добавлен подробный
   `docs/advanced-day-15/battle-playbook.md` для боя с соперником.
 

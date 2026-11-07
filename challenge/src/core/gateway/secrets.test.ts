@@ -379,3 +379,41 @@ test('maskSecrets: маскирует round-4 обфускации', () => {
   assert.ok(cpMasked.includes(REDACTION.split));
   assert.ok(!cpMasked.includes(codes));
 });
+
+// ── Audit follow-up: lowercase/wrapped base32, triple base64, U+2063, cross-message ──
+
+test('scanSecrets: lowercase base32-ключ (Audit P2)', () => {
+  const findings = scanSecrets(`const KEY = atob32("${toB32(FAKE_SK).toLowerCase()}");`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'base32_secret');
+});
+
+test('scanSecrets: base32, разорванный пробелами (Audit P2)', () => {
+  const flat = toB32(FAKE_SK);
+  const wrapped = flat.match(/.{1,8}/g)!.join(' ');
+  const findings = scanSecrets(`const KEY = atob32("${wrapped}");`);
+  assert.equal(findings.length, 1);
+  // Внутри литерала с пробелами срабатывает общий string-candidate и
+  // ресканирует склейку; важен факт обнаружения, не конкретная обёртка.
+  assert.ok(['base32_secret', 'split_secret'].includes(findings[0]!.kind));
+});
+
+test('scanSecrets: triple base64 (Audit P3)', () => {
+  const triple = Buffer.from(Buffer.from(Buffer.from(FAKE_SK, 'utf8').toString('base64'), 'utf8').toString('base64'), 'utf8').toString('base64');
+  const findings = scanSecrets(`const KEY = "${triple}";`);
+  assert.equal(findings.length, 1);
+});
+
+test('scanSecrets: U+2063 внутри литерала секрета (Audit P2)', () => {
+  const findings = scanSecrets('const KEY = "sk-test\u2063ABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanMessages: первый фрагмент сам валидный ключ — crossMessage не теряется (Audit P2)', () => {
+  const findings = scanMessages([
+    { role: 'user', content: 'sk-testABCDEFGHIJKLMNOP' },
+    { role: 'user', content: 'QRSTUVWXYZ1234' },
+  ]);
+  assert.ok(findings.some((f) => f.crossMessage === true));
+});

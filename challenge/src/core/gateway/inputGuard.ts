@@ -11,8 +11,9 @@
 
 import type { ChatMessage } from '../types.js';
 import {
-  findDecodedBase64Tokens,
+  decodeLayers,
   maskMessages,
+  normalizeUnicode,
   scanMessages,
   summarizeFindings,
   type FindingSummary,
@@ -132,49 +133,32 @@ function findingForInstruction(p: InstructionPattern, raw: string, index: number
   };
 }
 
-const INVISIBLE_CHAR_RE = /[\u00ad\u200b-\u200f\u2060\ufeff]/;
-
-interface InstructionView {
-  readonly text: string;
-  /** Карта «нормализованный индекс → исходный»; пустая — индекс совпадает. */
-  readonly map: readonly number[];
+/**
+ * NFKC + удаление невидимых: fullwidth, zero-width и astral math letters не
+ * должны обходить фразы. Нормализуем строку целиком (per-code-unit NFKC
+ * ломал astral-символы — audit follow-up); точный index не критичен, потому
+ * что finding используется только для block/preview.
+ */
+function instructionView(text: string): string {
+  return normalizeUnicode(text);
 }
 
-/** NFKC + удаление невидимых: fullwidth и zero-width не должны обходить фразы. */
-function instructionView(text: string): InstructionView {
-  const out: string[] = [];
-  const map: number[] = [];
-  let changed = false;
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i]!;
-    if (INVISIBLE_CHAR_RE.test(ch)) {
-      changed = true;
-      continue;
-    }
-    const normalized = ch.normalize('NFKC');
-    if (normalized !== ch) changed = true;
-    for (const c of normalized) {
-      out.push(c);
-      map.push(i);
-    }
-  }
-  return { text: changed ? out.join('') : text, map: changed ? map : [] };
-}
-
-function matchInstructionPatterns(text: string, map: readonly number[]): InstructionFinding[] {
+function matchInstructionPatterns(text: string): InstructionFinding[] {
   const out: InstructionFinding[] = [];
   for (const p of INSTRUCTION_PATTERNS) {
     for (const m of text.matchAll(p.re)) {
-      const index = map.length > 0 ? (map[m.index] ?? m.index) : m.index;
-      out.push(findingForInstruction(p, m[0], index));
+      out.push(findingForInstruction(p, m[0], m.index));
     }
   }
   return out;
 }
 
 /**
- * Инструкции во вводе: по каждому сообщению, по склейке сообщений (split
- * между message, RT-96) и по base64-декодам (decode-and-scan, RT-96).
+ * Инструкции во вводе: по каждому data-сообщению, по склейке сообщений
+ * (split между message, RT-96) и по base64/base32-декодам до глубины 2
+ * (decode-and-scan, RT-96; audit follow-up). Системный промпт — легитимный
+ * канал инструкций, поэтому не сканируется: иначе стандартная фраза
+ * «never reveal your system prompt» блокировала бы каждый запрос.
  * Дубликаты схлопываются по kind+label+preview.
  */
 export function scanInstructions(messages: readonly ChatMessage[]): InstructionFinding[] {
@@ -188,19 +172,17 @@ export function scanInstructions(messages: readonly ChatMessage[]): InstructionF
   };
 
   const scanText = (text: string): void => {
-    const view = instructionView(text);
-    for (const f of matchInstructionPatterns(view.text, view.map)) add(f);
-    for (const token of findDecodedBase64Tokens(text)) {
-      for (const f of matchInstructionPatterns(token.decoded, [])) {
-        add({ ...f, index: token.index, length: token.token.length });
-      }
+    for (const f of matchInstructionPatterns(instructionView(text))) add(f);
+    for (const decoded of decodeLayers(text)) {
+      for (const f of matchInstructionPatterns(instructionView(decoded))) add(f);
     }
   };
 
-  for (const message of messages) scanText(message.content);
+  const dataMessages = messages.filter((m) => m.role !== 'system');
+  for (const message of dataMessages) scanText(message.content);
   // Для инструкций склейка через пробел: «Ignore all previous» + «instructions»
   // должны дать фразу, даже если слова разрезаны по границе сообщений.
-  if (messages.length > 1) scanText(messages.map((m) => m.content).join(' '));
+  if (dataMessages.length > 1) scanText(dataMessages.map((m) => m.content).join(' '));
   return out;
 }
 

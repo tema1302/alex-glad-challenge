@@ -328,13 +328,25 @@ kind: hardening.
 - `securityLoop/backstop.ts`: decode-and-scan инструкций из base64 и NFKC —
   «послушный» ревьюер не протаскивает base64-инъекцию в комментарии.
 
+### Audit follow-up (independent security review)
+
+- P1 performance: cap 100 находок, `Set`-дедуп URL, one-pass redaction,
+  audit-preview из guard-выхода. 924 KB / 66k URL: 32.6 s → 146 ms.
+- P2: cross-message проверяется до duplicate-check; base32 case-insensitive
+  и с пробелами; `normalizeUnicode` (`NFKC` + `\p{Default_Ignorable_Code_Point}`)
+  для input/output/backstop; decode-and-scan инструкций до глубины 2
+  (base64/base32); bracketed `javascript:`/`data:`/`file:`, trailing-dot FQDN,
+  NAT64, `::1`; системный промпт не сканируется как data (FP anti-disclosure).
+- P3: `rm`/`chmod` варианты без FP на `./build/*`; disclosure-фразы на
+  нормализованном виде; пустой system prompt; severity wrapper-находок.
+
 ### Валидация round 4
 
 - `pnpm --filter challenge typecheck` — чисто.
-- `pnpm --filter challenge test` — 570/570.
+- `pnpm --filter challenge test` — 592/592.
 - `pnpm --filter challenge start -- red-team` —
   `attacks=98 defended=97 breached=0 residual=1 → PASS`
-  (run `rt-20261107-121655-74b4`).
+  (run `rt-20261107-143355-79a5`).
 - `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
 
 ### Battle playbook

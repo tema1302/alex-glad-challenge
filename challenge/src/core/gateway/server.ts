@@ -426,7 +426,9 @@ async function handleChat(
     inputFindings: inputAudit,
     outputFindings: outputAudit,
     promptPreview,
-    responsePreview: safePreview(upstream.content, MAX_AUDIT_PREVIEW),
+    // Preview строится из guard-выхода: заблокированный ответ не должен
+    // попадать в audit сырым (утечка system prompt/секрета — audit follow-up).
+    responsePreview: safePreview(output.text, MAX_AUDIT_PREVIEW),
     usage,
     costUsd: cost.totalUsd,
     ...(output.warning ? { warning: output.warning } : {}),

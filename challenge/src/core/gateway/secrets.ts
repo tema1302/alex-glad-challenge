@@ -14,6 +14,20 @@
 
 import type { ChatMessage } from '../types.js';
 
+// Default_Ignorable покрывает zero-width/BOM/soft hyphen/variation selectors/
+// tag-characters — не только короткий список U+200B..U+200F.
+const DEFAULT_IGNORABLE_RE = /\p{Default_Ignorable_Code_Point}/gu;
+
+/** Убрать невидимые кодовые точки (code-point aware, включая astral tags). */
+export function stripInvisible(text: string): string {
+  return text.replace(DEFAULT_IGNORABLE_RE, '');
+}
+
+/** NFKC + удаление невидимых — общая нормализация для guard/backstop. */
+export function normalizeUnicode(text: string): string {
+  return stripInvisible(text.normalize('NFKC'));
+}
+
 export type SecretKind =
   | 'api_key'
   | 'github_token'
@@ -133,12 +147,13 @@ const PHONE_RE =
 // - и _ включены: base64url-токены («секрет» может быть не-ASCII) сканируются
 // так же, как стандартные; Node-декодер base64 принимает url-safe алфавит.
 const BASE64_RE = /(?<![A-Za-z0-9+/\-_])[A-Za-z0-9+/\-_]{16,}={0,2}(?![A-Za-z0-9+/\-_=])/g;
-// Base32 (RFC 4648): стандартный алфавит без 0/1/8/9. RT-83, round-4.
-const BASE32_RE = /(?<![A-Z2-7])[A-Z2-7]{16,}={0,6}(?![A-Z2-7=])/g;
+// Base32 (RFC 4648) case-insensitive: lowercase — валидный RFC-вариант, но
+// раньше детектор его не видел. RT-83, round-4 (audit follow-up).
+const BASE32_RE = /(?<![A-Za-z2-7])[A-Za-z2-7]{16,}={0,6}(?![A-Za-z2-7=])/g;
 const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
-/** Максимальная глубина рекурсивного декодирования (base64 внутри base64 и т.п.). */
-const MAX_DECODE_DEPTH = 2;
+/** Максимальная глубина рекурсивного декодирования (base64/base32 и т.п.). */
+const MAX_DECODE_DEPTH = 3;
 
 interface SplitCandidate {
   readonly label: string;
@@ -225,7 +240,7 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
     re: /(["'])([^"'\n]{16,})\1/g,
     joined: (g) => {
       const s = g[2] ?? '';
-      const stripped = s.replace(/[\s\u00ad\u200b-\u200f\u2060\ufeff]/g, '');
+      const stripped = stripInvisible(s).replace(/\s+/g, '');
       return stripped === s ? null : stripped;
     },
   },
@@ -236,7 +251,7 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
     re: /(["'])([^"'\n]{12,})\1/g,
     joined: (g) => {
       const s = g[2] ?? '';
-      const normalized = s.normalize('NFKC');
+      const normalized = normalizeUnicode(s);
       return normalized === s ? null : normalized;
     },
   },
@@ -306,7 +321,9 @@ function previewFor(kind: SecretKind, raw: string): string {
   if (kind === 'phone') return s.slice(0, 2) + '***' + s.slice(-2);
   if (kind === 'private_key') return '[PRIVATE KEY BLOCK]';
   if (s.length <= 8) return '***';
-  return `${s.slice(0, 4)}***${s.slice(-2)}`;
+  // Только короткий префикс: 4+2 символа на 10-12-символьном токене —
+  // это >50% значения в audit/422 (audit P3 follow-up).
+  return `${s.slice(0, 3)}***`;
 }
 
 function finding(
@@ -405,7 +422,7 @@ function decodeCharCodes(raw: string): string | null {
 
 /** Base32 (RFC 4648) → строка; null, если декод не печатный. */
 function decodeBase32(token: string): string | null {
-  const clean = token.replace(/=+$/, '');
+  const clean = token.replace(/=+$/, '').toUpperCase();
   if (clean.length < 16) return null;
   const bytes: number[] = [];
   let bits = 0;
@@ -443,6 +460,42 @@ function findBase32(text: string, depth: number): SecretFinding[] {
         },
         m[0],
         m.index,
+        'base32',
+      ),
+    );
+  }
+  return out;
+}
+
+/** base32, разорванный пробелами/переносами: склейка с картой индексов. */
+function findBase32Whitespace(text: string, depth: number): SecretFinding[] {
+  if (!/\s/.test(text)) return [];
+  const chars: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\s/.test(text[i]!)) continue;
+    chars.push(text[i]!);
+    map.push(i);
+  }
+  const normalized = chars.join('');
+  const out: SecretFinding[] = [];
+  for (const m of normalized.matchAll(BASE32_RE)) {
+    const decoded = decodeBase32(m[0]);
+    if (!decoded) continue;
+    const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
+    if (inner.length === 0) continue;
+    const start = map[m.index] ?? 0;
+    const last = map[m.index + m[0].length - 1] ?? start;
+    out.push(
+      finding(
+        {
+          kind: 'base32_secret',
+          label: `base32-ws(${inner[0]!.label})`,
+          severity: inner[0]!.severity,
+          redaction: REDACTION.base32,
+        },
+        text.slice(start, last + 1),
+        start,
         'base32',
       ),
     );
@@ -594,6 +647,7 @@ export function scanSecrets(text: string, depth = 0): SecretFinding[] {
     ...(deep ? findBase64(text, depth) : []),
     ...(deep ? findBase32(text, depth) : []),
     ...(deep ? findBase64Whitespace(text, depth) : []),
+    ...(deep ? findBase32Whitespace(text, depth) : []),
     ...(deep ? findEscaped(text, depth) : []),
     ...(deep ? findSplit(text, depth) : []),
   ]);
@@ -627,14 +681,24 @@ export function scanMessages(messages: readonly ChatMessage[]): MessageSecretFin
   for (const f of scanSecrets(joined)) {
     const messageIndex = messageStartIndex(starts, f.index);
     if (messageIndex < 0) continue;
+    const start = starts[messageIndex]!;
     const content = messages[messageIndex]!.content;
-    const index = f.index - starts[messageIndex]!;
+    const index = f.index - start;
     const length = Math.min(f.length, content.length - index);
     if (length <= 0) continue;
-    const duplicate = out.some(
-      (x) => x.messageIndex === messageIndex && x.index === index && Math.abs(x.length - length) <= 2,
-    );
-    if (duplicate) continue;
+    // Важно проверить пересечение границы ДО duplicate-проверки: первый
+    // фрагмент секрета может сам быть валидным матчем (audit follow-up).
+    const crossesBoundary = f.index + f.length > start + content.length;
+    if (!crossesBoundary) {
+      const duplicate = out.some(
+        (x) =>
+          x.messageIndex === messageIndex &&
+          x.index === index &&
+          x.kind === f.kind &&
+          Math.abs(x.length - length) <= 2,
+      );
+      if (duplicate) continue;
+    }
     out.push({ ...f, messageIndex, index, length, crossMessage: true });
   }
   return out;
@@ -704,6 +768,7 @@ export function maskSecrets(text: string): string {
     });
   }
   out = maskWhitespaceBase64(out);
+  out = maskWhitespaceBase32(out);
   out = replaceWhen(out, HEX_SEQ_RE, (m) => {
     const decoded = decodeEscaped(m[0]);
     return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
@@ -716,6 +781,33 @@ export function maskSecrets(text: string): string {
     const decoded = decodeEscaped(m[0]);
     return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
   });
+  return out;
+}
+
+/** Маскирует base32, разорванный пробелами/переносами (карта индексов). */
+function maskWhitespaceBase32(text: string): string {
+  if (!/\s/.test(text)) return text;
+  const chars: string[] = [];
+  const map: number[] = [];
+  for (let i = 0; i < text.length; i += 1) {
+    if (/\s/.test(text[i]!)) continue;
+    chars.push(text[i]!);
+    map.push(i);
+  }
+  const normalized = chars.join('');
+  const spans: Array<{ start: number; end: number }> = [];
+  for (const m of normalized.matchAll(BASE32_RE)) {
+    const decoded = decodeBase32(m[0]);
+    if (!decoded) continue;
+    if (scanSecrets(decoded, 1).length === 0) continue;
+    const start = map[m.index] ?? 0;
+    const last = map[m.index + m[0].length - 1] ?? start;
+    spans.push({ start, end: last + 1 });
+  }
+  let out = text;
+  for (const span of spans.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, span.start) + REDACTION.base32 + out.slice(span.end);
+  }
   return out;
 }
 
@@ -785,6 +877,41 @@ export function findDecodedBase32Tokens(text: string): DecodedBase32Token[] {
   for (const m of text.matchAll(BASE32_RE)) {
     const decoded = decodeBase32(m[0]);
     if (decoded) out.push({ token: m[0], index: m.index, decoded });
+  }
+  return out;
+}
+
+/**
+ * Многослойные base64/base32-декоды без позиций: для decode-and-scan
+ * инструкций (RT-96/RT-97 audit follow-up). Ограничения защищают от
+ * экспоненциального взрыва на большом вводе.
+ */
+export function decodeLayers(
+  text: string,
+  maxDepth = 2,
+  maxViews = 32,
+  maxChars = 16_000,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  let frontier: string[] = [text];
+  for (let depth = 1; depth <= maxDepth && out.length < maxViews; depth += 1) {
+    const next: string[] = [];
+    for (const source of frontier) {
+      const decodedTokens = [
+        ...findDecodedBase64Tokens(source).map((t) => t.decoded),
+        ...findDecodedBase32Tokens(source).map((t) => t.decoded),
+      ];
+      for (const decoded of decodedTokens) {
+        if (decoded.length > maxChars || seen.has(decoded)) continue;
+        seen.add(decoded);
+        out.push(decoded);
+        next.push(decoded);
+        if (out.length >= maxViews) break;
+      }
+      if (out.length >= maxViews) break;
+    }
+    frontier = next;
   }
   return out;
 }

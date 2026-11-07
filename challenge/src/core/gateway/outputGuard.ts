@@ -7,8 +7,8 @@
 // Наружу — только безопасные маркеры, без сырых значений.
 
 import {
-  decodeBase64Tokens,
-  findDecodedBase32Tokens,
+  decodeLayers,
+  normalizeUnicode,
   scanSecrets,
   type SecretFinding,
   type SecretKind,
@@ -88,25 +88,26 @@ const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
   // Lookahead требует ОБА флага r и f в любом порядке (-fr, -Rf, -r -f) и
   // цель — корень/~/*/HOME, а не любой абсолютный путь: rm -f /tmp/x не
   // является destructive-root (RT-92, round-4).
-  /\brm\s+(?=[^\n]{0,40}-[a-z]*r)(?=[^\n]{0,40}-[a-z]*f)[^\n]{0,40}(?:\/\*?|~\/?|\*|\$\{?HOME\}?\/?)(?=[\s;&|]|$)/gi,
+  /\brm\s+(?=[^\n]{0,40}-[a-z]*r)(?=[^\n]{0,40}-[a-z]*f)[^\n]{0,40}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?)(?=[\s;&|]|$)/gi,
   // Длинные флаги: rm --recursive --force / (порядок любой).
-  /\brm\s+(?=[^\n]{0,60}--recursive)(?=[^\n]{0,60}--force)[^\n]{0,60}(?:\/\*?|~\/?|\*|\$\{?HOME\}?\/?)(?=[\s;&|]|$)/gi,
+  /\brm\s+(?=[^\n]{0,60}--recursive)(?=[^\n]{0,60}--force)[^\n]{0,60}(?:(?<![\w/.-])\/\*?|(?<![\w/.-])\/\{[^}\n]{0,80}\}|~\/?|(?<![\w/.-])\*|["']?\$\{?HOME\}?["']?\/?)(?=[\s;&|]|$)/gi,
   /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/g,
   /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh\b/gi,
   // Process substitution / command substitution: bash <(curl …),
   // sh -c "$(wget …)" (RT-94, round-4).
   /\b(?:ba|z|da)?sh\s+<\(\s*(?:curl|wget)\b/gi,
-  /\b(?:ba|z|da)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b/gi,
+  /\b(?:ba|z|da)?sh\s+-[a-z]*c[a-z]*\s+["']?\$\(\s*(?:curl|wget)\b/gi,
   /\b(?:source|\.)\s+<\(\s*(?:curl|wget)\b/gi,
+  /\beval\s+["']?\$\(\s*(?:curl|wget)\b/gi,
   /\bbase64\s+(?:-d|--decode)\b[^\n|]{0,120}\|\s*(?:ba)?sh\b/gi,
   /\bpowershell(?:\.exe)?\b[^\n]{0,120}-(?:enc|encodedcommand)\b/gi,
   /\bchild_process\b/g,
   /\bos\.system\s*\(/g,
   /\bsubprocess\.[A-Za-z]+\([^\n)]*shell\s*=\s*True/g,
   /\bnc\s+-e\s+\/(?:bin\/)?(?:ba)?sh\b/gi,
-  // -R перед/после режима и рекурсивный chmod на корень (RT-93, round-4).
-  /\bchmod\s+(?:-R\s+)?777\s+\//gi,
-  /\bchmod\s+777\s+-R\s+\//gi,
+  // Флаги перед/после режима, включая -R -v и --recursive (RT-93, round-4).
+  /\bchmod\s+(?:--?[a-z-]+\s+)*777\s+\//gi,
+  /\bchmod\s+777\s+(?:--?[a-z-]+\s+)*\//gi,
   // PowerShell download-cradle: IEX (New-Object Net.WebClient).DownloadString(…)
   // (RT-71, round-3 red team).
   /\b(?:iex|invoke-expression)\b[^\n]{0,120}\b(?:downloadstring|downloadfile|invoke-webrequest|invoke-restmethod|iwr)\b/gi,
@@ -135,18 +136,19 @@ const LEAK_PATTERNS: ReadonlyArray<RegExp> = [
 ];
 
 function normalizeForLeak(s: string): string {
-  // NFKC + удаление zero-width/BOM/soft hyphen: fullwidth и невидимые вставки
-  // не должны обходить сравнение с system prompt (RT-98, round-4).
-  return s
-    .normalize('NFKC')
-    .replace(/[\u00ad\u200b-\u200f\u2060\ufeff]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
+  // NFKC + все Default_Ignorable (zero-width/BOM/soft hyphen/tags): fullwidth
+  // и невидимые вставки не должны обходить сравнение с system prompt.
+  return normalizeUnicode(s).toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
+/** Потолок находок на ответ: защита от O(n²) на гигантском completion. */
+const MAX_OUTPUT_FINDINGS = 100;
+
 function secretToOutput(f: SecretFinding): OutputFinding {
-  const critical = SENSITIVE_SECRETS.has(f.kind);
+  // Wrapper-находки (base64/base32/split/hex) несут severity внутреннего
+  // секрета: split e-mail/телефона — medium (redact), split API-key — critical.
+  const wrapper = f.kind === 'base64_secret' || f.kind === 'base32_secret' || f.kind === 'split_secret' || f.kind === 'hex_secret';
+  const critical = wrapper ? f.severity !== 'medium' : SENSITIVE_SECRETS.has(f.kind);
   return {
     kind: f.kind,
     label: f.label,
@@ -160,16 +162,14 @@ function secretToOutput(f: SecretFinding): OutputFinding {
 
 function leakingSystemPrompt(response: string, systemPrompt?: string): OutputFinding | null {
   const hay = normalizeForLeak(response);
-  if (systemPrompt && systemPrompt.trim().length >= 24) {
-    const needle = normalizeForLeak(systemPrompt);
+  const normalizedPrompt = systemPrompt ? normalizeForLeak(systemPrompt) : '';
+  if (normalizedPrompt.length >= 24) {
+    const needle = normalizedPrompt;
     const needleHead = needle.slice(0, 200);
-    // base64-декодированные токены ответа: утечка «в base64» ловится так же,
-    // как дословная (head-префикс покрывает разбивку на короткие куски без
-    // вставок; куски с разделителями остаются за статическими проверками).
-    const decoded = [
-      ...decodeBase64Tokens(response),
-      ...findDecodedBase32Tokens(response).map((t) => t.decoded),
-    ].map(normalizeForLeak);
+    // base64/base32-декоды ответа, включая варианты с пробелами/переносами:
+    // перед декодом убираем whitespace, чтобы MIME-wrap не обходил проверку.
+    const compact = response.replace(/\s+/g, '');
+    const decoded = [...decodeLayers(response), ...decodeLayers(compact)].map(normalizeForLeak);
     const containsNeedle = (text: string): boolean =>
       text.includes(needle) || (needleHead.length >= 40 && text.includes(needleHead));
     if (containsNeedle(hay) || decoded.some(containsNeedle)) {
@@ -178,15 +178,17 @@ function leakingSystemPrompt(response: string, systemPrompt?: string): OutputFin
         label: 'verbatim system prompt',
         severity: 'critical',
         preview: '[SYSTEM PROMPT VERBATIM]',
-        index: Math.max(0, response.toLowerCase().indexOf(needle.slice(0, Math.min(20, needle.length)))),
+        index: Math.max(0, hay.indexOf(needle.slice(0, Math.min(20, needle.length)))),
         length: 0,
         redaction: '[BLOCKED_SYSTEM_PROMPT_LEAK]',
       };
     }
   }
+  // Disclosure-фразы проверяем на нормализованном виде: zero-width/fullwidth
+  // не должны обходить «here is my system prompt» (audit follow-up).
   for (const re of LEAK_PATTERNS) {
     re.lastIndex = 0;
-    const m = re.exec(response);
+    const m = re.exec(hay);
     if (m) {
       return {
         kind: 'system_prompt_leak',
@@ -203,14 +205,29 @@ function leakingSystemPrompt(response: string, systemPrompt?: string): OutputFin
 }
 
 function classifyUrl(raw: string): OutputFinding | null {
+  const prefixScheme = /^([a-z][a-z0-9+.-]*):/i.exec(raw)?.[1]?.toLowerCase();
   let url: URL;
   try {
     url = new URL(raw);
   } catch {
+    // Bracketed authority ламает new URL (URL_RE режет ']'), но опасная
+    // схема остаётся опасной: javascript://[::1], file://[...] (audit follow-up).
+    if (prefixScheme === 'javascript' || prefixScheme === 'data' || prefixScheme === 'file') {
+      return {
+        kind: 'suspicious_url',
+        label: 'high-risk URL',
+        severity: 'high',
+        preview: `${prefixScheme}://…`,
+        index: 0,
+        length: raw.length,
+        redaction: '[SUSPICIOUS_URL]',
+      };
+    }
     return null;
   }
   const scheme = url.protocol.toLowerCase();
-  const host = url.hostname.toLowerCase();
+  // Трейлинг-точка FQDN: metadata.google.internal. должен нормализоваться.
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
   // IP-обфускация: десятичное целое (2130706433 = 127.0.0.1) и hex-формы
   // (0x7f.0x0.0x0.0x1) — new URL их не нормализует, старый dotted-quad-тест
   // проходил мимо (RT-74/RT-75, round-3 red team).
@@ -218,10 +235,17 @@ function classifyUrl(raw: string): OutputFinding | null {
     /^\d{1,10}$/.test(host) ||
     /^0x[0-9a-f]{1,8}$/i.test(host) ||
     /^(?:0x[0-9a-f]{1,2}\.){3}0x[0-9a-f]{1,2}$/i.test(host);
-  // IPv6-mapped IPv4: [::ffff:169.254.169.254] — metadata через IPv6
-  // (RT-91, round-4). Строка hostname сохраняет скобки.
-  const ipv6Mapped = /^\[.*:ffff:/i.test(host) || /^::ffff:/i.test(host);
+  // IPv6: mapped IPv4, NAT64, IPv4-compatible, loopback/link-local/ULA.
+  // Строка hostname сохраняет скобки.
   const hostNoBrackets = host.replace(/^\[|\]$/g, '');
+  const ipv6Mapped =
+    /^::ffff:/i.test(hostNoBrackets) ||
+    /^64:ff9b::/i.test(hostNoBrackets) ||
+    /^::(?:ffff:)?(?:169\.254\.169\.254|a9fe:a9fe)$/i.test(hostNoBrackets);
+  const ipv6Local =
+    hostNoBrackets === '::1' ||
+    /^fe80:/i.test(hostNoBrackets) ||
+    /^f[cd][0-9a-f]{2}:/i.test(hostNoBrackets);
   const wildcardDns = WILDCARD_DNS_RE.test(host) || host.endsWith('.localhost');
   const metadataHost = METADATA_HOSTS.has(hostNoBrackets);
   const highRisk =
@@ -232,6 +256,7 @@ function classifyUrl(raw: string): OutputFinding | null {
     host.startsWith('xn--') ||
     ipObfuscated ||
     ipv6Mapped ||
+    ipv6Local ||
     wildcardDns ||
     metadataHost ||
     /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) ||
@@ -253,15 +278,21 @@ function classifyUrl(raw: string): OutputFinding | null {
 
 function findUrls(text: string): OutputFinding[] {
   const out: OutputFinding[] = [];
+  const seen = new Set<number>();
   for (const re of [URL_RE, IPV6_URL_RE]) {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(text)) !== null && out.length < MAX_OUTPUT_FINDINGS) {
       const index = m.index;
       const raw = m[0];
-      if (out.some((f) => f.index === index)) continue;
+      if (seen.has(index)) continue;
       const f = classifyUrl(raw);
-      if (f) out.push({ ...f, index });
+      // seen только для принятых находок: частичный URL_RE-матч IPv6
+      // (без ']') не должен скрывать полный IPV6_URL_RE-матч.
+      if (f) {
+        seen.add(index);
+        out.push({ ...f, index });
+      }
     }
   }
   return out;
@@ -270,9 +301,10 @@ function findUrls(text: string): OutputFinding[] {
 function findCommands(text: string): OutputFinding[] {
   const out: OutputFinding[] = [];
   for (const re of COMMAND_PATTERNS) {
+    if (out.length >= MAX_OUTPUT_FINDINGS) break;
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
+    while ((m = re.exec(text)) !== null && out.length < MAX_OUTPUT_FINDINGS) {
       out.push({
         kind: 'suspicious_command',
         label: 'destructive/remote-exec command',
@@ -289,14 +321,21 @@ function findCommands(text: string): OutputFinding[] {
 }
 
 function applyRedactions(text: string, findings: readonly OutputFinding[]): string {
+  // Один проход вместо O(findings × length): на большом completion с тысячами
+  // URL/команд repeated slicing блокировал event loop (audit P1).
   const applicable = findings
     .filter((f) => f.length > 0 && f.kind !== 'system_prompt_leak')
-    .sort((a, b) => b.index - a.index);
-  let out = text;
+    .sort((a, b) => a.index - b.index);
+  if (applicable.length === 0) return text;
+  const parts: string[] = [];
+  let cursor = 0;
   for (const f of applicable) {
-    out = out.slice(0, f.index) + f.redaction + out.slice(f.index + f.length);
+    if (f.index < cursor) continue;
+    parts.push(text.slice(cursor, f.index), f.redaction);
+    cursor = f.index + f.length;
   }
-  return out;
+  parts.push(text.slice(cursor));
+  return parts.join('');
 }
 
 function warningFor(findings: readonly OutputFinding[], action: OutputGuardAction): string | null {
@@ -316,6 +355,9 @@ export function guardOutput(
     ...findUrls(response),
     ...findCommands(response),
   ];
+  // Потолок нужен и здесь: scanSecrets может вернуть тысячи находок на
+  // повторяющемся секрете; redaction и warning не должны расти без предела.
+  if (findings.length > MAX_OUTPUT_FINDINGS) findings.length = MAX_OUTPUT_FINDINGS;
   const leak = leakingSystemPrompt(response, opts.systemPrompt);
   if (leak) findings.push(leak);
 
