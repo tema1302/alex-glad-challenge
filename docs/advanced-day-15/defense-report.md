@@ -204,3 +204,54 @@ Expectations кейсов выровнены с этим дизайном; `reda
   (run `rt-20261107-094939-09f2`).
 - `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
 - Grep diff на сырые секреты — только фейковые фикстуры.
+
+## Appendix: Round 4 (2026-11-07, run-2026-11-07-2, эпик #234)
+
+Вход: 18 новых атак RT-82..RT-99 (см. attack-report round-4). Все 18 —
+breached до фикса. Фикс: новый кейс + детектор + FP-тест на каждое семейство.
+
+### Что пофикшено
+
+- **`gateway/secrets.ts`**: base32 decode-and-scan (`base32_secret`, новый
+  `via: 'base32'`); NFKC/fullwidth-кандидат строкового литерала; n-ary
+  `.join('')` для 2+ элементов; `String.fromCodePoint`; `Buffer.from([bytes])`;
+  hex-байты с пробелами; карта с точками (Luhn сохранён); `scanMessages`
+  сканирует склейку сообщений и помечает находку `crossMessage`. В
+  mask-режиме cross-message запрос блокируется, а не маскируется частично.
+  Закрывает RT-82..RT-89.
+- **`gateway/outputGuard.ts`**: wildcard-DNS (`nip.io`, `sslip.io`, `xip.io`,
+  `localtest.me`, `lvh.me`) и IPv6-mapped хосты + metadata-хосты; отдельный
+  матч IPv6-литерала (`]` не режется URL_RE); `rm -fr`/перестановки флагов;
+  `chmod -R 777`; process substitution `bash <(curl …)`, `sh -c "$(curl …)"`;
+  NFKC + strip невидимых в `normalizeForLeak`; base32-декод в проверке
+  утечки system prompt. Закрывает RT-90..RT-94, RT-98..RT-99.
+- **`gateway/inputGuard.ts`**: role spoof-токены (`<|im_start|>system`,
+  `<|system|>`, `<<SYS>>`, `[INST]`, новый kind `role_spoof`); base64
+  decode-and-scan инструкций; NFKC/zero-width нормализация; склейка сообщений
+  для split-инструкций. Закрывает RT-95..RT-96.
+- **`securityLoop/backstop.ts`**: decode-and-scan инструкций из base64 и
+  NFKC-вида кода (line/evidence без сырых значений). Закрывает RT-97.
+- **`redteam/target.ts`**: `scanInputParts` — multi-message поверхность
+  для RT-89/RT-96.
+
+### Что осталось (честно, поверх round-3)
+
+- Произвольный самописный декодер (XOR, свой алфавит, арифметика над
+  кодами) статикой не доказывается: decode-and-scan покрывает известные
+  схемы, а не язык произвольной обфускации. Компенсация: output guard +
+  backstop + review вторым вызовом + audit/intercepted.
+- Blocklist wildcard-DNS не является полным списком DNS-rebinding-сервисов;
+  новый домен = новый кейс.
+- Парафраз/опечатки инструкций по-прежнему residual (та же природа, что
+  RT-12): статические фразы не исчерпывают язык.
+
+### Валидация round 4
+
+- `pnpm --filter challenge typecheck` — чисто.
+- `pnpm --filter challenge test` — 570/570 (+29 тестов: secrets ×10,
+  outputGuard ×9, inputGuard ×6, backstop ×3, gateway server ×1).
+- `pnpm --filter challenge start -- red-team` —
+  `attacks=98 defended=97 breached=0 residual=1 → PASS`
+  (run `rt-20261107-121655-74b4`).
+- `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
+- Grep diff на сырые секреты — только фейковые фикстуры.
