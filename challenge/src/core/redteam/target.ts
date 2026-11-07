@@ -18,7 +18,11 @@ export class PipelineTarget implements AttackTarget {
   readonly name = 'pipeline:gateway+securityLoop (offline scripted llm)';
 
   scanInput(text: string): ScanVerdict {
-    const result = guardInput([{ role: 'user', content: text }]);
+    return this.scanInputParts([text]);
+  }
+
+  scanInputParts(parts: readonly string[]): ScanVerdict {
+    const result = guardInput(parts.map((content) => ({ role: 'user', content })));
     return {
       blocked: result.action === 'blocked',
       redacted: result.action === 'masked',

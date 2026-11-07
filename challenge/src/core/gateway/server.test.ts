@@ -121,6 +121,22 @@ test('gateway: Input Guard mask отправляет маркер вместо �
   assert.equal(audit.records[0]!.status, 'masked');
 });
 
+test('gateway: секрет, разрезанный между сообщениями, блокируется до upstream (RT-89)', async (t) => {
+  const { gw, calls, audit } = await start(undefined, { guardMode: 'mask' });
+  t.after(() => gw.close());
+  const res = await post(gw, {
+    messages: [
+      { role: 'user', content: 'part1: sk-testABC' },
+      { role: 'user', content: 'DEFGHIJKLMNOPQRSTUVWXYZ1234' },
+    ],
+  });
+  assert.equal(res.status, 422);
+  const json = (await res.json()) as { guard: string };
+  assert.equal(json.guard, 'input');
+  assert.equal(calls.length, 0);
+  assert.equal(audit.records[0]!.status, 'blocked_input');
+});
+
 test('gateway: Output Guard блокирует сгенерированный секрет', async (t) => {
   const { gw, audit, intercepted } = await start(`вот ключ ${KEY}`);
   t.after(() => gw.close());

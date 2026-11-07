@@ -11,6 +11,7 @@
 
 import type { ChatMessage } from '../types.js';
 import {
+  findDecodedBase64Tokens,
   maskMessages,
   scanMessages,
   summarizeFindings,
@@ -42,7 +43,7 @@ export const DEFAULT_GUARD_MODE: GuardMode = 'block';
 
 // ── Инструкции-инъекции во вводе (round-3, RT-76..RT-78) ──
 
-export type InputInstructionKind = 'prompt_injection' | 'exfil_request';
+export type InputInstructionKind = 'prompt_injection' | 'exfil_request' | 'role_spoof';
 
 export interface InstructionFinding {
   readonly kind: InputInstructionKind;
@@ -104,6 +105,14 @@ const INSTRUCTION_PATTERNS: readonly InstructionPattern[] = [
     kind: 'prompt_injection',
     label: 'обход security review во вводе (RU)',
   },
+  {
+    // Role spoof через служебные токены чата: <|im_start|>system, <|system|>,
+    // <<SYS>>, [INST] (RT-95, round-4). Требуем назначение роли, а не просто
+    // упоминание токена: «what is <|im_start|>?» остаётся allow.
+    re: /<\|\s*im_start\s*\|>\s*(?:system|developer)\b|<\|\s*system\s*\|>|<<SYS>>|\[\/?INST\]/gi,
+    kind: 'role_spoof',
+    label: 'role spoof: служебные токены чата в данных',
+  },
 ];
 
 function previewForInstruction(raw: string): string {
@@ -123,15 +132,75 @@ function findingForInstruction(p: InstructionPattern, raw: string, index: number
   };
 }
 
-export function scanInstructions(messages: readonly ChatMessage[]): InstructionFinding[] {
-  const out: InstructionFinding[] = [];
-  for (const message of messages) {
-    for (const p of INSTRUCTION_PATTERNS) {
-      for (const m of message.content.matchAll(p.re)) {
-        out.push(findingForInstruction(p, m[0], m.index));
-      }
+const INVISIBLE_CHAR_RE = /[\u00ad\u200b-\u200f\u2060\ufeff]/;
+
+interface InstructionView {
+  readonly text: string;
+  /** Карта «нормализованный индекс → исходный»; пустая — индекс совпадает. */
+  readonly map: readonly number[];
+}
+
+/** NFKC + удаление невидимых: fullwidth и zero-width не должны обходить фразы. */
+function instructionView(text: string): InstructionView {
+  const out: string[] = [];
+  const map: number[] = [];
+  let changed = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (INVISIBLE_CHAR_RE.test(ch)) {
+      changed = true;
+      continue;
+    }
+    const normalized = ch.normalize('NFKC');
+    if (normalized !== ch) changed = true;
+    for (const c of normalized) {
+      out.push(c);
+      map.push(i);
     }
   }
+  return { text: changed ? out.join('') : text, map: changed ? map : [] };
+}
+
+function matchInstructionPatterns(text: string, map: readonly number[]): InstructionFinding[] {
+  const out: InstructionFinding[] = [];
+  for (const p of INSTRUCTION_PATTERNS) {
+    for (const m of text.matchAll(p.re)) {
+      const index = map.length > 0 ? (map[m.index] ?? m.index) : m.index;
+      out.push(findingForInstruction(p, m[0], index));
+    }
+  }
+  return out;
+}
+
+/**
+ * Инструкции во вводе: по каждому сообщению, по склейке сообщений (split
+ * между message, RT-96) и по base64-декодам (decode-and-scan, RT-96).
+ * Дубликаты схлопываются по kind+label+preview.
+ */
+export function scanInstructions(messages: readonly ChatMessage[]): InstructionFinding[] {
+  const out: InstructionFinding[] = [];
+  const seen = new Set<string>();
+  const add = (finding: InstructionFinding): void => {
+    const key = `${finding.kind}|${finding.label}|${finding.preview}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(finding);
+  };
+
+  const scanText = (text: string): void => {
+    const view = instructionView(text);
+    for (const f of matchInstructionPatterns(view.text, view.map)) add(f);
+    for (const token of findDecodedBase64Tokens(text)) {
+      for (const f of matchInstructionPatterns(token.decoded, [])) {
+        add({ ...f, index: token.index, length: token.token.length });
+      }
+    }
+  };
+
+  for (const message of messages) scanText(message.content);
+  // Для инструкций склейка через пробел: «Ignore all previous» + «instructions»
+  // должны дать фразу, даже если слова разрезаны по границе сообщений.
+  if (messages.length > 1) scanText(messages.map((m) => m.content).join(' '));
   return out;
 }
 
@@ -174,6 +243,22 @@ export function guardInput(
       warning:
         `Input Guard: запрос заблокирован, во вводе инструкции-инъекции (${ikinds}). ` +
         'Инструкции к модели должны идти через role: system, а не через данные.',
+    };
+  }
+
+  // Секрет, разрезанный между сообщениями, нельзя корректно замаскировать
+  // per-message: в mask-режиме такой запрос блокируется (RT-89, round-4).
+  if (mode === 'mask' && findings.some((f) => f.crossMessage)) {
+    return {
+      action: 'blocked',
+      findings,
+      summary,
+      instructions,
+      instructionSummary,
+      messages,
+      warning:
+        'Input Guard: запрос заблокирован, секрет разрезан между сообщениями и не может быть замаскирован. ' +
+        'Отправьте данные одним сообщением или уберите секрет.',
     };
   }
 

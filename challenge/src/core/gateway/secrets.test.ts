@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   maskSecrets,
+  scanMessages,
   scanSecrets,
   summarizeFindings,
   REDACTION,
@@ -275,4 +276,106 @@ test('maskSecrets: маскирует plain-hex/percent/zero-width обфуск�
   const zwMasked = maskSecrets('const KEY = "sk-test\u200bABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
   assert.ok(zwMasked.includes(REDACTION.split));
   assert.ok(!zwMasked.includes('sk-test'));
+});
+
+// ── Day 15 red team round 4: NFKC/base32/fromCodePoint/Buffer/spaced-hex ──
+
+const B32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+const toB32 = (s: string): string => {
+  const bytes = Buffer.from(s, 'utf8');
+  let bits = 0;
+  let value = 0;
+  let out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += B32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += B32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+};
+const toFullwidth = (s: string): string =>
+  [...s]
+    .map((c) => {
+      const code = c.codePointAt(0) ?? 0;
+      return code >= 0x21 && code <= 0x7e ? String.fromCodePoint(code + 0xfee0) : c;
+    })
+    .join('');
+
+test('scanSecrets: fullwidth-ключ + .normalize("NFKC") (RT-82)', () => {
+  const findings = scanSecrets(`const KEY = "${toFullwidth(FAKE_SK)}".normalize("NFKC");`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: base32-ключ (RT-83)', () => {
+  const findings = scanSecrets(`const KEY = atob32("${toB32(FAKE_SK)}");`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'base32_secret');
+  assert.equal(findings[0]!.via, 'base32');
+});
+
+test('scanSecrets: 3-элементный .join("") (RT-84)', () => {
+  const findings = scanSecrets(`const KEY = ['sk-test', 'ABCDEFGHIJ', 'KLMNOPQRSTUVWXYZ1234'].join('');`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: String.fromCodePoint (RT-85)', () => {
+  const codes = [...FAKE_SK].map((c) => c.codePointAt(0)).join(',');
+  const findings = scanSecrets(`const KEY = String.fromCodePoint(${codes});`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: Buffer.from([байты]) (RT-86)', () => {
+  const bytes = [...Buffer.from(FAKE_SK, 'utf8')].join(',');
+  const findings = scanSecrets(`const KEY = Buffer.from([${bytes}]).toString();`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: hex-байты с пробелами (RT-87)', () => {
+  const hex = [...Buffer.from(FAKE_SK, 'utf8')].map((b) => b.toString(16).padStart(2, '0')).join(' ');
+  const findings = scanSecrets(`const KEY = Buffer.from("${hex}".replace(/ /g, ''), 'hex');`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: карта с точками-разделителями (RT-88)', () => {
+  const findings = scanSecrets('val card = "4242.4242.4242.4242"');
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'card');
+});
+
+test('scanSecrets: секрет, разрезанный между сообщениями (RT-89)', () => {
+  const findings = scanMessages([
+    { role: 'user', content: 'part1: sk-testABC' },
+    { role: 'user', content: 'DEFGHIJKLMNOPQRSTUVWXYZ1234' },
+  ]);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'api_key');
+  assert.equal(findings[0]!.crossMessage, true);
+  assert.equal(findings[0]!.messageIndex, 0);
+});
+
+test('scanSecrets: FP round-4 — uppercase/base32-подобные тексты и версии', () => {
+  assert.deepEqual(scanSecrets('const NAME = "IMPLEMENTATIONDETAILS";'), []);
+  assert.deepEqual(scanSecrets('const NAME = "HELLOWORLDABCDEFGH";'), []);
+  assert.deepEqual(scanSecrets('const version = "10.20.30.40.50.60.70";'), []);
+  assert.deepEqual(scanSecrets('const label = "ｈｅｌｌｏ　ｗｏｒｌｄ";'), []);
+});
+
+test('maskSecrets: маскирует round-4 обфускации', () => {
+  const b32Masked = maskSecrets(`const KEY = atob32("${toB32(FAKE_SK)}");`);
+  assert.ok(b32Masked.includes(REDACTION.base32));
+  assert.ok(!b32Masked.includes(toB32(FAKE_SK)));
+
+  const codes = [...FAKE_SK].map((c) => c.codePointAt(0)).join(',');
+  const cpMasked = maskSecrets(`const KEY = String.fromCodePoint(${codes});`);
+  assert.ok(cpMasked.includes(REDACTION.split));
+  assert.ok(!cpMasked.includes(codes));
 });

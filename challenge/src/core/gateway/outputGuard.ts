@@ -6,7 +6,13 @@
 // critical → ответ блокируется; high/medium → фрагмент редактируется.
 // Наружу — только безопасные маркеры, без сырых значений.
 
-import { decodeBase64Tokens, scanSecrets, type SecretFinding, type SecretKind } from './secrets.js';
+import {
+  decodeBase64Tokens,
+  findDecodedBase32Tokens,
+  scanSecrets,
+  type SecretFinding,
+  type SecretKind,
+} from './secrets.js';
 
 export type OutputFindingKind =
   | SecretKind
@@ -49,11 +55,15 @@ const SENSITIVE_SECRETS: ReadonlySet<SecretKind> = new Set<SecretKind>([
   'private_key',
   'card',
   'base64_secret',
+  'base32_secret',
   'split_secret',
   'hex_secret',
 ]);
 
 const URL_RE = /\b(?:https?|ftp|file|javascript|data):[^\s<>"'`)\]]+/gi;
+// IPv6-литерал содержит ']', который URL_RE исключает как markdown-скобку.
+// Отдельный матч для [::ffff:…] (RT-91, round-4).
+const IPV6_URL_RE = /\b(?:https?|ftp):\/\/\[[^\]\s]+\][^\s<>"'`)]*/gi;
 const SHORTENERS = new Set([
   'bit.ly',
   'tinyurl.com',
@@ -66,19 +76,37 @@ const SHORTENERS = new Set([
   'buff.ly',
 ]);
 
+// Wildcard-DNS, через который SSRF обходит IP-literal проверки (RT-90, round-4):
+// 169.254.169.254.nip.io резолвится в metadata-IP, но хост — домен.
+const WILDCARD_DNS_RE = /\.(?:nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me)$/i;
+// Облачные metadata-хосты, которые не являются IP-literal.
+const METADATA_HOSTS = new Set(['metadata.google.internal', 'metadata.goog', 'metadata.azure.internal']);
+
 const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
   // Trailing \b после несловесных символов (/, ~, *) никогда не матчится —
   // голое «rm -rf /» проходило насквозь (RT-36, round-2 red team).
-  /\brm\s+-rf\s+(?:\/|~|\*|\$HOME)/gi,
+  // Lookahead требует ОБА флага r и f в любом порядке (-fr, -Rf, -r -f) и
+  // цель — корень/~/*/HOME, а не любой абсолютный путь: rm -f /tmp/x не
+  // является destructive-root (RT-92, round-4).
+  /\brm\s+(?=[^\n]{0,40}-[a-z]*r)(?=[^\n]{0,40}-[a-z]*f)[^\n]{0,40}(?:\/\*?|~\/?|\*|\$\{?HOME\}?\/?)(?=[\s;&|]|$)/gi,
+  // Длинные флаги: rm --recursive --force / (порядок любой).
+  /\brm\s+(?=[^\n]{0,60}--recursive)(?=[^\n]{0,60}--force)[^\n]{0,60}(?:\/\*?|~\/?|\*|\$\{?HOME\}?\/?)(?=[\s;&|]|$)/gi,
   /:\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/g,
   /\b(?:curl|wget)\b[^\n|]{0,200}\|\s*(?:sudo\s+)?(?:ba)?sh\b/gi,
+  // Process substitution / command substitution: bash <(curl …),
+  // sh -c "$(wget …)" (RT-94, round-4).
+  /\b(?:ba|z|da)?sh\s+<\(\s*(?:curl|wget)\b/gi,
+  /\b(?:ba|z|da)?sh\s+-c\s+["']?\$\(\s*(?:curl|wget)\b/gi,
+  /\b(?:source|\.)\s+<\(\s*(?:curl|wget)\b/gi,
   /\bbase64\s+(?:-d|--decode)\b[^\n|]{0,120}\|\s*(?:ba)?sh\b/gi,
   /\bpowershell(?:\.exe)?\b[^\n]{0,120}-(?:enc|encodedcommand)\b/gi,
   /\bchild_process\b/g,
   /\bos\.system\s*\(/g,
   /\bsubprocess\.[A-Za-z]+\([^\n)]*shell\s*=\s*True/g,
   /\bnc\s+-e\s+\/(?:bin\/)?(?:ba)?sh\b/gi,
-  /\bchmod\s+777\s+\//g,
+  // -R перед/после режима и рекурсивный chmod на корень (RT-93, round-4).
+  /\bchmod\s+(?:-R\s+)?777\s+\//gi,
+  /\bchmod\s+777\s+-R\s+\//gi,
   // PowerShell download-cradle: IEX (New-Object Net.WebClient).DownloadString(…)
   // (RT-71, round-3 red team).
   /\b(?:iex|invoke-expression)\b[^\n]{0,120}\b(?:downloadstring|downloadfile|invoke-webrequest|invoke-restmethod|iwr)\b/gi,
@@ -107,7 +135,14 @@ const LEAK_PATTERNS: ReadonlyArray<RegExp> = [
 ];
 
 function normalizeForLeak(s: string): string {
-  return s.toLowerCase().replace(/\s+/g, ' ').trim();
+  // NFKC + удаление zero-width/BOM/soft hyphen: fullwidth и невидимые вставки
+  // не должны обходить сравнение с system prompt (RT-98, round-4).
+  return s
+    .normalize('NFKC')
+    .replace(/[\u00ad\u200b-\u200f\u2060\ufeff]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function secretToOutput(f: SecretFinding): OutputFinding {
@@ -131,7 +166,10 @@ function leakingSystemPrompt(response: string, systemPrompt?: string): OutputFin
     // base64-декодированные токены ответа: утечка «в base64» ловится так же,
     // как дословная (head-префикс покрывает разбивку на короткие куски без
     // вставок; куски с разделителями остаются за статическими проверками).
-    const decoded = decodeBase64Tokens(response).map(normalizeForLeak);
+    const decoded = [
+      ...decodeBase64Tokens(response),
+      ...findDecodedBase32Tokens(response).map((t) => t.decoded),
+    ].map(normalizeForLeak);
     const containsNeedle = (text: string): boolean =>
       text.includes(needle) || (needleHead.length >= 40 && text.includes(needleHead));
     if (containsNeedle(hay) || decoded.some(containsNeedle)) {
@@ -180,6 +218,12 @@ function classifyUrl(raw: string): OutputFinding | null {
     /^\d{1,10}$/.test(host) ||
     /^0x[0-9a-f]{1,8}$/i.test(host) ||
     /^(?:0x[0-9a-f]{1,2}\.){3}0x[0-9a-f]{1,2}$/i.test(host);
+  // IPv6-mapped IPv4: [::ffff:169.254.169.254] — metadata через IPv6
+  // (RT-91, round-4). Строка hostname сохраняет скобки.
+  const ipv6Mapped = /^\[.*:ffff:/i.test(host) || /^::ffff:/i.test(host);
+  const hostNoBrackets = host.replace(/^\[|\]$/g, '');
+  const wildcardDns = WILDCARD_DNS_RE.test(host) || host.endsWith('.localhost');
+  const metadataHost = METADATA_HOSTS.has(hostNoBrackets);
   const highRisk =
     scheme === 'javascript:' ||
     scheme === 'data:' ||
@@ -187,6 +231,9 @@ function classifyUrl(raw: string): OutputFinding | null {
     host === '169.254.169.254' ||
     host.startsWith('xn--') ||
     ipObfuscated ||
+    ipv6Mapped ||
+    wildcardDns ||
+    metadataHost ||
     /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) ||
     SHORTENERS.has(host) ||
     url.username.length > 0 ||
@@ -206,11 +253,16 @@ function classifyUrl(raw: string): OutputFinding | null {
 
 function findUrls(text: string): OutputFinding[] {
   const out: OutputFinding[] = [];
-  URL_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = URL_RE.exec(text)) !== null) {
-    const f = classifyUrl(m[0]);
-    if (f) out.push({ ...f, index: m.index });
+  for (const re of [URL_RE, IPV6_URL_RE]) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const index = m.index;
+      const raw = m[0];
+      if (out.some((f) => f.index === index)) continue;
+      const f = classifyUrl(raw);
+      if (f) out.push({ ...f, index });
+    }
   }
   return out;
 }

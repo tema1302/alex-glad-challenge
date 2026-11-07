@@ -4,9 +4,13 @@
 // сырое значение секрета никогда не покидает этот модуль.
 // Детекторы чистые, без I/O. Обфускация проверяется декодированием и повторным
 // сканом с ограничением глубины: base64 (включая двойной, url-safe и с
-// пробелами), split-конкатенация ('a'+'b', [a,b].join(''), a.concat(b),
+// пробелами), base32, split-конкатенация ('a'+'b', [a,b].join(''), a.concat(b),
 // template literal), hex/unicode-escape, percent-encoding, plain-hex строка,
-// невидимые символы (zero-width/BOM) внутри литерала.
+// hex-байты с пробелами, NFKC/fullwidth, String.fromCodePoint,
+// Buffer.from([bytes]), невидимые символы (zero-width/BOM) внутри литерала.
+// Round-4 (day-15 RT-82..RT-89): split между сообщениями сканируется по
+// склейке — иначе один секрет, разрезанный на два message, проходит мимо
+// per-message сканера.
 
 import type { ChatMessage } from '../types.js';
 
@@ -23,12 +27,13 @@ export type SecretKind =
   | 'card'
   | 'phone'
   | 'base64_secret'
+  | 'base32_secret'
   | 'split_secret'
   | 'hex_secret';
 
 export type SecretSeverity = 'critical' | 'high' | 'medium';
 
-export type DetectionVia = 'direct' | 'base64' | 'split' | 'hex';
+export type DetectionVia = 'direct' | 'base64' | 'base32' | 'split' | 'hex';
 
 export interface SecretFinding {
   readonly kind: SecretKind;
@@ -120,12 +125,17 @@ const DETECTORS: readonly Detector[] = [
   },
 ];
 
-const CARD_RE = /\b(?:\d[ -]?){12,18}\d\b/g;
+// Точки-разделители карты (4242.4242.4242.4242) — RT-88, round-4. Luhn-гейт
+// держит точность: версии/даты без контрольной суммы не считаются картой.
+const CARD_RE = /\b(?:\d[ .-]?){12,18}\d\b/g;
 const PHONE_RE =
   /(?:\+\d{1,3}[\s-]?(?:\(?\d{2,4}\)?[\s-]?)?\d{3}[\s-]?\d{2}[\s-]?\d{2,4}|\b[78][\s(-]?\d{3}[\s)-]?\d{3}[\s-]?\d{2}[\s-]?\d{2}\b)/g;
 // - и _ включены: base64url-токены («секрет» может быть не-ASCII) сканируются
 // так же, как стандартные; Node-декодер base64 принимает url-safe алфавит.
 const BASE64_RE = /(?<![A-Za-z0-9+/\-_])[A-Za-z0-9+/\-_]{16,}={0,2}(?![A-Za-z0-9+/\-_=])/g;
+// Base32 (RFC 4648): стандартный алфавит без 0/1/8/9. RT-83, round-4.
+const BASE32_RE = /(?<![A-Z2-7])[A-Z2-7]{16,}={0,6}(?![A-Z2-7=])/g;
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 
 /** Максимальная глубина рекурсивного декодирования (base64 внутри base64 и т.п.). */
 const MAX_DECODE_DEPTH = 2;
@@ -157,9 +167,15 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
     },
   },
   {
+    // 2+ элементов: старый regex знал только два, трёхэлементный join
+    // проходил (RT-84, round-4). Сепаратор — только пустой: join(',') не
+    // склеивает секрет, а ложную находку на нём давать нельзя.
     label: 'array join',
-    re: /\[\s*(["'])([^"'\[\]]*)\1\s*,\s*(["'])([^"'\[\]]*)\3\s*\]\s*\.\s*join\s*\(\s*(["'])\5?\s*\)/g,
-    joined: (g) => `${g[2] ?? ''}${g[4] ?? ''}`,
+    re: /\[\s*((?:(['"])[^"'\n]*\2\s*,\s*)+(['"])[^"'\n]*\3)\s*\]\s*\.\s*join\s*\(\s*(['"])\4\s*\)/g,
+    joined: (g) => {
+      const segs = [...(g[1] ?? '').matchAll(/(["'])([^"']*)\1/g)].map((x) => x[2] ?? '');
+      return segs.length >= 2 ? segs.join('') : null;
+    },
   },
   {
     label: 'concat call',
@@ -169,15 +185,23 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
   {
     label: 'fromCharCode',
     re: /String\.fromCharCode\(\s*\d{1,7}(?:\s*,\s*\d{1,7}){7,}\s*\)/g,
+    joined: (g) => decodeCharCodes(g[0] ?? ''),
+  },
+  {
+    // String.fromCodePoint — та же идея другим API (RT-85, round-4).
+    label: 'fromCodePoint',
+    re: /String\.fromCodePoint\(\s*\d{1,7}(?:\s*,\s*\d{1,7}){7,}\s*\)/g,
+    joined: (g) => decodeCharCodes(g[0] ?? ''),
+  },
+  {
+    // Байтовый литерал: Buffer.from([115,107,…]).toString() (RT-86, round-4).
+    label: 'byte array literal',
+    re: /(?:Buffer\.from|new\s+Uint8Array|Uint8Array)\s*\(\s*\[\s*(\d{1,3}(?:\s*,\s*\d{1,3}){7,})\s*\]\s*\)/g,
     joined: (g) => {
-      const codes = (g[0] ?? '').match(/\d{1,7}/g) ?? [];
-      let out = '';
-      for (const c of codes) {
-        const n = Number(c);
-        if (!Number.isFinite(n) || n < 0x20 || n > 0x10ffff) return null;
-        out += String.fromCodePoint(n);
-      }
-      return out;
+      const nums = (g[1] ?? '').split(',').map((x) => Number(x.trim()));
+      if (nums.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+      const decoded = Buffer.from(nums).toString('utf8');
+      return isPrintable(decoded) ? decoded : null;
     },
   },
   {
@@ -203,6 +227,28 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
       const s = g[2] ?? '';
       const stripped = s.replace(/[\s\u00ad\u200b-\u200f\u2060\ufeff]/g, '');
       return stripped === s ? null : stripped;
+    },
+  },
+  {
+    // NFKC/fullwidth: "ｓｋ－…" + .normalize("NFKC") (RT-82, round-4).
+    // Сканируется нормализованный вид; находка только если в нём есть секрет.
+    label: 'NFKC-normalized string',
+    re: /(["'])([^"'\n]{12,})\1/g,
+    joined: (g) => {
+      const s = g[2] ?? '';
+      const normalized = s.normalize('NFKC');
+      return normalized === s ? null : normalized;
+    },
+  },
+  {
+    // Hex-байты с пробелами: Buffer.from("73 6b 2d …", "hex") (RT-87).
+    label: 'hex bytes with separators',
+    re: /(["'])((?:[0-9a-fA-F]{2}[\s]+){7,}[0-9a-fA-F]{2})\1/g,
+    joined: (g) => {
+      const hex = (g[2] ?? '').replace(/\s+/g, '');
+      if (hex.length % 2 !== 0) return null;
+      const decoded = Buffer.from(hex, 'hex').toString('utf8');
+      return isPrintable(decoded) ? decoded : null;
     },
   },
   {
@@ -248,6 +294,7 @@ export const REDACTION = {
   card: '[REDACTED_CARD]',
   phone: '[REDACTED_PHONE]',
   base64: '[REDACTED_BASE64_SECRET]',
+  base32: '[REDACTED_BASE32_SECRET]',
   split: '[REDACTED_SPLIT_SECRET]',
   hex: '[REDACTED_HEX_SECRET]',
 } as const;
@@ -342,6 +389,65 @@ function isPrintable(s: string): boolean {
     if (code === 0xfffd) return false;
   }
   return true;
+}
+
+/** Коды символов из String.fromCharCode/fromCodePoint → строка (или null). */
+function decodeCharCodes(raw: string): string | null {
+  const codes = raw.match(/\d{1,7}/g) ?? [];
+  let out = '';
+  for (const c of codes) {
+    const n = Number(c);
+    if (!Number.isFinite(n) || n < 0x20 || n > 0x10ffff) return null;
+    out += String.fromCodePoint(n);
+  }
+  return out;
+}
+
+/** Base32 (RFC 4648) → строка; null, если декод не печатный. */
+function decodeBase32(token: string): string | null {
+  const clean = token.replace(/=+$/, '');
+  if (clean.length < 16) return null;
+  const bytes: number[] = [];
+  let bits = 0;
+  let value = 0;
+  for (const ch of clean) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx < 0) return null;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  if (bytes.length === 0) return null;
+  const decoded = Buffer.from(bytes).toString('utf8');
+  return isPrintable(decoded) ? decoded : null;
+}
+
+/** Base32-токены, декодирующиеся в секрет (RT-83, round-4). */
+function findBase32(text: string, depth: number): SecretFinding[] {
+  const out: SecretFinding[] = [];
+  for (const m of text.matchAll(BASE32_RE)) {
+    const decoded = decodeBase32(m[0]);
+    if (!decoded) continue;
+    const inner = depth < MAX_DECODE_DEPTH ? scanSecrets(decoded, depth + 1) : [];
+    if (inner.length === 0) continue;
+    out.push(
+      finding(
+        {
+          kind: 'base32_secret',
+          label: `base32(${inner[0]!.label})`,
+          severity: inner[0]!.severity,
+          redaction: REDACTION.base32,
+        },
+        m[0],
+        m.index,
+        'base32',
+      ),
+    );
+  }
+  return out;
 }
 
 function findBase64(text: string, depth: number): SecretFinding[] {
@@ -486,6 +592,7 @@ export function scanSecrets(text: string, depth = 0): SecretFinding[] {
     ...cards,
     ...phones,
     ...(deep ? findBase64(text, depth) : []),
+    ...(deep ? findBase32(text, depth) : []),
     ...(deep ? findBase64Whitespace(text, depth) : []),
     ...(deep ? findEscaped(text, depth) : []),
     ...(deep ? findSplit(text, depth) : []),
@@ -494,6 +601,8 @@ export function scanSecrets(text: string, depth = 0): SecretFinding[] {
 
 export interface MessageSecretFinding extends SecretFinding {
   readonly messageIndex: number;
+  /** Находка собрана из нескольких сообщений: маскировать нельзя — block. */
+  readonly crossMessage?: boolean;
 }
 
 export function scanMessages(messages: readonly ChatMessage[]): MessageSecretFinding[] {
@@ -503,7 +612,40 @@ export function scanMessages(messages: readonly ChatMessage[]): MessageSecretFin
       out.push({ ...f, messageIndex });
     }
   });
+
+  // Cross-message split (RT-89, round-4): per-message скан не видит секрет,
+  // разрезанный на два message. Склеиваем без разделителя — модель получает
+  // контекст сообщений подряд, значит и проверять надо ту же склейку.
+  if (messages.length < 2) return out;
+  const starts: number[] = [];
+  let cursor = 0;
+  for (const message of messages) {
+    starts.push(cursor);
+    cursor += message.content.length;
+  }
+  const joined = messages.map((m) => m.content).join('');
+  for (const f of scanSecrets(joined)) {
+    const messageIndex = messageStartIndex(starts, f.index);
+    if (messageIndex < 0) continue;
+    const content = messages[messageIndex]!.content;
+    const index = f.index - starts[messageIndex]!;
+    const length = Math.min(f.length, content.length - index);
+    if (length <= 0) continue;
+    const duplicate = out.some(
+      (x) => x.messageIndex === messageIndex && x.index === index && Math.abs(x.length - length) <= 2,
+    );
+    if (duplicate) continue;
+    out.push({ ...f, messageIndex, index, length, crossMessage: true });
+  }
   return out;
+}
+
+/** Индекс сообщения, в которое попадает глобальная позиция. */
+function messageStartIndex(starts: readonly number[], index: number): number {
+  for (let i = starts.length - 1; i >= 0; i -= 1) {
+    if (index >= starts[i]!) return i;
+  }
+  return -1;
 }
 
 /** Заменяет матчи, для которых decide вернул замену; спаны собираются заранее. */
@@ -548,6 +690,11 @@ export function maskSecrets(text: string): string {
     const decoded = Buffer.from(m[0], 'base64').toString('utf8');
     if (!isPrintable(decoded)) return null;
     return scanSecrets(decoded, 1).length > 0 ? REDACTION.base64 : null;
+  });
+  out = replaceWhen(out, BASE32_RE, (m) => {
+    const decoded = decodeBase32(m[0]);
+    if (!decoded) return null;
+    return scanSecrets(decoded, 1).length > 0 ? REDACTION.base32 : null;
   });
   for (const candidate of SPLIT_CANDIDATES) {
     out = replaceWhen(out, candidate.re, (m) => {
@@ -605,12 +752,39 @@ export function maskMessages(messages: readonly ChatMessage[]): ChatMessage[] {
   return messages.map((m) => ({ ...m, content: maskSecrets(m.content) }));
 }
 
-/** Печатные base64-токены в декодированном виде (для проверки утечек и обфускации). */
-export function decodeBase64Tokens(text: string): string[] {
-  const out: string[] = [];
+export interface DecodedBase64Token {
+  readonly token: string;
+  readonly index: number;
+  readonly decoded: string;
+}
+
+/** Печатные base64-токены с исходными позициями (decode-and-scan инструкций). */
+export function findDecodedBase64Tokens(text: string): DecodedBase64Token[] {
+  const out: DecodedBase64Token[] = [];
   for (const m of text.matchAll(BASE64_RE)) {
     const decoded = Buffer.from(m[0], 'base64').toString('utf8');
-    if (isPrintable(decoded)) out.push(decoded);
+    if (isPrintable(decoded)) out.push({ token: m[0], index: m.index, decoded });
+  }
+  return out;
+}
+
+/** Печатные base64-токены в декодированном виде (для проверки утечек и обфускации). */
+export function decodeBase64Tokens(text: string): string[] {
+  return findDecodedBase64Tokens(text).map((t) => t.decoded);
+}
+
+export interface DecodedBase32Token {
+  readonly token: string;
+  readonly index: number;
+  readonly decoded: string;
+}
+
+/** Печатные base32-токены с позициями (проверка утечек system prompt). */
+export function findDecodedBase32Tokens(text: string): DecodedBase32Token[] {
+  const out: DecodedBase32Token[] = [];
+  for (const m of text.matchAll(BASE32_RE)) {
+    const decoded = decodeBase32(m[0]);
+    if (decoded) out.push({ token: m[0], index: m.index, decoded });
   }
   return out;
 }

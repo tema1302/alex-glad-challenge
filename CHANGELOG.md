@@ -85,6 +85,25 @@
   тестов; typecheck чисто; self-test 14/14. README дополнен battle
   playbook'ом для живого боя с партнёром.
 
+### Round 4 — усиление защиты и атак перед боем (2026-11-07, run-2026-11-07-2, эпик #234)
+
+- Сут расширен с 80 до 98 атак (RT-82..RT-99): fullwidth/NFKC, base32,
+  3-элементный `.join('')`, `String.fromCodePoint`, `Buffer.from([bytes])`,
+  hex-байты с пробелами, карта с точками, split секрета между сообщениями,
+  wildcard-DNS SSRF (`nip.io`), IPv6-mapped metadata, `rm -fr`, `chmod -R`,
+  `bash <(curl …)`, ChatML role spoof, base64-инструкция в файле, base64
+  review bypass, zero-width system prompt echo, system prompt в base32.
+- Defense: `secrets.ts` — base32/n-ary/fromCodePoint/Buffer/spaced-hex/NFKC
+  decode-and-scan, cross-message скан; `outputGuard.ts` — wildcard-DNS и
+  IPv6-mapped хосты, перестановки флагов destroy/chmod, process substitution,
+  NFKC+strip в сравнении system prompt; `inputGuard.ts` — role spoof,
+  base64 decode-and-scan инструкций, NFKC/zero-width, склейка сообщений;
+  `backstop.ts` — decode-and-scan инструкций из base64/NFKC.
+- Все 18 новых кейсов до фикса пробивали, после — hardening.
+- Итог: `attacks=98 defended=97 breached=0 residual=1 → PASS`; 570/570
+  тестов; typecheck чисто; self-test 14/14. Добавлен подробный
+  `docs/advanced-day-15/battle-playbook.md` для боя с соперником.
+
 ---
 
 ## ADVANCED Day 13 — LLM Gateway (2026-11-04)

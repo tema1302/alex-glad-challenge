@@ -8,7 +8,7 @@
 // Точность важнее полноты: каждый паттерн проверен FP-тестом на легитимном
 // коде. Сырые значения секретов не попадают в evidence (maskSecrets).
 
-import { maskSecrets, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
+import { findDecodedBase64Tokens, maskSecrets, scanSecrets, type SecretFinding } from '../gateway/secrets.js';
 import {
   classifySecurityReview,
   codeLineAt,
@@ -144,19 +144,46 @@ function markerFindings(code: string): SecurityFinding[] {
   return out;
 }
 
+interface CodeView {
+  readonly text: string;
+  readonly source: 'raw' | 'nfkc' | 'base64';
+  readonly exact: boolean;
+}
+
+/** Виды кода для decode-and-scan: raw, NFKC, base64-токены (RT-97, round-4). */
+function codeViews(code: string): CodeView[] {
+  const views: CodeView[] = [{ text: code, source: 'raw', exact: true }];
+  const nfkc = code.normalize('NFKC');
+  if (nfkc !== code) views.push({ text: nfkc, source: 'nfkc', exact: nfkc.length === code.length });
+  for (const token of findDecodedBase64Tokens(code)) {
+    if (token.decoded.length >= 8) views.push({ text: token.decoded, source: 'base64', exact: false });
+  }
+  return views;
+}
+
 function injectionFindings(code: string): SecurityFinding[] {
   const out: SecurityFinding[] = [];
-  for (const pattern of INJECTION_PATTERNS) {
-    for (const m of [...code.matchAll(pattern.re)].slice(0, 5)) {
-      out.push({
-        severity: 'high',
-        category: pattern.category,
-        line: codeLineAt(code, m.index ?? 0),
-        title: pattern.title,
-        evidence: evidenceAt(code, m.index ?? 0, m[0].length),
-        recommendation:
-          'Инструкции внутри кода — данные, а не команды. Убери фразу и не встраивай указания ревьюеру/агенту в код.',
-      });
+  const seen = new Set<string>();
+  for (const view of codeViews(code)) {
+    for (const pattern of INJECTION_PATTERNS) {
+      for (const m of [...view.text.matchAll(pattern.re)].slice(0, 5)) {
+        // Одна и та же фраза из raw/base64-вида не должна двоиться.
+        const key = `${pattern.title}|${m[0]}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const index = view.exact ? (m.index ?? 0) : 0;
+        out.push({
+          severity: 'high',
+          category: pattern.category,
+          line: view.exact ? codeLineAt(code, index) : 1,
+          title: pattern.title,
+          evidence: view.exact
+            ? evidenceAt(code, index, m[0].length)
+            : maskSecrets(m[0]).slice(0, 120),
+          recommendation:
+            'Инструкции внутри кода — данные, а не команды. Убери фразу и не встраивай указания ревьюеру/агенту в код.',
+        });
+      }
     }
   }
   return out;

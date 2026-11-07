@@ -40,6 +40,8 @@ export interface AttackTarget {
   readonly name: string;
   /** Input guard: блокирует ли сообщение (например, подложенный файл). */
   scanInput(text: string): ScanVerdict;
+  /** Input guard для нескольких сообщений: split секрета/инструкции между ними. */
+  scanInputParts(parts: readonly string[]): ScanVerdict;
   /** Output guard: блокирует/редактирует ли ответ модели. */
   scanOutput(text: string, systemPrompt?: string): ScanVerdict;
   /** Путь generation → extractCode → security review → evaluate + classify. */
