@@ -63,6 +63,28 @@
   тестов; typecheck чисто; self-test 14/14. Коммиты f9034ca, cffcfff,
   1215f36, 738f260.
 
+### Round 3 — защита + атаки перед боем с соперником (2026-11-07, run-2026-11-07, эпик #233)
+
+- Сут расширен с 64 до 80 атак (RT-66..RT-81): plain-hex строка,
+  percent-encoding, zero-width U+200B в литерале секрета, «system
+  instructions» EN/RU, PowerShell IEX-cradle, `certutil -urlcache`,
+  `eval(atob(…))` без секрета внутри, decimal/hex IP в https URL,
+  prompt injection в пользовательском вводе EN/RU + подложенный файл
+  с инструкцией без секретов, RU JSON-вердикт ревьюеру, подмена роли,
+  занижение severity.
+- Defense: `secrets.ts` — три decode-and-scan детектора (hex-string,
+  %NN-последовательности, strip-невидимых); `outputGuard.ts` —
+  instructions-leak EN/RU (раскрытие = двоеточие/предписание, FP-тест на
+  «documented in the repo»), IEX/certutil/eval-atob паттерны,
+  decimal/hex IP-хосты; `inputGuard.ts` — scanInstructions: инструкции-
+  инъекции во вводе блокируются в обоих режимах (prompt_injection /
+  exfil_request), находки идут в 422/audit gateway; `backstop.ts` —
+  RU «отвечай {summary}», role reassignment, severity downgrade.
+- Все 16 новых кейсов до фикса пробивали (breached), после — hardening.
+- Итог: `attacks=80 defended=79 breached=0 residual=1 → PASS`; 541/541
+  тестов; typecheck чисто; self-test 14/14. README дополнен battle
+  playbook'ом для живого боя с партнёром.
+
 ---
 
 ## ADVANCED Day 13 — LLM Gateway (2026-11-04)

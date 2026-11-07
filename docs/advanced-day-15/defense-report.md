@@ -150,3 +150,57 @@ Expectations кейсов выровнены с этим дизайном; `reda
   `attacks=64 defended=63 breached=0 residual=1 → PASS`, exit 0.
 - `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
 - Grep diff на сырые секреты — только фейковые фикстуры.
+
+## Appendix: Round 3 (2026-11-07, run-2026-11-07, эпик #233)
+
+Вход: расширенный набор атак RT-66..RT-81 (см. attack-report round-3).
+Все 16 — breached до фикса. Фикс: новый кейс + детектор + FP-тест на
+каждый (правило day-15: decode-and-scan / высокоточные фразы, находка
+только если декод реально содержит секрет).
+
+### Что пофикшено
+
+- **`gateway/secrets.ts`**: split-кандидат «hex string literal» (декод hex →
+  scanSecrets, чётная длина, printable — иначе null); `%NN`-последовательности
+  в `findEscaped`/`maskSecrets`/`decodeEscaped`; общий строковый кандидат
+  теперь strip-ит невидимые символы (U+200B..U+200F, U+2060, BOM, soft
+  hyphen) вместе с пробелами. Закрывает RT-66/RT-67/RT-68.
+- **`gateway/outputGuard.ts`**: LEAK_PATTERNS — «system instructions» EN
+  (раскрытие = `are/is/was` + двоеточие, либо require/forbid, либо
+  «here/these are my system instructions») и RU («инструкц*» в обеих
+  семьях). FP-тест: «The system instructions are documented in the repo» —
+  allow. COMMAND_PATTERNS: IEX/invoke-expression + DownloadString/…,
+  new-object webclient + download, certutil + -urlcache, eval/Function/
+  setTimeout + atob, exec + base64.b64decode. classifyUrl: decimal int,
+  hex, dotted-hex хосты → highRisk. Закрывает RT-69..RT-75.
+- **`gateway/inputGuard.ts`**: новая поверхность — `scanInstructions`
+  (prompt_injection / exfil_request, EN+RU, включая «пропусти security
+  review»). Инструкции блокируют запрос в обоих режимах (mask не
+  применим к инструкции); server включает instructionSummary в 422
+  findings, audit и intercepted-логи. Закрывает RT-76/RT-77/RT-78.
+- **`securityLoop/backstop.ts`**: INJECTION_PATTERNS — RU «отвечай/ответь
+  {summary}», подмена роли (you-are-now-the-approver / ты-теперь /
+  твоя новая роль; «you are now ready to deploy» не бьётся), severity
+  downgrade EN/RU. Закрывает RT-79/RT-80/RT-81.
+
+### Что осталось (честно, поверх round-2)
+
+- Instruction-паттерны — точные фразы: парафраз, опечатки и раздельные
+  сообщения статикой не собираются (та же природа, что RT-12).
+  Компенсация: output guard + backstop по выходу; наблюдаемость —
+  intercepted.jsonl.
+- Один FP-инцидент валидации: FP-тест «localhost:3040 → allow» был
+  неверным — нестандартные порты флагались day-13 правилом портов и
+  до round-3. Тест переписан на документирование поведения; детектор
+  не менялся (surgical scope).
+
+### Валидация round 3
+
+- `pnpm --filter challenge typecheck` — чисто.
+- `pnpm --filter challenge test` — 541/541 (+24 теста: детекторы, FP,
+  input-instructions, backstop round-3).
+- `pnpm --filter challenge start -- red-team` —
+  `attacks=80 defended=79 breached=0 residual=1 → PASS`
+  (run `rt-20261107-094939-09f2`).
+- `pnpm --filter challenge start -- llm-gateway --self-test` — 14/14.
+- Grep diff на сырые секреты — только фейковые фикстуры.
