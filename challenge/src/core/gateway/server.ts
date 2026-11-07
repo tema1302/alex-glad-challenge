@@ -333,10 +333,15 @@ async function handleChat(
   }
 
   const input = guardInput(body.messages, { mode: opts.config.guardMode });
-  const inputAudit = toAuditFindings(input.summary);
+  // Round-3: инструкции-инъекции во вводе идут в тот же audit/422-формат
+  // (kind/severity/preview), что и находки секретов.
+  const inputAudit = toAuditFindings([...input.summary, ...input.instructionSummary]);
   const promptPreview = safePreview(body.messages.map((m) => m.content).join('\n'));
-  if (input.findings.length > 0) {
-    writeIntercepted(intercepted, auditBase.ts, requestId, 'input', input.summary);
+  if (input.findings.length > 0 || input.instructions.length > 0) {
+    writeIntercepted(intercepted, auditBase.ts, requestId, 'input', [
+      ...input.summary,
+      ...input.instructionSummary,
+    ]);
   }
 
   if (input.action === 'blocked') {
@@ -344,7 +349,11 @@ async function handleChat(
     sendAudit(
       'blocked_input',
       422,
-      { error: input.warning, guard: 'input', findings: input.summary },
+      {
+        error: input.warning,
+        guard: 'input',
+        findings: [...input.summary, ...input.instructionSummary],
+      },
       {
         promptPreview,
         inputFindings: inputAudit,

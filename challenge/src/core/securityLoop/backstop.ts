@@ -63,8 +63,26 @@ const INJECTION_PATTERNS: readonly MarkerPattern[] = [
     category: 'other',
   },
   {
-    re: /(?:верни|вернуть|respond\s+with|return\s+only)\W{0,16}"?\s*summary"?\s*:?\s*"/gi,
+    re: /(?:верни|вернуть|отвечай|ответить|ответь|respond\s+with|return\s+only|answer\s+with)\W{0,16}"?\s*summary"?\s*:?\s*"/gi,
     title: 'обход security review: попытка подсунуть готовый JSON-вердикт',
+    category: 'other',
+  },
+  {
+    // Role reassignment: «you are now the approver» (RT-80, round-3). Требуем
+    // назначение роли — «you are now ready to deploy» не бьём.
+    re: /\byou\s+are\s+now\s+(?:the\s+|my\s+)?(?:security\s+|code\s+|deploy\s+|release\s+)?(?:approver|reviewer|auditor|bot|agent)\b|ты\s+(?:теперь|больше\s+не)\s+(?:аппрувер|ревьюер|бот|агент|security)|твоя\s+новая\s+роль/gi,
+    title: 'prompt injection: подмена роли агента в коде',
+    category: 'other',
+  },
+  {
+    // Severity downgrade: убедить classify занизить находки (RT-81, round-3).
+    re: /\b(?:classify|mark|treat|report)\s+(?:all|any|every)\s+(?:findings?|issues?|warnings?|vulnerabilities)\s+as\s+(?:informational|info|low|advisory|minor)/gi,
+    title: 'обход security review: требование занизить severity находок',
+    category: 'other',
+  },
+  {
+    re: /(?:считай|помечай|классифицируй|отмечай)\s+(?:все\s+)?(?:находки|проблемы|замечания|уязвимости)\s+(?:как\s+)?(?:информационн[а-яё]*|несущественн[а-яё]*|низк[а-яё]*(?:\s+(?:severity|приоритет))?|info|advisory)/gi,
+    title: 'обход security review: требование занизить severity находок (RU)',
     category: 'other',
   },
   {

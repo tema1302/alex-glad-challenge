@@ -3,6 +3,11 @@
 // block — находка любого секрета блокирует запрос (LLM не вызывается);
 // mask  — секреты заменяются маркерами, запрос проходит дальше.
 // Warning никогда не содержит сырое значение секрета.
+//
+// Round-3 (day-15 RT-76..RT-78): инструкции-инъекции в пользовательском вводе
+// (prompt injection через user message или подложенный файл) сканируются
+// отдельно: их нельзя «замаскировать», поэтому block в обоих режимах.
+// Паттерны высокоточные — тот же набор семейств, что в backstop.
 
 import type { ChatMessage } from '../types.js';
 import {
@@ -25,12 +30,114 @@ export interface InputGuardResult {
   readonly action: InputGuardAction;
   readonly findings: readonly MessageSecretFinding[];
   readonly summary: readonly FindingSummary[];
+  /** Инструкции-инъекции во вводе (round-3): block в обоих режимах. */
+  readonly instructions: readonly InstructionFinding[];
+  readonly instructionSummary: readonly InstructionSummary[];
   /** Сообщения для upstream: исходные (allow) или замаскированные (masked). */
   readonly messages: readonly ChatMessage[];
   readonly warning: string | null;
 }
 
 export const DEFAULT_GUARD_MODE: GuardMode = 'block';
+
+// ── Инструкции-инъекции во вводе (round-3, RT-76..RT-78) ──
+
+export type InputInstructionKind = 'prompt_injection' | 'exfil_request';
+
+export interface InstructionFinding {
+  readonly kind: InputInstructionKind;
+  readonly label: string;
+  readonly severity: 'high';
+  readonly preview: string;
+  readonly index: number;
+  readonly length: number;
+  readonly redaction: string;
+}
+
+export interface InstructionSummary {
+  readonly kind: InputInstructionKind;
+  readonly severity: 'high';
+  readonly preview: string;
+}
+
+interface InstructionPattern {
+  readonly re: RegExp;
+  readonly kind: InputInstructionKind;
+  readonly label: string;
+}
+
+const REDACTED_INSTRUCTION = '[BLOCKED_INSTRUCTION]';
+
+/**
+ * Инструкции к модели, замаскированные под данные: user message или
+ * подложенный файл в контексте. Высоко-точные паттерны: конкретные фразы,
+ * проверенные FP-тестами на легитимных вопросах про безопасность.
+ */
+const INSTRUCTION_PATTERNS: readonly InstructionPattern[] = [
+  {
+    re: /\b(?:ignore|disregard|forget)\s+(?:all\s+|any\s+)?(?:previous|prior|above|earlier)\s+(?:instructions?|prompts?|rules?)/gi,
+    kind: 'prompt_injection',
+    label: 'prompt injection: «ignore previous instructions»',
+  },
+  {
+    re: /(?:игнорир[а-яё]*|проигнорир[а-яё]*|забудь|забыть)\s+(?:все\s+)?(?:предыдущие|прошлые|выше(?:описанные|стоящие)?)\s+(?:инструкц[а-яё]*|указан[а-яё]*|правил[а-яё]*)/gi,
+    kind: 'prompt_injection',
+    label: 'prompt injection: «игнорируй предыдущие инструкции»',
+  },
+  {
+    re: /\b(?:print|reveal|show|display|repeat|output)\s+(?:me\s+)?(?:your|the)\s+(?:system\s+(?:prompt|message|instructions)|initial\s+instructions?|hidden\s+rules?)/gi,
+    kind: 'exfil_request',
+    label: 'exfil: запрос system prompt модели',
+  },
+  {
+    re: /(?:выведи|покажи|распечатай|повтори|напечатай|раскрой)\s+(?:свой\s+|твои?\s+)?(?:системн[а-яё]*\s+(?:промпт[а-яё]*|инструкц[а-яё]*|правил[а-яё]*)|скрытые?\s+правил[а-яё]*|начальные?\s+инструкц[а-яё]*)/gi,
+    kind: 'exfil_request',
+    label: 'exfil: запрос system prompt модели (RU)',
+  },
+  {
+    re: /\b(?:skip|ignore|bypass)\s+(?:the\s+)?security\s+(?:review|check|scan)|security\s+(?:review|ревью)\s+(?:can\s+be\s+)?skipped/gi,
+    kind: 'prompt_injection',
+    label: 'обход security review во вводе',
+  },
+  {
+    re: /(?:пропусти|пропустить|не\s+делай)\s+(?:security\s*|безопасность,?\s*)?(?:ревью|review|проверку\s+безопасности)/gi,
+    kind: 'prompt_injection',
+    label: 'обход security review во вводе (RU)',
+  },
+];
+
+function previewForInstruction(raw: string): string {
+  const flat = raw.replace(/\s+/g, ' ').trim();
+  return flat.length <= 40 ? flat : `${flat.slice(0, 37)}…`;
+}
+
+function findingForInstruction(p: InstructionPattern, raw: string, index: number): InstructionFinding {
+  return {
+    kind: p.kind,
+    label: p.label,
+    severity: 'high',
+    preview: previewForInstruction(raw),
+    index,
+    length: raw.length,
+    redaction: REDACTED_INSTRUCTION,
+  };
+}
+
+export function scanInstructions(messages: readonly ChatMessage[]): InstructionFinding[] {
+  const out: InstructionFinding[] = [];
+  for (const message of messages) {
+    for (const p of INSTRUCTION_PATTERNS) {
+      for (const m of message.content.matchAll(p.re)) {
+        out.push(findingForInstruction(p, m[0], m.index));
+      }
+    }
+  }
+  return out;
+}
+
+function summarizeInstructions(instructions: readonly InstructionFinding[]): InstructionSummary[] {
+  return instructions.map(({ kind, severity, preview }) => ({ kind, severity, preview }));
+}
 
 export function guardInput(
   messages: readonly ChatMessage[],
@@ -39,9 +146,35 @@ export function guardInput(
   const mode = opts.mode ?? DEFAULT_GUARD_MODE;
   const findings = scanMessages(messages);
   const summary = summarizeFindings(findings);
+  // Инструкции — не секрет, «замаскировать» их нельзя: block в обоих режимах.
+  const instructions = scanInstructions(messages);
+  const instructionSummary = summarizeInstructions(instructions);
 
-  if (findings.length === 0) {
-    return { action: 'allow', findings, summary, messages, warning: null };
+  if (findings.length === 0 && instructions.length === 0) {
+    return {
+      action: 'allow',
+      findings,
+      summary,
+      instructions,
+      instructionSummary,
+      messages,
+      warning: null,
+    };
+  }
+
+  if (instructions.length > 0) {
+    const ikinds = [...new Set(instructions.map((i) => i.kind))].join(', ');
+    return {
+      action: 'blocked',
+      findings,
+      summary,
+      instructions,
+      instructionSummary,
+      messages,
+      warning:
+        `Input Guard: запрос заблокирован, во вводе инструкции-инъекции (${ikinds}). ` +
+        'Инструкции к модели должны идти через role: system, а не через данные.',
+    };
   }
 
   const kinds = [...new Set(findings.map((f) => f.kind))].join(', ');
@@ -50,6 +183,8 @@ export function guardInput(
       action: 'masked',
       findings,
       summary,
+      instructions,
+      instructionSummary,
       messages: maskMessages(messages),
       warning: `Input Guard: замаскированы секреты (${kinds}). В LLM ушли безопасные маркеры.`,
     };
@@ -59,6 +194,8 @@ export function guardInput(
     action: 'blocked',
     findings,
     summary,
+    instructions,
+    instructionSummary,
     messages,
     warning:
       `Input Guard: запрос заблокирован, секреты (${kinds}) не отправлены в LLM. ` +

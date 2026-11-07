@@ -1,7 +1,8 @@
 // Output Guard (ADVANCED day-13): проверка ответа модели до выдачи пользователю.
 //
 // Ловит: сгенерированные секреты (в т.ч. галлюцинированные ключи), утечку
-// system prompt, подозрительные URL и shell-команды.
+// system prompt / system instructions, подозрительные URL (включая IP-обфускацию)
+// и shell-команды (включая download-cradle и encoded exec).
 // critical → ответ блокируется; high/medium → фрагмент редактируется.
 // Наружу — только безопасные маркеры, без сырых значений.
 
@@ -78,14 +79,31 @@ const COMMAND_PATTERNS: ReadonlyArray<RegExp> = [
   /\bsubprocess\.[A-Za-z]+\([^\n)]*shell\s*=\s*True/g,
   /\bnc\s+-e\s+\/(?:bin\/)?(?:ba)?sh\b/gi,
   /\bchmod\s+777\s+\//g,
+  // PowerShell download-cradle: IEX (New-Object Net.WebClient).DownloadString(…)
+  // (RT-71, round-3 red team).
+  /\b(?:iex|invoke-expression)\b[^\n]{0,120}\b(?:downloadstring|downloadfile|invoke-webrequest|invoke-restmethod|iwr)\b/gi,
+  /\bnew-object\s+\S*webclient\b[^\n]{0,120}\bdownload/gi,
+  // LOLBin-загрузка: certutil -urlcache -split -f https://… (RT-72, round-3).
+  /\bcertutil\b[^\n]{0,120}-urlcache/gi,
+  // Encoded exec в коде: eval(atob('…')), Function(atob('…')),
+  // exec(base64.b64decode(…)) — payload не обязан содержать секрет
+  // (RT-73, round-3).
+  /\b(?:eval|Function|setTimeout|setInterval)\s*\(\s*atob\s*\(/g,
+  /\bexec\s*\(\s*(?:compile\s*\(\s*)?base64\.b64decode/g,
 ];
 
 const LEAK_PATTERNS: ReadonlyArray<RegExp> = [
   /\b(?:here(?:'s| is)|reveal(?:ing)?|print(?:ing)?|display(?:ing)?|show(?:ing)?|leak(?:ing)?)\s+(?:my|the)\s+system\s+(?:prompt|message)\b/gi,
   /\bmy\s+system\s+(?:prompt|message)\s+(?:is|was|says)\b/gi,
+  // «system instructions» — тот же смысл другим словом (RT-69, round-3).
+  // Раскрытие = двоеточие/тире или предписывающий глагол: легитимное
+  // «the system instructions are documented in the repo» не бьём (FP-тест).
+  /\b(?:my|our|the)\s+system\s+instructions?\s+(?:are|is|was)\s*[:—-]\s*\S+/gi,
+  /\b(?:my|our)\s+system\s+instructions?\s+(?:require[sd]?|forbid[sd]?)\b/gi,
+  /\b(?:here(?:'s| is)|these)\s+(?:are\s+)?(?:my|our|the)\s+system\s+instructions?\b/gi,
   // \w в JS не покрывает кириллицу: «системный» ломал паттерн до [а-яё] (RT-51, round-2).
-  /(?:вот|показываю|вывожу|раскрываю)\s+(?:мой\s+)?системн[а-яё]*\s+промпт[а-яё]*/gi,
-  /системн[а-яё]*\s+промпт\s*[:—-]\s*\S+/gi,
+  /(?:вот|показываю|вывожу|раскрываю)\s+(?:мой\s+|мои\s+)?системн[а-яё]*\s+(?:промпт[а-яё]*|инструкц[а-яё]*)/gi,
+  /системн[а-яё]*\s+(?:промпт[а-яё]*|инструкц[а-яё]*)\s*[:—-]\s*\S+/gi,
 ];
 
 function normalizeForLeak(s: string): string {
@@ -155,12 +173,20 @@ function classifyUrl(raw: string): OutputFinding | null {
   }
   const scheme = url.protocol.toLowerCase();
   const host = url.hostname.toLowerCase();
+  // IP-обфускация: десятичное целое (2130706433 = 127.0.0.1) и hex-формы
+  // (0x7f.0x0.0x0.0x1) — new URL их не нормализует, старый dotted-quad-тест
+  // проходил мимо (RT-74/RT-75, round-3 red team).
+  const ipObfuscated =
+    /^\d{1,10}$/.test(host) ||
+    /^0x[0-9a-f]{1,8}$/i.test(host) ||
+    /^(?:0x[0-9a-f]{1,2}\.){3}0x[0-9a-f]{1,2}$/i.test(host);
   const highRisk =
     scheme === 'javascript:' ||
     scheme === 'data:' ||
     scheme === 'file:' ||
     host === '169.254.169.254' ||
     host.startsWith('xn--') ||
+    ipObfuscated ||
     /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) ||
     SHORTENERS.has(host) ||
     url.username.length > 0 ||

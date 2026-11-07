@@ -227,3 +227,52 @@ test('maskSecrets: маскирует split/hex/ws-base64', () => {
   );
   assert.ok(!wsMasked.includes(flat.slice(0, 10)));
 });
+
+// ── Day 15 red team round 3: plain-hex / percent-encoding / zero-width ──
+
+test('scanSecrets: plain-hex строка с ключом (Buffer.from hex)', () => {
+  const hex = Buffer.from(FAKE_SK, 'utf8').toString('hex');
+  const findings = scanSecrets(`const KEY = Buffer.from("${hex}", "hex").toString();`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: percent-encoded ключ в URL-параметре', () => {
+  const pct = [...Buffer.from(FAKE_SK, 'utf8')].map((b) => `%${b.toString(16).padStart(2, '0')}`).join('');
+  const findings = scanSecrets(`fetch("https://api.example.com/v1?key=${pct}")`);
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'hex_secret');
+  assert.equal(findings[0]!.via, 'hex');
+});
+
+test('scanSecrets: zero-width U+200B внутри литерала секрета', () => {
+  const findings = scanSecrets('const KEY = "sk-test\u200bABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
+  assert.equal(findings.length, 1);
+  assert.equal(findings[0]!.kind, 'split_secret');
+});
+
+test('scanSecrets: FP — hex/percent/zwsp без секрета не детектятся', () => {
+  // hex-литерал с не-секретным декодом и нечётная длина
+  assert.deepEqual(scanSecrets('const color = "deadbeefdeadbeefdeadbeef";'), []);
+  assert.deepEqual(scanSecrets('const odd = "736b2d7465737";'), []);
+  // percent-encoding легитимного URL без секрета
+  assert.deepEqual(scanSecrets('fetch("https://api.example.com/v1?q=%D0%BF%D1%80%D0%B8")'), []);
+  // zero-width в обычном тексте без секрета
+  assert.deepEqual(scanSecrets('const label = "ama\u200bzon order";'), []);
+});
+
+test('maskSecrets: маскирует plain-hex/percent/zero-width обфускации', () => {
+  const hex = Buffer.from(FAKE_SK, 'utf8').toString('hex');
+  const hexMasked = maskSecrets(`const KEY = Buffer.from("${hex}", "hex").toString();`);
+  assert.ok(hexMasked.includes(REDACTION.split));
+  assert.ok(!hexMasked.includes(hex));
+
+  const pct = [...Buffer.from(FAKE_SK, 'utf8')].map((b) => `%${b.toString(16).padStart(2, '0')}`).join('');
+  const pctMasked = maskSecrets(`fetch("https://api.example.com/v1?key=${pct}")`);
+  assert.ok(pctMasked.includes(REDACTION.hex));
+  assert.ok(!pctMasked.includes(pct));
+
+  const zwMasked = maskSecrets('const KEY = "sk-test\u200bABCDEFGHIJKLMNOPQRSTUVWXYZ1234";');
+  assert.ok(zwMasked.includes(REDACTION.split));
+  assert.ok(!zwMasked.includes('sk-test'));
+});

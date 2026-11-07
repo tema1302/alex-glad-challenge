@@ -3,9 +3,10 @@
 // Инвариант: наружу и в audit-логи попадают только kind/severity/preview —
 // сырое значение секрета никогда не покидает этот модуль.
 // Детекторы чистые, без I/O. Обфускация проверяется декодированием и повторным
-// сканом с ограничением глубины: base64 (включая двойной и с пробелами),
-// split-конкатенация ('a'+'b', [a,b].join(''), a.concat(b), template literal),
-// hex/unicode-escape последовательности.
+// сканом с ограничением глубины: base64 (включая двойной, url-safe и с
+// пробелами), split-конкатенация ('a'+'b', [a,b].join(''), a.concat(b),
+// template literal), hex/unicode-escape, percent-encoding, plain-hex строка,
+// невидимые символы (zero-width/BOM) внутри литерала.
 
 import type { ChatMessage } from '../types.js';
 
@@ -194,11 +195,28 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
       }),
   },
   {
-    label: 'string with inner whitespace',
+    // Пробелы И невидимые символы (zero-width, BOM): «секрет в одну строку,
+    // но с невидимой начинкой». RT-68, round-3 red team.
+    label: 'string with inner whitespace/invisible chars',
     re: /(["'])([^"'\n]{16,})\1/g,
     joined: (g) => {
       const s = g[2] ?? '';
-      return /\s/.test(s) ? s.replace(/\s+/g, '') : null;
+      const stripped = s.replace(/[\s\u00ad\u200b-\u200f\u2060\ufeff]/g, '');
+      return stripped === s ? null : stripped;
+    },
+  },
+  {
+    // Plain-hex строка: Buffer.from('736b2d…','hex') без эскейпов — HEX_SEQ_RE
+    // с \x-префиксами её не видел. RT-66, round-3 red team. FP-safe: находка
+    // засчитывается только если декод содержит реальный секрет (scanSecrets).
+    label: 'hex string literal',
+    re: /(["'])([0-9a-fA-F]{16,})\1/g,
+    joined: (g) => {
+      const s = g[2] ?? '';
+      if (s.length % 2 !== 0) return null;
+      const bytes = Buffer.from(s, 'hex');
+      const decoded = bytes.toString('utf8');
+      return bytes.length > 0 && isPrintable(decoded) ? decoded : null;
     },
   },
   {
@@ -213,6 +231,9 @@ const SPLIT_CANDIDATES: readonly SplitCandidate[] = [
 
 const HEX_SEQ_RE = /(?:\\x[0-9a-fA-F]{2}){8,}/g;
 const UNICODE_SEQ_RE = /(?:\\u\{?[0-9a-fA-F]{2,4}\}?){8,}/g;
+// Percent-encoding: %73%6b%2d… — секрет, спрятанный в URL-параметре
+// (RT-67, round-3 red team).
+const PERCENT_SEQ_RE = /(?:%[0-9a-fA-F]{2}){8,}/g;
 
 export const REDACTION = {
   apiKey: '[REDACTED_API_KEY]',
@@ -377,10 +398,10 @@ function findBase64Whitespace(text: string, depth: number): SecretFinding[] {
   return out;
 }
 
-/** hex/unicode-escape последовательности, собирающиеся в секрет. */
+/** hex/unicode-escape/percent-последовательности, собирающиеся в секрет. */
 function findEscaped(text: string, depth: number): SecretFinding[] {
   const out: SecretFinding[] = [];
-  for (const re of [HEX_SEQ_RE, UNICODE_SEQ_RE]) {
+  for (const re of [HEX_SEQ_RE, UNICODE_SEQ_RE, PERCENT_SEQ_RE]) {
     for (const m of text.matchAll(re)) {
       const decoded = decodeEscaped(m[0]);
       if (decoded.length < 4) continue;
@@ -399,12 +420,12 @@ function findEscaped(text: string, depth: number): SecretFinding[] {
   return out;
 }
 
-/** Декодирует \xNN / \uNNNN(…)-последовательность в строку; невалидный токен — '' */
+/** Декодирует \xNN / \uNNNN(…) / %NN-последовательность в строку; невалидный токен — '' */
 function decodeEscaped(raw: string): string {
   let out = '';
-  const tokenRe = /\\x([0-9a-fA-F]{2})|\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})/g;
+  const tokenRe = /\\x([0-9a-fA-F]{2})|\\u\{([0-9a-fA-F]{1,6})\}|\\u([0-9a-fA-F]{4})|%([0-9a-fA-F]{2})/g;
   for (const m of raw.matchAll(tokenRe)) {
-    const hex = m[1] ?? m[2] ?? m[3];
+    const hex = m[1] ?? m[2] ?? m[3] ?? m[4];
     if (!hex) return '';
     const code = parseInt(hex, 16);
     if (!Number.isFinite(code) || code < 0x20 || code > 0x10ffff) return '';
@@ -541,6 +562,10 @@ export function maskSecrets(text: string): string {
     return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
   });
   out = replaceWhen(out, UNICODE_SEQ_RE, (m) => {
+    const decoded = decodeEscaped(m[0]);
+    return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
+  });
+  out = replaceWhen(out, PERCENT_SEQ_RE, (m) => {
     const decoded = decodeEscaped(m[0]);
     return decoded.length >= 4 && scanSecrets(decoded, 1).length > 0 ? REDACTION.hex : null;
   });
