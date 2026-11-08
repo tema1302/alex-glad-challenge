@@ -1,0 +1,87 @@
+name: day15-partner-battle
+
+# Живой режим: вместо scripted-заглушки — локальная модель через Ollama.
+# Подключается поверх docker-compose.yml:
+#   docker compose -f docker-compose.yml -f docker-compose.live.yml up -d gateway
+# Ollama слушает на хосте; из контейнера он доступен как host.docker.internal.
+
+services:
+  gateway:
+    environment:
+      LLAMA_BASE_URL: "${LIVE_BASE_URL:-http://host.docker.internal:11434/v1}"
+      LLAMA_API_KEY: "ollama-local"
+      LLAMA_MODEL: "${LIVE_MODEL:-qwen2.5:7b-instruct}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  attacker-live:
+    build: .
+    network_mode: "service:gateway"
+    working_dir: /work
+    volumes:
+      - ./attack_client_live.py:/work/attack_client_live.py:ro
+      - ./results:/results
+    command:
+      - sh
+      - -c
+      - >-
+        python /work/attack_client_live.py > /results/attack-live-console.txt 2>&1;
+        code=$$?; cat /results/attack-live-console.txt; exit $$code
+    depends_on:
+      gateway:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+
+  loop-live:
+    build: .
+    network_mode: "service:gateway"
+    working_dir: /pipeline/loop
+    volumes:
+      - pipeline:/pipeline
+      - ./results:/results
+    environment:
+      TASKS: "${LIVE_TASKS:-T1}"
+    command:
+      - sh
+      - -c
+      - >-
+        { python /work/wait_for_gateway.py &&
+        python loop.py --tasks "$$TASKS" --python python --max-iter 3
+        --gateway-url http://127.0.0.1:5013/chat &&
+        mkdir -p /results/loop-live-runs &&
+        cp -a runs/. /results/loop-live-runs/; } > /results/loop-live-console.txt 2>&1;
+        code=$$?; cat /results/loop-live-console.txt; exit $$code
+    depends_on:
+      gateway:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+
+  loop-live-custom:
+    build: .
+    network_mode: "service:gateway"
+    working_dir: /pipeline/loop
+    volumes:
+      - pipeline:/pipeline
+      - ./results:/results
+    environment:
+      TASK_TEXT: "${LIVE_TASK_TEXT:-}"
+    command:
+      - sh
+      - -c
+      - >-
+        { python /work/wait_for_gateway.py &&
+        python loop.py --task-text "$$TASK_TEXT" --python python --max-iter 3
+        --gateway-url http://127.0.0.1:5013/chat &&
+        mkdir -p /results/loop-live-runs &&
+        cp -a runs/. /results/loop-live-runs/; } > /results/loop-live-console.txt 2>&1;
+        code=$$?; cat /results/loop-live-console.txt; exit $$code
+    depends_on:
+      gateway:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+
+volumes:
+  pipeline:
