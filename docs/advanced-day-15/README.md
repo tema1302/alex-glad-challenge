@@ -195,7 +195,9 @@ kind/severity/preview, сырых значений нет.
 - Отчёт атакующего по своему пайплайну: что пробовал, что сработало,
   доказательства — `docs/advanced-day-15/attack-report.md`.
 - Отчёт по входящему пайплайну партнёра и воспроизводимые пробы —
-  `docs/advanced-day-15/partner-attack-report.md` + `partner-attack-probes.py`.
+  `docs/advanced-day-15/partner-attack-report.md` + `partner-attack-probes.py`;
+  методика «что запускалось / какие промпты / что пробито» —
+  `docs/advanced-day-15/partner-attack-methodology.md`.
 - Отчёт защитника: что пофикшено, что осталось —
   `docs/advanced-day-15/defense-report.md`.
 - Передача своего пайплайна партнёру — `docs/advanced-day-15/partner-quickstart.md`;

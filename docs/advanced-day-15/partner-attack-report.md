@@ -18,6 +18,9 @@
 
 ## 1. Как воспроизвести
 
+Полная методика «что запускалось / какие промпты отправлялись / что пробито» —
+`docs/advanced-day-15/partner-attack-methodology.md`.
+
 Из корня репозитория, одной строкой (нужен Python 3.12+):
 
     python docs/advanced-day-15/partner-attack-probes.py --pipeline <путь-к-pipeline_day15>
