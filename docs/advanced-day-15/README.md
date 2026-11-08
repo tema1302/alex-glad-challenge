@@ -192,10 +192,14 @@ kind/severity/preview, сырых значений нет.
 
 ## Отчёты по бою
 
-- Отчёт атакующего: что пробовал, что сработало, доказательства —
-  `docs/advanced-day-15/attack-report.md`.
+- Отчёт атакующего по своему пайплайну: что пробовал, что сработало,
+  доказательства — `docs/advanced-day-15/attack-report.md`.
+- Отчёт по входящему пайплайну партнёра и воспроизводимые пробы —
+  `docs/advanced-day-15/partner-attack-report.md` + `partner-attack-probes.py`.
 - Отчёт защитника: что пофикшено, что осталось —
   `docs/advanced-day-15/defense-report.md`.
+- Передача своего пайплайна партнёру — `docs/advanced-day-15/partner-quickstart.md`;
+  готовый архив: [day15-pipeline.zip](day15-pipeline.zip).
 
 ## Остаточные риски (честно)
 
