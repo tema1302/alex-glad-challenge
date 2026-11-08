@@ -5,6 +5,34 @@
 
 ---
 
+## ADVANCED Day 15 — партнёрский red team round 2: Input Guard hardening (2026-11-08)
+**Ветка:** `main` (фикс по входящему отчёту партнёра; push — по явному запросу)
+
+**Что сделано:**
+- Разобран отчёт `imfailing/ai_advent_challenge` round 2: 4 подтверждённых
+  обхода Input Guard (эмодзи/точки/гомоглифы/«гипотетически») и 7 классов
+  перефразов. Output Guard остановил все 4; прямой утечки не было.
+- `challenge/src/core/gateway/inputGuard.ts`: detection-view теперь декодирует
+  `%NN`, сворачивает кириллические/греческие гомоглифы отдельным view, leetspeak
+  и любые разделители (эмодзи, точка, `_`) в пробел. Добавлены паттерны на
+  гипотетическую рамку, повтор контекста, JSON-поле `system_prompt`, сборку
+  секрета из кодировки, DAN/developer mode; клиентский `role: system`
+  сканируется полным набором; негативная политика отсекается фильтром
+  отрицания только для exfil-фраз. Исправлен ReDoS в email-детекторе
+  (локальная часть ≤64 символов).
+- Регрессия: `inputGuard.test.ts` (новые векторы, FP и ReDoS), `server.test.ts`
+  (сквозной `422` до upstream для L09/L03/L11/L23/L15), отчёт
+  `docs/advanced-day-15/partner-round2-defense.md`.
+
+**Проверки:** `pnpm --filter challenge typecheck` — ok; `pnpm --filter challenge
+test` — 621/621; повторный прогон payload'ов партнёра — все проверенные
+векторы `blocked`, прежние FP-вопросы `allow`.
+
+**Риски:** regex-слой не заменяет семантику; L05/L06/L13/L19/L22 остаются
+частично за Output Guard'ом (в отчёте партнёра это отказы модели, не breach).
+
+---
+
 ## ADVANCED Day 15 — Red Team Challenge (2026-11-06)
 **Ветка:** `feat/day-15-red-team` (loop run-2026-11-06-2, эпик #219)
 
