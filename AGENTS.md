@@ -674,9 +674,15 @@ debugging-and-error-recovery    code-simplification          ci-cd-and-automatio
 
 - Выбор профиля — `agent-profiles/references/selection.md`; ассистент объявляет
   профиль одной строкой и не спрашивает, какой выбрать.
-- Роли: `researcher` → `scout` ×3; `implementer` → `task`; `reviewer` →
+- Роли (маппинг OpenCode V2, правка 2026-11-07 — см.
+  `swarm-report/subagent-degradation-research-2026-11-07.md`): `researcher` →
+  `general` ×3 (промпт стадии/линзы — в prompt-параметре; для read-only-поиска
+  по коду — built-in `explore`); `implementer` → `general`; `reviewer` →
   `code-reviewer` (+ `security-auditor` для security-риска); `validator` →
-  `test-engineer`; `orchestrator` → main-сессия.
+  `test-engineer`; `orchestrator` → main-сессия. Персоны §12 зарегистрированы
+  с `mode: subagent` в обоих местах (канон `.omp/agents/*` и глобальные копии
+  `~/.config/opencode/agent/*`). Имена V1 `scout` и `task` в V2 не резолвятся
+  и в маппинг не возвращаются.
 - `reportDir`: `swarm-report/`.
 - Валидация: команды §10; baseline — `pnpm --filter challenge typecheck`;
   focused-тест/прогон — по изменённому поведению.
@@ -725,10 +731,12 @@ Tracker/labels — §13.9; reportDir/roles/surfaces — §13.1; commit/push и
 - `agent-profiles/references/extending.md` — как добавить профиль.
 
 Проект добавляет только: baseline/focused-команды §10, security-пункты §10 в
-Report, `reportDir` из §13.1 и tracker-поля §13.9. Текст стадий и шаблон Report
-здесь не дублируются. В финальном Report каждый незакрытый пункт скоупа сессии
-обязан быть либо issue, либо строкой в `Next` со статусом — «висячих» хвостов
-без статуса не остаётся.
+Report, обязательная строка `fan-out:` в Report (правило живёт в шаблоне
+`agent-profiles/references/report.md`; при пере-бутстрапе pack'а строка
+восстанавливается по этому абзацу), `reportDir` из §13.1 и tracker-поля §13.9.
+Текст стадий и шаблон Report здесь не дублируются. В финальном Report каждый
+незакрытый пункт скоупа сессии обязан быть либо issue, либо строкой в `Next`
+со статусом — «висячих» хвостов без статуса не остаётся.
 
 Номера §13.3–§13.8 удалены: профили, стадии, Report и расширение живут в
 `.omp/skills/agent-profiles/`.
@@ -742,7 +750,10 @@ Project values:
   create with `gh issue create --template bug.md --label bug --label needs-triage`.
 - Labels: `P0`–`P3` (+ `incident` for P0), `loop-run`, `in-progress`,
   `asked-user`, `iteration:2`, `cause:context|code|loop|test|premise`, `epic`,
-  `story`, `blocked`, `hotfix`. A priority without an issue label does not exist.
+  `story`, `blocked`, `hotfix`, `fan-out` (loop по issue использовал
+  субагент-фанаут хотя бы на одной стадии; loop-run без `fan-out` — работа
+  целиком в main-сессии, причина — в строке `fan-out:` Report). A priority
+  without an issue label does not exist.
 - Milestone — §13.1.1; close with `Closes #N`.
 - Caps: `P1 ≤5` (WIP/P0 targets per loop.md).
 - Metrics: `node scripts/loop-metrics.mjs --from <N> --to <M>` (or

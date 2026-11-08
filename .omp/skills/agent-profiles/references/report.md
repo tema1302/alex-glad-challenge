@@ -9,6 +9,7 @@ adapter's values; keep the section order.
 ## Profile
 <business-feature | bug-search | research | project-graph>
 <stage graph actually followed; note any switch and why>
+fan-out: <stage→agent, ... | нет + причина>
 
 ## What was done / Answer
 - <change or answer>
@@ -45,6 +46,14 @@ Rules:
 
 - Every check is a command or a concrete observation, not "looks right".
 - A skipped check is `n/a` with a reason. It is not a pass.
+- Every Report carries exactly one `fan-out:` line: `stage→agent` for each
+  stage that ran in a subagent, or `нет + причина` when every stage ran in the
+  main session. "The agent catalog did not offer one" is a reason, not a
+  license to omit the line — silent fan-out degradation is the failure mode
+  this line exists to expose.
+- For security work, Validation is a fresh-context subagent (the project
+  adapter's security persona), never a same-context pass by the session that
+  wrote the code; reflect the actual agent in the `fan-out:` line.
 - Link stage artifacts by path; do not paste large logs.
 - Keep secrets, tokens, `.env` values, and credential-bearing URLs out of the
   Report.

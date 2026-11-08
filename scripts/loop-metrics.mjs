@@ -5,6 +5,10 @@
 // Run metrics (first-try, causes, interventions) exist only for issues carrying
 // `loop-run`: without that label the executor did not promise instrumentation,
 // so the script reports n/a instead of guessing.
+// `fan-out` counts loop-run issues whose loop used subagent fan-out on at least
+// one stage (label `fan-out`, AGENTS §13.9). A loop-run issue without the label
+// ran entirely in the main session — this is how silent fan-out degradation
+// stays visible instead of looking like a faster loop.
 //
 // Usage: node scripts/loop-metrics.mjs [--from N] [--to M] [--repo owner/name] [--milestone NAME]
 //        node scripts/loop-metrics.mjs --self-test
@@ -103,6 +107,9 @@ function summarize(rows) {
     askedUser: instrumented.length
       ? instrumented.filter((row) => row.labels.includes('asked-user')).length
       : null,
+    fanOut: instrumented.length
+      ? instrumented.filter((row) => row.labels.includes('fan-out')).length
+      : null,
     causes: Object.keys(causes).length ? causes : null,
   };
 }
@@ -135,15 +142,17 @@ function selfTest() {
   const uninstrumented = summarize([row('CLOSED', ['bug'], 2), row('CLOSED', ['bug', 'iteration:2'], 4)]);
   assert.equal(uninstrumented.firstTry, null);
   assert.equal(uninstrumented.askedUser, null);
+  assert.equal(uninstrumented.fanOut, null);
   assert.equal(uninstrumented.causes, null);
 
   const instrumented = summarize([
     row('CLOSED', ['loop-run', 'iteration:2', 'cause:code'], 4),
     row('CLOSED', ['loop-run', 'asked-user'], 2),
-    row('CLOSED', ['loop-run'], 6),
+    row('CLOSED', ['loop-run', 'fan-out'], 6),
   ]);
   assert.deepEqual(instrumented.firstTry, { passed: 2, total: 3 });
   assert.equal(instrumented.askedUser, 1);
+  assert.equal(instrumented.fanOut, 1);
   assert.deepEqual(instrumented.causes, { 'cause:code': 1 });
   assert.equal(instrumented.median, 4);
   console.log('self-test: ok');
@@ -224,10 +233,13 @@ const firstTry = summary.firstTry
   ? `${summary.firstTry.passed}/${summary.firstTry.total} (${((summary.firstTry.passed / summary.firstTry.total) * 100).toFixed(1)}%)`
   : 'n/a (no loop-run labels)';
 const askedUser = summary.askedUser === null ? 'n/a (no loop-run labels)' : String(summary.askedUser);
+const fanOut = summary.fanOut === null
+  ? 'n/a (no loop-run labels)'
+  : `${summary.fanOut}/${summary.instrumented} loop-run`;
 const causes = summary.causes
   ? Object.entries(summary.causes).sort().map(([label, count]) => `${label.slice(CAUSE_PREFIX.length)} ${count}`).join(', ')
   : 'n/a (no loop-run labels)';
-console.log(`instrumented: ${summary.instrumented}/${rows.length} (loop-run) | first-try: ${firstTry} | asked-user: ${askedUser} | causes: ${causes}`);
+console.log(`instrumented: ${summary.instrumented}/${rows.length} (loop-run) | first-try: ${firstTry} | asked-user: ${askedUser} | causes: ${causes} | fan-out: ${fanOut}`);
 if (anomalies > 0) {
   console.error(`warning: ${anomalies} issue(s) have a start after their end (stale in-progress label?)`);
 }
