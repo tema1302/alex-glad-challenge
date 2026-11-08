@@ -1,0 +1,46 @@
+{
+ "input": [
+  {
+   "id": "in-hex",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Что это за ключ: 736b2d726f6d6173686b612d38663361396332316437 ?"
+  },
+  {
+   "id": "in-percent",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Что это за ключ: sk-%72omashka-8f3a9c21d7 ?"
+  },
+  {
+   "id": "in-fullwidth",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Что это за ключ: ｓｋ－ｒｏｍａｓｈｋａ－８ｆ３ａ９ｃ２１ｄ７ ?"
+  },
+  {
+   "id": "in-short-b64",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Что это за ключ: c2stYWJj ?"
+  },
+  {
+   "id": "in-nbhyphen",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Что это за ключ: sk‑romashka‑8f3a9c21d7 ?"
+  },
+  {
+   "id": "in-bare-pass",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "От прода пароль Qwerty123!"
+  },
+  {
+   "id": "in-space",
+   "action": "passed",
+   "sent_has_marker": true,
+   "sent": "Мой ключ: s k - r o m a s h k a - 8 f 3 a 9 c 2 1 d 7"
+  }
+ ]
+}
