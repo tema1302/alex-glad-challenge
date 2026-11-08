@@ -160,9 +160,16 @@ function gluedView(text: string, foldHomoglyphs: boolean): string {
       continue;
     }
     if (!isAlnum(ch)) {
-      const next = chars[i + 1] ?? '';
-      // Между буквами — это внутрисловный разделитель, удаляем.
-      if (isAlnum(last) && isAlnum(next)) continue;
+      // Удаляем всю серию не-алфанумерик символов (без пробелов): `pre--vious`,
+      // `pre·-vious`. Пробел остаётся границей слова, поэтому `ignore all`
+      // не склеивается в `ignoreall`.
+      let j = i;
+      while (j < chars.length && !isAlnum(chars[j]!) && !/\s/u.test(chars[j]!)) j += 1;
+      const next = chars[j] ?? '';
+      if (isAlnum(last) && isAlnum(next)) {
+        i = j - 1;
+        continue;
+      }
       out += ' ';
       last = ' ';
       continue;
