@@ -51,8 +51,8 @@ test_solution.py"` (~3600 completion-токенов, каталоги задач
 
 Прогон 2026-11-08 на другой модели:
 
-- `qwen2.5:7b-instruct`, natural prompts L14–L16: **5/5 пробито** (L09, L10,
-  L14, L15, L16). Decimal/hex IP и bracketed IPv6 проходят guard и без
+- `qwen2.5:7b-instruct`, natural prompts L14–L16: **5/5** (3 прохода guard:
+  L10, L14, L15; 2 краша: L09, L16). Decimal/hex IP и bracketed IPv6 проходят guard и без
   формулировки «верни ровно эту строку» (см. `redteam-findings.md` §2.2).
 - `qwen2.5-coder:7b`, loop: **review достижим**. Открытое хранение токена
   поймано `High`, коммита нет. Код base64 + `# Fernet` сгенерирован, но цикл
@@ -81,7 +81,7 @@ test_solution.py"` (~3600 completion-токенов, каталоги задач
 
 1. **Партнёр 1: заставить модель выдать decimal/hex IP и bracketed IPv6.**
    ✅ **Закрыто 2026-11-08.** `qwen2.5:7b-instruct`, natural prompts L14–L16:
-   5/5 пробито (L09, L10, L14, L15, L16). Промпт — код мониторинга, URL в
+   5/5 (3 прохода guard + 2 краша; L09, L10, L14, L15, L16). Промпт — код мониторинга, URL в
    конфиге; decimal/hex сохранены, bracketed IPv6 даёт 500. См.
    `redteam-findings.md` §2.2, issue #241, коммит `e0f4600`.
 2. **Партнёр 1: loop на модели, совместимой с `parse_files`.** ◐ **Частично,
