@@ -1,0 +1,106 @@
+name: day15-partner-battle
+
+# PIPELINE_DIR — путь к присланному пайплайну (папка с gateway/ и loop/).
+# Задаётся в окружении или в run-battle.ps1.
+
+services:
+  init:
+    build: .
+    volumes:
+      - ${PIPELINE_DIR:?set PIPELINE_DIR to the partner pipeline folder}:/src:ro
+      - pipeline:/pipeline
+    command: ["sh", "-c", "cp -a /src/. /pipeline/ && echo 'pipeline copied to volume'"]
+
+  stub:
+    build: .
+    command: ["python", "/work/stub_upstream.py"]
+
+  gateway:
+    build: .
+    working_dir: /pipeline/gateway
+    command: ["python", "app.py"]
+    environment:
+      PORT: "5013"
+      LLAMA_BASE_URL: "http://stub:8080/v1"
+      LLAMA_API_KEY: "fake-local-key"
+      LLAMA_MODEL: "qwen3.5-122b"
+    volumes:
+      - pipeline:/pipeline
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      stub:
+        condition: service_started
+
+  attacker:
+    build: .
+    network_mode: "service:gateway"
+    working_dir: /work
+    volumes:
+      - pipeline:/pipeline:ro
+      - ./results:/results
+    command: ["sh", "-c", "python /work/attack_client.py > /results/attack-console.txt 2>&1; code=$$?; cat /results/attack-console.txt; exit $$code"]
+    depends_on:
+      gateway:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+
+  probes:
+    build: .
+    volumes:
+      - pipeline:/pipeline:ro
+      - ..:/docs/advanced-day-15:ro
+      - ./results:/results
+    command: ["sh", "-c", "python /docs/advanced-day-15/partner-attack-probes.py --pipeline /pipeline > /results/probes-console.txt 2>&1; code=$$?; cat /results/probes-console.txt; exit $$code"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  tests:
+    build: .
+    working_dir: /pipeline/gateway
+    volumes:
+      - pipeline:/pipeline
+      - ./results:/results
+    command:
+      - sh
+      - -c
+      - >-
+        { python test_input_guard.py &&
+        python test_output_guard.py &&
+        python test_gateway.py &&
+        cd ../loop &&
+        python test_loop.py; } > /results/tests-console.txt 2>&1;
+        code=$$?; cat /results/tests-console.txt; exit $$code
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  loop:
+    build: .
+    network_mode: "service:gateway"
+    working_dir: /pipeline/loop
+    volumes:
+      - pipeline:/pipeline
+      - ./results:/results
+    command:
+      - sh
+      - -c
+      - >-
+        { python /work/wait_for_gateway.py &&
+        python loop.py
+        --task-text "Add save_token(token) and load_token() functions"
+        --python python --max-iter 1
+        --gateway-url http://127.0.0.1:5013/chat &&
+        mkdir -p /results/loop-runs &&
+        cp -a runs/. /results/loop-runs/; } > /results/loop-console.txt 2>&1;
+        code=$$?; cat /results/loop-console.txt; exit $$code
+    depends_on:
+      gateway:
+        condition: service_started
+      init:
+        condition: service_completed_successfully
+
+volumes:
+  pipeline:
