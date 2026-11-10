@@ -10,10 +10,10 @@ describe('BlogCheatSheet', () => {
     render(<BlogCheatSheet />);
 
     expect(screen.getByText('шпаргалка · как пользоваться')).toBeInTheDocument();
-    expect(screen.getByText('Выберите блог')).toBeInTheDocument();
+    expect(screen.getByText('Откройте карточку блога')).toBeInTheDocument();
     expect(screen.getByText('Настройте голос')).toBeInTheDocument();
-    expect(screen.getByText('Создайте разовый пост')).toBeInTheDocument();
-    expect(screen.getByText('Задайте расписание')).toBeInTheDocument();
+    expect(screen.getByText('Промпты агентов')).toBeInTheDocument();
+    expect(screen.getByText('Пост или расписание')).toBeInTheDocument();
     expect(screen.getByText('Проверьте результат')).toBeInTheDocument();
     expect(screen.getByText(/по умолчанию\s+создаются черновики/)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'автоматизации' })).toHaveAttribute(

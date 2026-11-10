@@ -1,587 +1,445 @@
-// /blog/settings — удалённая настройка блога: system prompt + context prompt.
-// 'use client': GET /api/blogs и GET/PATCH /api/blogs/[slug]. Промпты — главный
-// рычаг «человечности» и различия блогов; сохраняются per blog (blogs.system_prompt
-// / context_prompt). Пустое поле очищает override (null). НИКАКИХ импортов core/.
+// /blog/settings — хаб всех блогов: сводка, карточки, создание и архивация.
+// 'use client': GET /api/blogs?includeArchived=1, POST /api/blogs,
+// PATCH /api/blogs/[slug] {status}. Детальная настройка — /blog/settings/[slug].
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { Dialog } from '../../components/ui/Dialog';
 import { Field, INPUT_CLASS } from '../../components/ui/Field';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Textarea } from '../../components/ui/Textarea';
 import { useToast } from '../../components/ui/Toast';
 import { BlogCheatSheet } from './BlogCheatSheet';
 
-interface BlogOption {
-  slug: string;
-  name: string;
+interface BlogCounts {
+  posts: number;
+  news: number;
+  styleSamples: number;
+  postsLast7Days: number;
+  lastPostAt: string | null;
 }
 
-interface BlogConfig {
+interface BlogSummary {
+  id: number;
   slug: string;
   name: string;
   profile: string | null;
   hasProfile: boolean;
   tgChatId: string | null;
-  stylePreset: 'default' | 'antonov';
-  systemPrompt: string | null;
-  contextPrompt: string | null;
+  tgChatIdSet: boolean;
+  stylePreset: string;
   sources: string[];
+  sourcesCount: number;
+  status: 'active' | 'archived';
+  archivedAt: string | null;
+  createdAt: string;
+  counts: BlogCounts;
+  lastPostAt: string | null;
+  agentPromptsCount: number;
+  readyForNews: boolean;
 }
 
-interface ScheduleEntry {
-  dayOfWeek: number;
-  timeLocal: string;
-  timezone: string;
-  topic: string;
-  variants: number;
-  enabled: boolean;
+interface BlogsResponse {
+  blogs?: BlogSummary[];
+  profiles?: string[];
+  error?: string;
 }
 
-interface ScheduleRun {
-  id: number;
-  status: 'running' | 'success' | 'error';
-  attempts: number;
-  postId: number | null;
-  message: string;
-  startedAt: string;
+const SLUG_MAP: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z',
+  и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r',
+  с: 's', т: 't', у: 'u', ф: 'f', х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .split('')
+    .map((ch) => SLUG_MAP[ch] ?? ch)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
 }
 
-interface ScheduleResponse {
-  schedules?: Array<{
-    dayOfWeek: number;
-    timeLocal: string;
-    timezone: string;
-    topic: string;
-    variants: number;
-    enabled: boolean;
-  }>;
-  runs?: ScheduleRun[];
+function formatDate(value: string | null): string {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-const DAY_OPTIONS = [
-  { value: 1, label: 'Понедельник' },
-  { value: 2, label: 'Вторник' },
-  { value: 3, label: 'Среда' },
-  { value: 4, label: 'Четверг' },
-  { value: 5, label: 'Пятница' },
-  { value: 6, label: 'Суббота' },
-  { value: 0, label: 'Воскресенье' },
-];
+function StatusBadge({ blog }: { blog: BlogSummary }) {
+  if (blog.status === 'archived') return <Badge tone="dim">архив</Badge>;
+  if (!blog.readyForNews) return <Badge tone="warn">нужна настройка</Badge>;
+  return <Badge tone="ok">готов</Badge>;
+}
 
-export default function BlogSettingsPage() {
+function Readiness({ blog }: { blog: BlogSummary }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Badge tone={blog.hasProfile ? 'ok' : 'err'}>
+        {blog.hasProfile ? 'профиль' : 'нет профиля'}
+      </Badge>
+      <Badge tone={blog.sourcesCount > 0 ? 'ok' : 'err'}>
+        RSS {blog.sourcesCount}
+      </Badge>
+      <Badge tone={blog.tgChatIdSet ? 'ok' : 'dim'}>
+        {blog.tgChatIdSet ? 'TG свой' : 'TG общий'}
+      </Badge>
+      <Badge tone={blog.agentPromptsCount > 0 ? 'accent' : 'dim'}>
+        промпты {blog.agentPromptsCount}/8
+      </Badge>
+    </div>
+  );
+}
+
+export default function BlogHubPage() {
   const { toast } = useToast();
-  const [blogs, setBlogs] = useState<BlogOption[]>([]);
-  const [slug, setSlug] = useState('');
-  const [config, setConfig] = useState<BlogConfig | null>(null);
-  const [systemPrompt, setSystemPrompt] = useState('');
-  const [contextPrompt, setContextPrompt] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [topic, setTopic] = useState('');
-  const [comment, setComment] = useState('');
-  const [variants, setVariants] = useState(1);
-  const [publishNow, setPublishNow] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [created, setCreated] = useState<
-    Array<{ id: number; variant: number; angle: string }>
-  >([]);
-  const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
-  const [scheduleRuns, setScheduleRuns] = useState<ScheduleRun[]>([]);
-  const [scheduleDirty, setScheduleDirty] = useState(false);
-  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [blogs, setBlogs] = useState<BlogSummary[]>([]);
+  const [profiles, setProfiles] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<BlogSummary | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    fetch('/api/blogs')
-      .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => {
-        const list = j.blogs ?? [];
-        setBlogs(list);
-        setSlug((prev) => prev || list[0]?.slug || '');
-      })
-      .catch(() => setBlogs([]));
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [profile, setProfile] = useState('');
+  const [tgChatId, setTgChatId] = useState('');
+  const [stylePreset, setStylePreset] = useState<'default' | 'antonov'>('default');
+  const [sourcesText, setSourcesText] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const resp = await fetch('/api/blogs?includeArchived=1', { cache: 'no-store' });
+      const data = (await resp.json().catch(() => ({}))) as BlogsResponse;
+      if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
+      setBlogs(data.blogs ?? []);
+      setProfiles(data.profiles ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не удалось загрузить блоги');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const load = useCallback(
-    async (target: string) => {
-      if (!target) return;
-      setLoading(true);
-      try {
-        const resp = await fetch(`/api/blogs/${encodeURIComponent(target)}`);
-        if (!resp.ok) {
-          const j = (await resp.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${resp.status}`);
-        }
-        const data = (await resp.json()) as { blog: BlogConfig };
-        setConfig(data.blog);
-        setSystemPrompt(data.blog.systemPrompt ?? '');
-        setContextPrompt(data.blog.contextPrompt ?? '');
-
-        // Расписание вспомогательное: его сбой не должен скрывать настройки
-        // промптов. null = секция покажет пустой список.
-        const scheduleData = await fetch(
-          `/api/blogs/${encodeURIComponent(target)}/schedule`,
-        )
-          .then((r) => (r.ok ? (r.json() as Promise<ScheduleResponse>) : null))
-          .catch(() => null);
-        setSchedule((scheduleData?.schedules ?? []).map((s) => ({ ...s })));
-        setScheduleRuns(scheduleData?.runs ?? []);
-        setScheduleDirty(false);
-      } catch (e) {
-        toast('err', e instanceof Error ? e.message : 'Не удалось загрузить блог');
-        setConfig(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [toast],
-  );
-
   useEffect(() => {
-    void load(slug);
-  }, [slug, load]);
+    void load();
+  }, [load]);
 
-  const save = useCallback(async () => {
-    if (!config || saving) return;
-    setSaving(true);
-    try {
-      const resp = await fetch(`/api/blogs/${encodeURIComponent(config.slug)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemPrompt: systemPrompt.trim() === '' ? null : systemPrompt,
-          contextPrompt: contextPrompt.trim() === '' ? null : contextPrompt,
-        }),
-      });
-      if (!resp.ok) {
-        const j = (await resp.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `HTTP ${resp.status}`);
-      }
-      const data = (await resp.json()) as { blog: BlogConfig };
-      setConfig(data.blog);
-      setSystemPrompt(data.blog.systemPrompt ?? '');
-      setContextPrompt(data.blog.contextPrompt ?? '');
-      toast('ok', 'Промпты блога сохранены');
-    } catch (e) {
-      toast('err', e instanceof Error ? e.message : 'Не удалось сохранить');
-    } finally {
-      setSaving(false);
+  const visible = useMemo(
+    () => blogs.filter((b) => includeArchived || b.status === 'active'),
+    [blogs, includeArchived],
+  );
+  const summary = useMemo(() => {
+    const active = blogs.filter((b) => b.status === 'active');
+    return {
+      total: active.length,
+      ready: active.filter((b) => b.readyForNews).length,
+      attention: active.filter((b) => !b.readyForNews).length,
+      customPrompts: active.reduce((sum, b) => sum + b.agentPromptsCount, 0),
+      postsWeek: active.reduce((sum, b) => sum + b.counts.postsLast7Days, 0),
+    };
+  }, [blogs]);
+
+  const openCreate = (): void => {
+    setName('');
+    setSlug('');
+    setSlugTouched(false);
+    setProfile('');
+    setTgChatId('');
+    setStylePreset('default');
+    setSourcesText('');
+    setFormError(null);
+    setCreateOpen(true);
+  };
+
+  const create = async (): Promise<void> => {
+    if (busy) return;
+    const cleanName = name.trim();
+    const cleanSlug = slug.trim();
+    if (!cleanName) {
+      setFormError('Название обязательно');
+      return;
     }
-  }, [config, saving, systemPrompt, contextPrompt, toast]);
-
-  const createPost = useCallback(async () => {
-    if (!config || creating) return;
-    setCreating(true);
-    setCreated([]);
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleanSlug) || cleanSlug.length < 2) {
+      setFormError('Slug: латиница, цифры и дефис, минимум 2 символа');
+      return;
+    }
+    const sources = sourcesText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (sources.length > 20) {
+      setFormError('Источников — не больше 20');
+      return;
+    }
+    if (sources.some((s) => !/^https?:\/\//.test(s))) {
+      setFormError('Каждый источник — ссылка http(s)');
+      return;
+    }
+    setBusy(true);
+    setFormError(null);
     try {
-      const resp = await fetch(`/api/blogs/${encodeURIComponent(config.slug)}/posts`, {
+      const resp = await fetch('/api/blogs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic,
-          ...(comment.trim() ? { comment } : {}),
-          variants,
-          publishNow,
+          name: cleanName,
+          slug: cleanSlug,
+          ...(profile ? { profile } : {}),
+          ...(tgChatId.trim() ? { tgChatId: tgChatId.trim() } : {}),
+          stylePreset,
+          ...(sources.length > 0 ? { sources } : {}),
         }),
       });
-      const data = (await resp.json().catch(() => ({}))) as {
-        error?: string;
-        posts?: Array<{ id: number; variant: number; angle: string }>;
-        published?: { ok: boolean; error?: string } | null;
-      };
+      const data = (await resp.json().catch(() => ({}))) as { error?: string };
       if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
-      setCreated(data.posts ?? []);
-      setTopic('');
-      if (data.published && !data.published.ok) {
-        toast('err', `Пост создан, но публикация не удалась: ${data.published.error ?? 'ошибка'}`);
-      } else {
-        toast('ok', data.published?.ok ? 'Пост создан и опубликован' : 'Черновики созданы');
-      }
+      setCreateOpen(false);
+      toast('ok', 'Блог создан — настройте профиль, RSS и промпты');
+      await load();
     } catch (e) {
-      toast('err', e instanceof Error ? e.message : 'Не удалось создать пост');
+      setFormError(e instanceof Error ? e.message : 'Не удалось создать блог');
     } finally {
-      setCreating(false);
+      setBusy(false);
     }
-  }, [config, creating, topic, comment, variants, publishNow, toast]);
+  };
 
-  const updateSlot = useCallback((index: number, patch: Partial<ScheduleEntry>) => {
-    setSchedule((prev) => prev.map((s, i) => (i === index ? { ...s, ...patch } : s)));
-    setScheduleDirty(true);
-  }, []);
-
-  const addSlot = useCallback(() => {
-    setSchedule((prev) => {
-      const used = new Set(prev.map((s) => s.dayOfWeek));
-      const day = [6, 0, 1, 2, 3, 4, 5].find((d) => !used.has(d)) ?? 6;
-      return [
-        ...prev,
-        {
-          dayOfWeek: day,
-          timeLocal: '10:00',
-          timezone: 'Europe/Moscow',
-          topic: '',
-          variants: 1,
-          enabled: true,
-        },
-      ];
-    });
-    setScheduleDirty(true);
-  }, []);
-
-  const removeSlot = useCallback((index: number) => {
-    setSchedule((prev) => prev.filter((_, i) => i !== index));
-    setScheduleDirty(true);
-  }, []);
-
-  const saveSchedule = useCallback(async () => {
-    if (!config || scheduleSaving) return;
-    setScheduleSaving(true);
+  const toggleArchive = async (): Promise<void> => {
+    if (!archiveTarget || busy) return;
+    const target = archiveTarget;
+    setBusy(true);
     try {
-      const resp = await fetch(
-        `/api/blogs/${encodeURIComponent(config.slug)}/schedule`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ entries: schedule }),
-        },
-      );
-      const data = (await resp.json().catch(() => ({}))) as ScheduleResponse & {
-        error?: string;
-      };
+      const next = target.status === 'archived' ? 'active' : 'archived';
+      const resp = await fetch(`/api/blogs/${encodeURIComponent(target.slug)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as { error?: string };
       if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
-      setSchedule((data.schedules ?? []).map((s) => ({ ...s })));
-      setScheduleDirty(false);
-      toast('ok', 'Расписание сохранено');
+      toast('ok', next === 'archived' ? 'Блог в архиве' : 'Блог возвращён');
+      setArchiveTarget(null);
+      await load();
     } catch (e) {
-      toast('err', e instanceof Error ? e.message : 'Не удалось сохранить расписание');
+      toast('err', e instanceof Error ? e.message : 'Не удалось изменить статус');
     } finally {
-      setScheduleSaving(false);
+      setBusy(false);
     }
-  }, [config, schedule, scheduleSaving, toast]);
-
-  const dirty =
-    config !== null &&
-    (systemPrompt !== (config.systemPrompt ?? '') ||
-      contextPrompt !== (config.contextPrompt ?? ''));
+  };
 
   return (
     <div className="space-y-6">
       <SectionHead
-        code="blog · settings"
+        code="blog · studio"
         title="Управление блогами"
-        description="Выберите блог сверху: промпты, праздничный пост и расписание — здесь. Ниже — короткая шпаргалка."
+        description="Все блоги, их готовность и промпты — в одном месте. Создайте блог, настройте голос и RSS, затем правьте промпты агентов."
         actions={
-          <select
-            aria-label="Блог"
-            className={`${INPUT_CLASS} h-9 max-w-64 text-sm`}
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            disabled={loading || saving}
-          >
-            {blogs.map((b) => (
-              <option key={b.slug} value={b.slug}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          <>
+            <label className="flex min-h-[36px] items-center gap-2 text-xs text-dim">
+              <input
+                type="checkbox"
+                checked={includeArchived}
+                onChange={(e) => setIncludeArchived(e.target.checked)}
+                className="accent-accent"
+              />
+              показывать архив
+            </label>
+            <Button variant="primary" onClick={openCreate}>
+              Новый блог
+            </Button>
+          </>
+        }
+      />
+
+      <section aria-label="Сводка по блогам" className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {[
+          { label: 'активных', value: summary.total },
+          { label: 'готовы к news', value: summary.ready },
+          { label: 'требуют настройки', value: summary.attention },
+          { label: 'постов за неделю', value: summary.postsWeek },
+          { label: 'кастомных промптов', value: summary.customPrompts },
+        ].map((item) => (
+          <div key={item.label} className="rounded-xl border border-line bg-surface p-3 shadow-panel">
+            <div className="font-mono text-2xl font-semibold tabular-nums text-ink">{item.value}</div>
+            <div className="mt-1 text-xs text-dim">{item.label}</div>
+          </div>
+        ))}
+      </section>
+
+      {loading ? (
+        <Card label="загрузка">
+          <p className="text-sm text-dim">Загружаю блоги…</p>
+        </Card>
+      ) : error ? (
+        <Card label="ошибка" tone="danger">
+          <p className="text-sm text-err">{error}</p>
+          <Button className="mt-3" onClick={() => void load()}>
+            Повторить
+          </Button>
+        </Card>
+      ) : visible.length === 0 ? (
+        <Card label="пусто">
+          <p className="text-sm text-dim">
+            {includeArchived ? 'Блогов пока нет.' : 'Активных блогов нет — создайте первый или покажите архив.'}
+          </p>
+          <Button variant="primary" className="mt-3" onClick={openCreate}>
+            Создать блог
+          </Button>
+        </Card>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {visible.map((blog) => (
+            <Card
+              key={blog.id}
+              label={`${blog.name} · ${blog.slug}`}
+              actions={<StatusBadge blog={blog} />}
+              className={blog.status === 'archived' ? 'opacity-80' : ''}
+            >
+              <div className="space-y-3">
+                <Readiness blog={blog} />
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[
+                    { label: 'посты', value: blog.counts.posts },
+                    { label: 'новости', value: blog.counts.news },
+                    { label: 'стиль', value: blog.counts.styleSamples },
+                    { label: 'за 7д', value: blog.counts.postsLast7Days },
+                  ].map((s) => (
+                    <div key={s.label} className="rounded-md border border-line bg-surface-2 p-2">
+                      <div className="font-mono text-sm font-semibold tabular-nums text-ink">{s.value}</div>
+                      <div className="text-[11px] text-dim">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-dim">
+                  последний пост: {formatDate(blog.lastPostAt)} · профиль голоса:{' '}
+                  {blog.profile ?? 'не задан'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/blog/settings/${encodeURIComponent(blog.slug)}`}
+                    className="inline-flex min-h-[32px] items-center rounded-md border border-line-strong px-2.5 text-xs text-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Обзор и промпты
+                  </Link>
+                  <Link
+                    href={`/blog/posts?blog=${encodeURIComponent(blog.slug)}`}
+                    className="inline-flex min-h-[32px] items-center rounded-md border border-line-strong px-2.5 text-xs text-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Посты
+                  </Link>
+                  <Button size="sm" variant={blog.status === 'archived' ? 'ghost' : 'danger'} onClick={() => setArchiveTarget(blog)}>
+                    {blog.status === 'archived' ? 'Вернуть' : 'Архивировать'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog
+        open={createOpen}
+        onClose={() => !busy && setCreateOpen(false)}
+        title="Новый блог"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={busy}>
+              Отмена
+            </Button>
+            <Button variant="primary" onClick={() => void create()} loading={busy}>
+              Создать
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <Field id="new-blog-name" label="Название">
+            <input
+              className={`${INPUT_CLASS} w-full`}
+              value={name}
+              maxLength={120}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!slugTouched) setSlug(slugify(e.target.value));
+              }}
+              placeholder="Невский храм на Доваторцев"
+            />
+          </Field>
+          <Field id="new-blog-slug" label="Slug (латиница, стабильный)" hint="После создания не меняется.">
+            <input
+              className={`${INPUT_CLASS} w-full`}
+              value={slug}
+              maxLength={64}
+              onChange={(e) => {
+                setSlugTouched(true);
+                setSlug(slugify(e.target.value));
+              }}
+              placeholder="nevsky-hram"
+            />
+          </Field>
+          <Field id="new-blog-profile" label="Профиль голоса" hint="Оставьте пустым, чтобы настроить позже.">
+            {profiles.length > 0 ? (
+              <select className={`${INPUT_CLASS} w-full`} value={profile} onChange={(e) => setProfile(e.target.value)}>
+                <option value="">— без профиля —</option>
+                {profiles.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            ) : (
+              <input className={`${INPUT_CLASS} w-full`} value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="default" />
+            )}
+          </Field>
+          <Field id="new-blog-tg" label="Telegram chat_id (необязательно)">
+            <input className={`${INPUT_CLASS} w-full`} value={tgChatId} onChange={(e) => setTgChatId(e.target.value)} placeholder="-1001234567890" />
+          </Field>
+          <Field id="new-blog-style" label="Пресет стиля">
+            <select className={`${INPUT_CLASS} w-full`} value={stylePreset} onChange={(e) => setStylePreset(e.target.value as 'default' | 'antonov')}>
+              <option value="default">По умолчанию (профиль + примеры)</option>
+              <option value="antonov">Антонов</option>
+            </select>
+          </Field>
+          <Field id="new-blog-sources" label="RSS-источники" hint="По одной ссылке в строке. Пусто = источники добавите позже.">
+            <Textarea value={sourcesText} onValueChange={setSourcesText} max={6000} rows={3} placeholder="https://example.com/rss" />
+          </Field>
+          {formError ? <p className="text-xs text-err">{formError}</p> : null}
+        </div>
+      </Dialog>
+
+      <ConfirmDialog
+        open={archiveTarget !== null}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={toggleArchive}
+        title={archiveTarget?.status === 'archived' ? 'Вернуть блог из архива?' : 'Архивировать блог?'}
+        tone={archiveTarget?.status === 'archived' ? 'primary' : 'danger'}
+        confirmLabel={archiveTarget?.status === 'archived' ? 'Вернуть' : 'Архивировать'}
+        body={
+          archiveTarget?.status === 'archived' ? (
+            <p>Блог снова появится в селекторах и сможет генерировать контент.</p>
+          ) : (
+            <p>
+              Блог «{archiveTarget?.name}» скроется из селекторов, автоматизация и расписание
+              перестанут создавать посты. Данные сохранятся — вернуть можно в любой момент.
+            </p>
+          )
         }
       />
 
       <BlogCheatSheet />
-
-      {config ? (
-        <>
-        <Card label={`${config.name} · ${config.slug}`}>
-          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-dim">
-            <span>профиль голоса: {config.profile ?? '—'}</span>
-            <span>· Telegram: {config.tgChatId ?? 'общий канал'}</span>
-            <span>· источники: {config.sources.length}</span>
-            {!config.hasProfile && (
-              <span className="text-warn">· профиль не найден — работает на промптах блога</span>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <Field
-              id="system-prompt"
-              label="System prompt"
-              hint="Заменяет пресет/шаблон: роль, стиль, объём, запреты. Канал и подпись добавляются автоматически."
-            >
-              <Textarea
-                value={systemPrompt}
-                onValueChange={setSystemPrompt}
-                max={8000}
-                rows={10}
-                placeholder="Ты — автор Telegram-канала храма… Пиши тепло, по-человечески, без канцелярита…"
-                disabled={saving}
-              />
-            </Field>
-
-            <Field
-              id="context-prompt"
-              label="Context prompt"
-              hint="Постоянный контекст: факты о храме/аудитории, повторяющиеся темы, чего избегать. Подмешивается к каждому посту."
-            >
-              <Textarea
-                value={contextPrompt}
-                onValueChange={setContextPrompt}
-                max={8000}
-                rows={8}
-                placeholder="Аудитория — прихожане и жители района. Настоятель — отец N. Не выдумывать цитаты и даты…"
-                disabled={saving}
-              />
-            </Field>
-
-            <div className="flex items-center gap-2">
-              <Button variant="primary" onClick={save} disabled={saving || !dirty}>
-                Сохранить промпты
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setSystemPrompt(config.systemPrompt ?? '');
-                  setContextPrompt(config.contextPrompt ?? '');
-                }}
-                disabled={saving || !dirty}
-              >
-                Откатить
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <Card label="праздничный пост по теме">
-          <div className="space-y-4">
-            <Field
-              id="topic"
-              label="Тема"
-              hint="Разовый пост без RSS: праздник, объявление, важная дата. До 3 вариантов одной темы."
-            >
-              <input
-                className={`${INPUT_CLASS} w-full`}
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                maxLength={500}
-                placeholder="Рождественская служба 7 января"
-                disabled={creating}
-              />
-            </Field>
-
-            <Field
-              id="topic-comment"
-              label="Комментарий автора (необязательно)"
-              hint="Что обязательно упомянуть: время, место, детали, интонация."
-            >
-              <Textarea
-                value={comment}
-                onValueChange={setComment}
-                max={1000}
-                rows={4}
-                placeholder="Служба в 9:00, после — чай в трапезной…"
-                disabled={creating}
-              />
-            </Field>
-
-            <div className="flex flex-wrap items-center gap-3 text-sm">
-              <label className="flex items-center gap-2 text-dim">
-                вариантов:
-                <select
-                  aria-label="Количество вариантов"
-                  className={INPUT_CLASS}
-                  value={variants}
-                  onChange={(e) => setVariants(Number(e.target.value))}
-                  disabled={creating}
-                >
-                  <option value={1}>1</option>
-                  <option value={2}>2</option>
-                  <option value={3}>3</option>
-                </select>
-              </label>
-              <label className="flex items-center gap-2 text-dim">
-                <input
-                  type="checkbox"
-                  checked={publishNow}
-                  onChange={(e) => setPublishNow(e.target.checked)}
-                  className="accent-accent"
-                  disabled={creating}
-                />
-                сразу опубликовать первый вариант
-              </label>
-              <Button
-                variant="primary"
-                onClick={createPost}
-                disabled={creating || topic.trim().length < 3}
-              >
-                {creating ? 'Генерирую…' : 'Создать пост'}
-              </Button>
-            </div>
-            {publishNow && (
-              <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
-                Реальная отправка: первый вариант уйдёт в Telegram-канал блога
-                {config.tgChatId ? ` (${config.tgChatId})` : ' (общий канал)'}.
-              </p>
-            )}
-
-            {created.length > 0 && (
-              <div className="rounded-md border border-line bg-surface-2 p-3 text-sm">
-                <p className="text-dim">Созданные варианты:</p>
-                <ul className="mt-1 space-y-1">
-                  {created.map((p) => (
-                    <li key={p.id}>
-                      <a href={`/blog/posts/${p.id}`} className="text-accent hover:underline">
-                        #{p.id}
-                      </a>{' '}
-                      <span className="text-dim">· вариант {p.variant + 1} · {p.angle}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card label="расписание постов (дни недели)">
-          <div className="space-y-4">
-            <p className="text-xs text-dim">
-              Слоты запускаются в локальном времени таймзоны (окно догона 3 часа). По
-              умолчанию создаются черновики; автопубликация включается правилом блога
-              в <a href="/automation" className="text-accent hover:underline">/automation</a>.
-            </p>
-
-            {schedule.length === 0 ? (
-              <p className="rounded-md border border-line bg-surface-2 p-3 text-sm text-dim">
-                Слотов нет — добавьте день и время.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {schedule.map((s, i) => (
-                  <div key={i} className="rounded-md border border-line bg-surface-2 p-3">
-                    <div className="flex flex-wrap items-end gap-3 text-xs text-dim">
-                      <label className="flex flex-col gap-1">
-                        день
-                        <select
-                          className={INPUT_CLASS}
-                          value={s.dayOfWeek}
-                          onChange={(e) => updateSlot(i, { dayOfWeek: Number(e.target.value) })}
-                          disabled={scheduleSaving}
-                        >
-                          {DAY_OPTIONS.map((d) => (
-                            <option key={d.value} value={d.value}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        время
-                        <input
-                          type="time"
-                          className={INPUT_CLASS}
-                          value={s.timeLocal}
-                          onChange={(e) => updateSlot(i, { timeLocal: e.target.value })}
-                          disabled={scheduleSaving}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        таймзона
-                        <input
-                          className={`${INPUT_CLASS} w-40`}
-                          value={s.timezone}
-                          onChange={(e) => updateSlot(i, { timezone: e.target.value })}
-                          disabled={scheduleSaving}
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        вариантов
-                        <select
-                          className={INPUT_CLASS}
-                          value={s.variants}
-                          onChange={(e) => updateSlot(i, { variants: Number(e.target.value) })}
-                          disabled={scheduleSaving}
-                        >
-                          <option value={1}>1</option>
-                          <option value={2}>2</option>
-                          <option value={3}>3</option>
-                        </select>
-                      </label>
-                      <label className="flex items-center gap-2 pb-2">
-                        <input
-                          type="checkbox"
-                          checked={s.enabled}
-                          onChange={(e) => updateSlot(i, { enabled: e.target.checked })}
-                          className="accent-accent"
-                          disabled={scheduleSaving}
-                        />
-                        включён
-                      </label>
-                      <button
-                        type="button"
-                        className="pb-2 text-xs text-err hover:underline disabled:opacity-50"
-                        onClick={() => removeSlot(i)}
-                        disabled={scheduleSaving}
-                      >
-                        удалить
-                      </button>
-                    </div>
-                    <label className="mt-2 flex flex-col gap-1 text-xs text-dim">
-                      тема / фокус (пусто = регулярный пост блога)
-                      <input
-                        className={`${INPUT_CLASS} w-full`}
-                        value={s.topic}
-                        maxLength={500}
-                        onChange={(e) => updateSlot(i, { topic: e.target.value })}
-                        placeholder="Субботняя заметка: жизнь прихода, люди и события"
-                        disabled={scheduleSaving}
-                      />
-                    </label>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="ghost" onClick={addSlot} disabled={scheduleSaving || schedule.length >= 14}>
-                Добавить слот
-              </Button>
-              <Button
-                variant="primary"
-                onClick={saveSchedule}
-                disabled={scheduleSaving || !scheduleDirty}
-              >
-                {scheduleSaving ? 'Сохраняю…' : 'Сохранить расписание'}
-              </Button>
-            </div>
-
-            {scheduleRuns.length > 0 && (
-              <div className="rounded-md border border-line p-3 text-xs">
-                <p className="mb-1 text-dim">Последние запуски</p>
-                <ul className="space-y-1">
-                  {scheduleRuns.slice(0, 5).map((r) => (
-                    <li key={r.id} className="flex flex-wrap gap-2">
-                      <span className={r.status === 'success' ? 'text-ok' : 'text-err'}>
-                        {r.status}
-                      </span>
-                      <span className="text-dim">{r.startedAt}</span>
-                      <span className="text-dim">попыток: {r.attempts}</span>
-                      <span>{r.message}</span>
-                      {r.postId !== null && (
-                        <a href={`/blog/posts/${r.postId}`} className="text-accent hover:underline">
-                          #{r.postId}
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
-        </>
-      ) : (
-        <p className="text-sm text-dim">{loading ? 'Загрузка…' : 'Блог не выбран.'}</p>
-      )}
     </div>
   );
 }

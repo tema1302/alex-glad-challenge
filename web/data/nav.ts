@@ -73,9 +73,9 @@ export const navGroups: Array<{
     tag: 'blog',
     icon: IconRss,
     items: [
+      { href: '/blog/settings', label: 'блоги' },
       { href: '/blog/news', label: 'новости' },
       { href: '/blog/posts', label: 'посты' },
-      { href: '/blog/settings', label: 'настройки' },
       { href: '/blog/digest', label: 'дайджест' },
       { href: '/blog/pipeline', label: 'pipeline' },
       { href: '/blog/scout', label: 'scout' },
