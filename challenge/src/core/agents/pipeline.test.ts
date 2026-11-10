@@ -169,6 +169,23 @@ test('pipeline: инъецированный log получает прогрес
   }
 });
 
+test('pipeline: архивный блог не запускает news-пайплайн', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-archived-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const stored = db.getBlogBySlug('nevsky-hram')!;
+    await assert.rejects(
+      () => runNewsPipeline(db, fakeClient([]), {
+        blog: { ...stored, archived_at: '2026-11-10T00:00:00Z', sources: OFFLINE_SOURCES },
+      }),
+      /в архиве/,
+    );
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
 test('pipeline: per-blog override автора и фактчекера доходит до агентов', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-overrides-'));
   const db = new BlogDb(path.join(dir, 'blog.sqlite'));

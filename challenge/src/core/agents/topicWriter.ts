@@ -91,6 +91,11 @@ export class TopicPostWriter {
   }
 
   async writeOne(db: BlogDb, blog: BlogRow, opts: TopicWriteOptions): Promise<WrittenTopicPost> {
+    // Архив — общий инвариант ядра, а не только web-route: TG-команды,
+    // расписание и auto-drafts не должны создавать контент архивного блога.
+    if (blog.archived_at) {
+      throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+    }
     const variant = Math.min(Math.max(Math.trunc(opts.variantIndex ?? 0), 0), TOPIC_VARIANTS.length - 1);
     const angle = TOPIC_VARIANTS[variant];
     const p = opts.profile?.active;

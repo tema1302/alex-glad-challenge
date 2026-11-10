@@ -135,6 +135,8 @@ test('postWriter: {{channel}}/{{style}} в override подставляются',
     const system = captured[0][0].content;
     assert.match(system, /Пиши для «Иди на факты глянь» в стиле ироничный, резкий, с подколами\./);
     assert.match(system, /Язык: русский/);
+    assert.match(system, /ЖЁСТКИЕ ПРАВИЛА \(не редактируются\)/);
+    assert.match(system, /Не выдумывай факты/);
     assert.ok(!system.includes('{{channel}}'));
   } finally {
     db.close();

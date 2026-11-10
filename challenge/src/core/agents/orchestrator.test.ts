@@ -46,5 +46,7 @@ test('orchestrator: без override — прежний default', async () => {
   const captured: ChatMessage[][] = [];
   const orch = new Orchestrator(fakeClient(captured));
   await orch.decide(RESULTS, 'футбол', 3);
-  assert.match(captured[0][0].content, /Ты спортивный редактор-оркестратор/);
+  const prompt = captured[0][0].content;
+  assert.match(prompt, /Ты спортивный редактор-оркестратор/);
+  assert.ok(prompt.indexOf('ИСТОЧНИКИ И ТЕМЫ') < prompt.indexOf('Выбери ТОП-3'));
 });

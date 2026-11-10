@@ -78,7 +78,7 @@ test('blogAgentPrompts: override > legacy system prompt > preset > default', () 
     assert.equal(override.prompt, 'Явный override');
     assert.equal(override.source, 'blog');
 
-    db.setAgentPrompt(blog.id, 'post.writer', '   ');
+    db.clearAgentPrompt(blog.id, 'post.writer');
     const blank = resolveBlogAgentPrompt(db, db.getBlog(blog.id), 'post.writer');
     assert.equal(blank.prompt, 'Легаси-промпт блога');
     assert.equal(blank.source, 'legacy-blog-system');
@@ -100,6 +100,40 @@ test('blogAgentPrompts: отдельные override для writer и topic', () 
     assert.equal(writer.prompt, null);
     assert.equal(topic.prompt, 'Только для постов по теме');
     assert.equal(topic.source, 'blog');
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('blogAgentPrompts: неизвестный style_preset не роняет резолвер', () => {
+  const { dir, file } = tmpDb();
+  const db = new BlogDb(file);
+  try {
+    const blog = db.getBlogBySlug('nevsky-hram')!;
+    db.updateBlog(blog.id, { style_preset: 'future-preset' as never });
+    const resolved = resolveBlogAgentPrompt(db, db.getBlog(blog.id), 'post.writer');
+    assert.equal(resolved.prompt, null);
+    assert.equal(resolved.source, 'default');
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('blogAgentPrompts: пустой tombstone перекрывает legacy system_prompt', () => {
+  const { dir, file } = tmpDb();
+  const db = new BlogDb(file);
+  try {
+    const blog = db.getBlogBySlug('nevsky-hram')!;
+    db.updateBlog(blog.id, { system_prompt: 'Промпт автора' });
+    assert.equal(resolveBlogAgentPrompt(db, db.getBlog(blog.id), 'post.topic').source, 'legacy-blog-system');
+    db.setAgentPrompt(blog.id, 'post.topic', '');
+    const reset = resolveBlogAgentPrompt(db, db.getBlog(blog.id), 'post.topic');
+    assert.equal(reset.prompt, null);
+    assert.equal(reset.source, 'default');
+    // writer по-прежнему видит system_prompt
+    assert.equal(resolveBlogAgentPrompt(db, db.getBlog(blog.id), 'post.writer').source, 'legacy-blog-system');
   } finally {
     db.close();
     safeRm(dir);

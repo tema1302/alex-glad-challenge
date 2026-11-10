@@ -364,7 +364,8 @@ export class BlogDb {
     const row = this.db
       .prepare(
         `SELECT
-           (SELECT COUNT(*) FROM blog_agent_prompts WHERE blog_id = ?) +
+           (SELECT COUNT(*) FROM blog_agent_prompts
+              WHERE blog_id = ? AND TRIM(prompt) <> '') +
            (SELECT CASE WHEN TRIM(COALESCE(system_prompt, '')) <> '' THEN 1 ELSE 0 END
               FROM blogs WHERE id = ?) AS n`,
       )

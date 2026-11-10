@@ -53,6 +53,9 @@ export async function runNewsPipeline(
   const maxAgeHours = opts.maxAgeHours ?? 24;
   const topK = opts.topK ?? 5;
   const blog = opts.blog ?? null;
+  if (blog?.archived_at) {
+    throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+  }
   const profileActive = opts.profile?.active ?? null;
   const log = opts.log ?? (() => {});
 

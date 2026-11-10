@@ -32,6 +32,9 @@ export class PostWriter {
 
   async write(db: BlogDb, news: NewsRow, opts: WriteOptions = {}): Promise<WrittenPost> {
     const blog = opts.blogId != null ? db.getBlog(opts.blogId) : null;
+    if (blog?.archived_at) {
+      throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+    }
     // Легаси-дефолты (футбольный канал/@lookatfacts) допустимы только для блога
     // по умолчанию или вызова без блога; остальные блоги без профиля получают
     // своё имя и нейтральный стиль, а не чужой голос.
@@ -84,7 +87,14 @@ export class PostWriter {
 КАНАЛ И ПРОФИЛЬ (обязательно):
 - Шапка поста: «${channel}: » (без даты/времени). Первый символ ответа — «${channel[0]}».
 ${signatureLine}- Табу: ${taboos}.
-- Язык: ${language}.${contextBlock}`
+- Язык: ${language}.
+
+ЖЁСТКИЕ ПРАВИЛА (не редактируются):
+- ОБЪЁМ: ${lengthRule}. НЕ РАСТЯГИВАЙ.
+- ФОРМАТ: ${formatRule}.
+- ЭМОДЗИ: ${emojiRule}.
+- Не выдумывай факты, которых нет в источнике.
+- Не обрезай пост на полуслове.${contextBlock}`
       : `Ты — автор Telegram-канала «${channel}» (${topic}).
 Ты пишешь ${style}. Язык: ${language}.
 

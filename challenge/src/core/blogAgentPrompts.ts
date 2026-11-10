@@ -13,7 +13,7 @@
 // blog === null (CLI/REPL/legacy) сразу получает default: поведение не меняется.
 
 import type { BlogDb, BlogRow } from './db.js';
-import { presetSystemPrompt } from './stylePreset.js';
+import { presetSystemPrompt, resolveStylePreset } from './stylePreset.js';
 
 export const BLOG_AGENT_IDS = [
   'post.writer',
@@ -23,7 +23,6 @@ export const BLOG_AGENT_IDS = [
   'factcheck.reasoning',
   'factcheck.verdict',
   'digest.weekly',
-  'post.reviser',
 ] as const;
 
 export type BlogAgentId = (typeof BLOG_AGENT_IDS)[number];
@@ -147,19 +146,6 @@ export const BLOG_AGENT_SPECS: readonly BlogAgentSpec[] = [
       'Роль и правила формата. Grounding-правила, список новостей, URL и clamp 4096 добавляются автоматически.',
     maxLength: MAX_PROMPT_LENGTH,
   },
-  {
-    id: 'post.reviser',
-    label: 'Редактор (REPL/FSM)',
-    description: 'Переписывает пост с учётом замечаний фактчекера в REPL/FSM; web-автоматизация его не вызывает.',
-    group: 'service',
-    defaultPrompt: [
-      'Ты — автор Telegram-канала «{{channel}}». Перепиши пост с учётом правок.',
-      'Сохрани стиль, шапку и подпись. Не выдумывай факты. Не обрезай на полуслове.',
-    ].join('\n'),
-    editableScope:
-      'Роль и ограничения. Источник, текущий пост и список правок добавляются автоматически. В web-пайплайне редактор не участвует.',
-    maxLength: MAX_PROMPT_LENGTH,
-  },
 ];
 
 export const BLOG_AGENT_SOURCE_LABELS: Record<BlogAgentPromptSource, string> = {
@@ -200,8 +186,14 @@ export function resolveBlogAgentPrompt(
 ): ResolvedBlogAgentPrompt {
   if (!blog) return { agent, prompt: null, source: 'default' };
 
-  const stored = db.getAgentPrompt(blog.id, agent)?.prompt.trim();
-  if (stored) return { agent, prompt: stored, source: 'blog' };
+  const row = db.getAgentPrompt(blog.id, agent);
+  if (row !== null) {
+    const stored = row.prompt.trim();
+    if (stored) return { agent, prompt: stored, source: 'blog' };
+    // Пустая строка — явный tombstone «сброшен пользователем»: он перекрывает
+    // легаси system_prompt и пресет, иначе reset для post.topic был бы no-op.
+    return { agent, prompt: null, source: 'default' };
+  }
 
   // Легаси-совместимость: два «авторских» агента исторически читали
   // blogs.system_prompt. Остальные агенты его не наследуют.
@@ -209,7 +201,7 @@ export function resolveBlogAgentPrompt(
     const legacy = blog.system_prompt?.trim();
     if (legacy) return { agent, prompt: legacy, source: 'legacy-blog-system' };
 
-    const preset = presetSystemPrompt(blog.style_preset);
+    const preset = presetSystemPrompt(resolveStylePreset(blog.style_preset));
     if (preset) return { agent, prompt: preset, source: 'preset' };
   }
 
