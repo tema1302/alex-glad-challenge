@@ -10,7 +10,20 @@ import 'server-only';
 
 export { dataPath, DATA_DIR } from '@challenge/core/paths';
 export { BlogDb, DEFAULT_BLOG_SLUG } from '@challenge/core/db';
-export type { NewsRow, PostRow, StyleSampleRow, BlogRow } from '@challenge/core/db';
+export type { NewsRow, PostRow, StyleSampleRow, BlogRow, BlogStats } from '@challenge/core/db';
+export {
+  BLOG_AGENT_IDS,
+  BLOG_AGENT_SPECS,
+  BLOG_AGENT_SOURCE_LABELS,
+  findBlogAgentSpec,
+  resolveBlogAgentPrompt,
+} from '@challenge/core/blogAgentPrompts';
+export type {
+  BlogAgentId,
+  BlogAgentSpec,
+  BlogAgentPromptSource,
+  ResolvedBlogAgentPrompt,
+} from '@challenge/core/blogAgentPrompts';
 export { RagStore } from '@challenge/core/rag/store';
 export { DialogDb } from '@challenge/core/dialogDb';
 export type { ChatRow, MessageRow } from '@challenge/core/dialogDb';

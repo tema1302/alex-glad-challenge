@@ -15,7 +15,7 @@ import { newsOptsSchema } from '../../../../lib/shared/forms';
 import type { SseBlogNewsEvent } from '../../../../lib/shared/sse';
 import { pickLlmClient } from '../../../../lib/server/llm';
 import { getBlogDb, withDb } from '../../../../lib/server/db';
-import { resolveBlog, loadBlogProfile, blogProfileMissing, blogSources } from '../../../../lib/server/blogs';
+import { resolveBlog, loadBlogProfile, blogProfileMissing, blogSources, blogArchivedError } from '../../../../lib/server/blogs';
 import {
   runNewsPipeline,
   ProfileManager,
@@ -36,7 +36,6 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
   const { hours, top, forIndex, llm = 'cloud', blog: blogRef } = parsed.data;
-  const client = pickLlmClient(llm);
 
   // Мульти-блог: blog задан → источники/профиль/штамп этого блога; не задан →
   // легаси-режим (дефолтные фиды, профиль default|первый) для старых вызовов.
@@ -51,6 +50,18 @@ export async function POST(req: NextRequest): Promise<Response> {
     }
     blog = res.blog;
   }
+  if (blog) {
+    const archived = blogArchivedError(blog);
+    if (archived) {
+      return new Response(JSON.stringify({ error: archived }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+  // Клиент создаём после дешёвых проверок: архивный блог/битый slug должны
+  // получать 400, даже если LLM-ключи не настроены.
+  const client = pickLlmClient(llm);
   const blogProfile = blog ? loadBlogProfile(blog) : null;
   if (blog && !blogProfile) {
     return new Response(JSON.stringify({ error: blogProfileMissing(blog) }), {

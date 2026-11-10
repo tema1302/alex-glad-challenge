@@ -14,11 +14,20 @@ const MOBILE_TOKEN = 'test-mobile-token';
 const mocks = vi.hoisted(() => ({
   getBlogBySlug: vi.fn(),
   updateBlog: vi.fn(),
+  setBlogArchived: vi.fn(),
+  blogStats: vi.fn(),
+  agentPromptsCount: vi.fn(),
   listProfiles: vi.fn(),
 }));
 
 vi.mock('../../lib/server/db', () => ({
-  getBlogDb: vi.fn(() => ({ getBlogBySlug: mocks.getBlogBySlug, updateBlog: mocks.updateBlog })),
+  getBlogDb: vi.fn(() => ({
+    getBlogBySlug: mocks.getBlogBySlug,
+    updateBlog: mocks.updateBlog,
+    setBlogArchived: mocks.setBlogArchived,
+    blogStats: mocks.blogStats,
+    agentPromptsCount: mocks.agentPromptsCount,
+  })),
   withDb: vi.fn((fn: () => unknown) => fn()),
 }));
 
@@ -43,6 +52,9 @@ beforeAll(async () => {
 beforeEach(() => {
   mocks.getBlogBySlug.mockReset();
   mocks.updateBlog.mockReset();
+  mocks.setBlogArchived.mockReset();
+  mocks.blogStats.mockReset();
+  mocks.agentPromptsCount.mockReset();
   mocks.listProfiles.mockReset();
   // Дефолт: блог найден, updateBlog «сохраняет» — getBlogBySlug отдаёт патченный блог.
   const blog = {
@@ -55,12 +67,24 @@ beforeEach(() => {
     sources: null,
     system_prompt: null,
     context_prompt: null,
+    archived_at: null as string | null,
     created_at: '2026-01-01T00:00:00Z',
   };
   mocks.listProfiles.mockReturnValue([]);
+  mocks.blogStats.mockReturnValue({
+    posts: 0,
+    news: 0,
+    styleSamples: 0,
+    postsLast7Days: 0,
+    lastPostAt: null,
+  });
+  mocks.agentPromptsCount.mockReturnValue(0);
   mocks.getBlogBySlug.mockImplementation(() => blog);
   mocks.updateBlog.mockImplementation((_id: number, patch: Record<string, unknown>) => {
     Object.assign(blog, patch);
+  });
+  mocks.setBlogArchived.mockImplementation((_id: number, archived: boolean) => {
+    blog.archived_at = archived ? '2026-11-10T00:00:00.000Z' : null;
   });
 });
 
@@ -133,7 +157,7 @@ describe('PATCH /api/blogs/[slug] — контракт', () => {
     mocks.getBlogBySlug.mockReturnValue(null);
     const res = await PATCH(patchReq({ stylePreset: 'antonov' }), ctx('ghost'));
     expect(res.status).toBe(404);
-    await expect(res.json()).resolves.toMatchObject({ error: 'not found' });
+    await expect(res.json()).resolves.toMatchObject({ error: 'Блог «ghost» не найден' });
   });
 
   it('несуществующий профиль голоса → 400 человекочитаемый', async () => {
@@ -237,5 +261,36 @@ describe('GET /api/blogs/[slug] — полный конфиг', () => {
     mocks.getBlogBySlug.mockReturnValue(null);
     const res = await GET(getReq(), ctx('ghost'));
     expect(res.status).toBe(404);
+  });
+});
+
+describe('PATCH /api/blogs/[slug] — новый DTO и статус', () => {
+  it('PATCH возвращает camelCase BlogDto, а не raw BlogRow', async () => {
+    const res = await PATCH(patchReq({ name: 'Новое имя' }), ctx('main'));
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { blog: Record<string, unknown> };
+    expect(json.blog).toMatchObject({
+      slug: 'main',
+      name: 'Новое имя',
+      status: 'active',
+      sources: [],
+      systemPrompt: null,
+      counts: { posts: 0, news: 0, styleSamples: 0, postsLast7Days: 0, lastPostAt: null },
+    });
+    expect(json.blog).not.toHaveProperty('style_preset');
+    expect(json.blog).not.toHaveProperty('created_at');
+  });
+
+  it('status=archived вызывает setBlogArchived(true), ответ status=archived', async () => {
+    const res = await PATCH(patchReq({ status: 'archived' }), ctx('main'));
+    expect(res.status).toBe(200);
+    expect(mocks.setBlogArchived).toHaveBeenCalledWith(1, true);
+    await expect(res.json()).resolves.toMatchObject({ blog: { status: 'archived' } });
+  });
+
+  it('status=active возвращает блог из архива', async () => {
+    const res = await PATCH(patchReq({ status: 'active' }), ctx('main'));
+    expect(res.status).toBe(200);
+    expect(mocks.setBlogArchived).toHaveBeenCalledWith(1, false);
   });
 });
