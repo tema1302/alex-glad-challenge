@@ -134,6 +134,7 @@ tg/collect) её не принимают. Ошибки 400/401/429/503 такж�
 ```json
 {
   "blog": { "slug": "main", "name": "Главный" },
+  "customCount": 1,
   "prompts": [{
     "agent": "factcheck.verdict",
     "label": "Фактчекер: вердикт",
@@ -159,7 +160,9 @@ tg/collect) её не принимают. Ошибки 400/401/429/503 такж�
 `requireApiAuth`. Тело `{ agent: BlogAgentId, prompt: string | null }`;
 `null`/пустая строка сбрасывают override. `post.writer` пишется в
 `blogs.system_prompt` (легаси-совместимость), остальные — в
-`blog_agent_prompts`. Ответ `{ok, blog, prompt: <элемент реестра>}`.
+`blog_agent_prompts`. Ответ `{ok, blog, customCount, prompt: <элемент реестра>}`.
+Сброс `post.topic` при заданном `system_prompt` пишет пустой tombstone, чтобы
+не подхватить legacy-промпт автора.
 `400` — неизвестный агент/длина >8000, `404` — неизвестный блог, `401` — нет auth.
 
 ### `GET /api/blog/pulse`
@@ -181,6 +184,7 @@ tg/collect) её не принимают. Ошибки 400/401/429/503 такж�
 
 ### Архивный блог
 
-`news`, `scout`, `blogs/[slug]/posts`, `digest/generate` возвращают `400` с
-понятным сообщением; автоматизация и расписание помечают запуск ошибкой
-«блог в архиве — пропущено». Чтение постов/новостей остаётся доступным.
+`news`, `scout`, `blogs/[slug]/posts`, `digest/generate`, `blog/posts/[id]/publish`
+и Telegram-команда `/пост` возвращают/сообщают ошибку «блог в архиве»;
+автоматизация и расписание помечают запуск ошибкой «блог в архиве — пропущено».
+Чтение постов/новостей остаётся доступным.

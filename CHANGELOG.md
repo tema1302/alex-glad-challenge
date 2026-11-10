@@ -15,10 +15,10 @@
   `/blog/settings/[slug]` с вкладками «Обзор / Промпты / Настройки / Расписание».
 - Промпты всех блог-агентов per-blog: `post.writer`, `post.topic`,
   `scout.news`, `scout.orchestrator`, `factcheck.reasoning`,
-  `factcheck.verdict`, `digest.weekly`, `post.reviser`. Override →
-  `blogs.system_prompt` (writer, легаси) → пресет → встроенный default; сброс
-  возвращает встроенное поведение. JSON-контракты и grounding-правила остаются
-  в коде.
+  `factcheck.verdict`, `digest.weekly`. Override → `blogs.system_prompt`
+  (writer, легаси) → пресет → встроенный default; сброс возвращает встроенное
+  поведение (для topic — явный tombstone, перекрывающий legacy). JSON-контракты
+  и grounding-правила остаются в коде.
 - Core: `blog_agent_prompts` (UPSERT/clear), `archived_at`, `createBlog`,
   `blogStats`, `listBlogStats`, `agentPromptsCount` с учётом writer-override;
   идемпотентная миграция.
@@ -31,18 +31,24 @@
   «Промпты агентов», `BackHandler`, архивация, «Пульс блогов» на dashboard.
 - Дизайн: dashboard «Пульс контента» (веб + Android), grouped-меню блога,
   FlowRow-бейджи, readiness-подсказки, пустые состояния.
-- Архивный блог блокируется в news/scout/topic/digest и в
-  автоматизации/расписании; чтение постов остаётся.
+- Архивный блог блокируется в news/scout/topic/digest, publish-by-id и
+  Telegram-команде `/пост`; guard вынесен в ядро (`PostWriter`,
+  `TopicPostWriter`, `runNewsPipeline`), автоматизация/расписание
+  останавливаются. Чтение постов остаётся.
+- Веб-карточка блога: вкладка «Пост» вернула ручной пост по теме (1–3 варианта,
+  опциональная публикация), ссылки `?blog=` читаются на news/posts/scout.
+- Android: архивные блоги видны в хабе и возвращаются; «Пульс блогов» имеет
+  error-state; экран промптов скроллится.
 
 **Коды:** `POST /api/blogs` — 201/400/409/401; `PATCH` — 200/400/404/401;
 `agent-prompts` — 200/400/404/401; `pulse` — 200/401.
 
 **Риски:** override может ухудшить качество текста (не ломает парсинг);
-`post.reviser` в web-автоматизации не участвует, помечен как REPL/FSM;
-жёсткого удаления блога нет — только архив.
+жёсткого удаления блога нет — только архив; `post.reviser` не входит в реестр
+(web-автоматизация его не вызывает).
 
-**Валидация:** challenge typecheck/test (617), web typecheck/test
-(698, `--maxWorkers=2`), web build (49 маршрутов), Android
+**Валидация:** challenge typecheck/test (641), web typecheck/test
+(699, `--maxWorkers=2`), web build (49 маршрутов), Android
 `:app:testDebugUnitTest` + `:app:compileDebugKotlin`; live smoke
 создания/правки промпта/частичного PATCH/архива/пульса и рендера
 `/blog/settings`, `/blog/settings/[slug]`, `/dashboard`.
