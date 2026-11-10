@@ -389,6 +389,7 @@ data class BlogScoutRequest(
     val hours: Int? = null,
     val topK: Int? = null,
     val query: String? = null,
+    val blog: String? = null,
     val enableTelegram: Boolean? = null,
     val enableForum: Boolean? = null,
     val llm: String? = null,

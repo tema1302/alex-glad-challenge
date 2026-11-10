@@ -98,6 +98,9 @@ class DashboardViewModel(private val repository: ArtelRepository) : ViewModel() 
     private val _pulse = MutableStateFlow<BlogPulseResponse?>(null)
     val pulse: StateFlow<BlogPulseResponse?> = _pulse.asStateFlow()
 
+    private val _pulseError = MutableStateFlow(false)
+    val pulseError: StateFlow<Boolean> = _pulseError.asStateFlow()
+
     init {
         repository.cachedBootstrap?.let { _state.value = UiState.Success(it) }
         refresh()
@@ -118,9 +121,10 @@ class DashboardViewModel(private val repository: ArtelRepository) : ViewModel() 
 
     fun loadPulse() {
         viewModelScope.launch {
+            _pulseError.value = false
             when (val result = repository.blogPulse()) {
                 is ru.memo7.artel.core.network.ApiResult.Success -> _pulse.value = result.data
-                is ru.memo7.artel.core.network.ApiResult.Failure -> Unit // пульс вспомогательный
+                is ru.memo7.artel.core.network.ApiResult.Failure -> _pulseError.value = true
             }
         }
     }
@@ -152,6 +156,7 @@ fun DashboardScreen(
     )
     val state by vm.state.collectAsStateWithLifecycle()
     val pulse by vm.pulse.collectAsStateWithLifecycle()
+    val pulseError by vm.pulseError.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -195,6 +200,7 @@ fun DashboardScreen(
             DashboardContent(
                 data = data,
                 pulse = pulse,
+                pulseError = pulseError,
                 onOpenNotifications = onOpenNotifications,
                 onOpenSupport = onOpenSupport,
                 onOpenProjects = onOpenProjects,
@@ -220,6 +226,7 @@ fun DashboardScreen(
 private fun DashboardContent(
     data: BootstrapResponse,
     pulse: BlogPulseResponse?,
+    pulseError: Boolean,
     onOpenNotifications: () -> Unit,
     onOpenSupport: () -> Unit,
     onOpenProjects: () -> Unit,
@@ -372,7 +379,13 @@ private fun DashboardContent(
                     Spacer(Modifier.weight(1f))
                     Text("→", color = MaterialTheme.colorScheme.primary)
                 }
-                if (pulse == null) {
+                if (pulseError) {
+                    Text(
+                        "Пульс недоступен — обновите экран.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (pulse == null) {
                     Text(
                         "Загружаю сводку…",
                         style = MaterialTheme.typography.bodyMedium,

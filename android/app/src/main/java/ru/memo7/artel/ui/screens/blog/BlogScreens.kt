@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
@@ -102,7 +104,7 @@ private enum class BlogSection(val label: String, val hint: String, val group: S
     NEWS("Новости", "News-пайплайн: RSS → агенты → пост", "Контент"),
     SCOUT("Scout", "Разведка хайповых тем по источникам", "Контент"),
     DIGEST("Дайджест", "Сводка новостей за N дней", "Контент"),
-    PROMPTS("Промпты агентов", "Все 8 агентов: переопределить или сбросить", "Настройка"),
+    PROMPTS("Промпты агентов", "Все $BLOG_AGENT_COUNT агентов: переопределить или сбросить", "Настройка"),
     STYLE("Стиль", "Образцы стиля для генерации", "Настройка"),
     SCHEDULE("Расписание", "Недельное расписание постов", "Настройка"),
     SETTINGS("Настройки блога", "Имя, профиль, источники, архив", "Настройка"),
@@ -270,7 +272,7 @@ fun BlogHubScreen(container: AppContainer, onBack: () -> Unit) {
                 }
                 item(key = "hint") {
                     Text(
-                        "Внутри блога: «Промпты агентов» — 8 агентов, override и сброс к встроенному; «Настройки» — профиль, RSS и архив.",
+                        "Внутри блога: «Промпты агентов» — $BLOG_AGENT_COUNT агентов, override и сброс к встроенному; «Настройки» — профиль, RSS и архив.",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -324,7 +326,7 @@ private fun BlogHubCard(blog: BlogDto, onClick: () -> Unit) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PillBadge(readinessHint(blog), MaterialTheme.colorScheme.primary)
                 PillBadge("постов ${blog.counts.posts}", MaterialTheme.colorScheme.secondary)
-                PillBadge("промпты ${blog.agentPromptsCount}/8", MaterialTheme.colorScheme.tertiary)
+                PillBadge("промпты ${blog.agentPromptsCount}/$BLOG_AGENT_COUNT", MaterialTheme.colorScheme.tertiary)
                 if (blog.tgChatIdSet) PillBadge("TG свой", MaterialTheme.colorScheme.primary)
             }
         }
@@ -353,8 +355,8 @@ private fun BlogCreateDialog(
             localError = "Название обязательно"
             return
         }
-        if (!Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$").matches(cleanSlug) || cleanSlug.length < 2) {
-            localError = "Slug: латиница, цифры и дефис, минимум 2 символа"
+        if (!Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$").matches(cleanSlug) || cleanSlug.length < 2 || Regex("^\\d+$").matches(cleanSlug)) {
+            localError = "Slug: латиница, цифры и дефис; не только цифры, минимум 2 символа"
             return
         }
         localError = null
@@ -453,7 +455,7 @@ private fun BlogMenuScreen(container: AppContainer, blog: BlogDto, onBack: () ->
                         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(readinessHint(blog), style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "постов ${blog.counts.posts} · промпты ${blog.agentPromptsCount}/8 · RSS ${blog.sourcesCount}",
+                                "постов ${blog.counts.posts} · промпты ${blog.agentPromptsCount}/$BLOG_AGENT_COUNT · RSS ${blog.sourcesCount}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1794,7 +1796,8 @@ private fun BlogPromptsScreen(container: AppContainer, blog: BlogDto, onBack: ()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 20.dp),
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2121,7 +2124,7 @@ private fun BlogSettingsForm(
                 Column(Modifier.padding(18.dp)) {
                     Text("Промпты агентов", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Все 8 агентов: переопределить, сбросить, посмотреть источник",
+                        "Все $BLOG_AGENT_COUNT агентов: переопределить, сбросить, посмотреть источник",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

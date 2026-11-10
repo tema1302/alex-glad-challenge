@@ -620,8 +620,9 @@ class ArtelRepository(private val store: CredentialsStore) {
 
     /* ---------- Blog ---------- */
 
-    suspend fun blogs(): ApiResult<BlogsResponse> = call { api ->
-        api.blogs()
+    /** includeArchived=true — хаб должен видеть архив, иначе блог нельзя вернуть. */
+    suspend fun blogs(includeArchived: Boolean = true): ApiResult<BlogsResponse> = call { api ->
+        api.blogs(if (includeArchived) "1" else null)
     }
 
     suspend fun createBlog(request: BlogCreateRequest): ApiResult<BlogCreateResponse> = call { api ->

@@ -160,7 +160,7 @@ interface ArtelApi {
     /* ---------- Blog ---------- */
 
     @GET("api/blogs")
-    suspend fun blogs(): BlogsResponse
+    suspend fun blogs(@Query("includeArchived") includeArchived: String? = null): BlogsResponse
 
     @POST("api/blogs")
     suspend fun createBlog(@Body body: BlogCreateRequest): BlogCreateResponse

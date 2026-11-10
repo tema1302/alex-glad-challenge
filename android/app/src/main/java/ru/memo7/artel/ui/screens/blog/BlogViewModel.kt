@@ -496,6 +496,7 @@ class BlogViewModel(
                     hours = hours,
                     topK = topK,
                     query = query?.takeIf { it.isNotBlank() },
+                    blog = blogSlug,
                     enableTelegram = enableTelegram,
                     enableForum = enableForum,
                     llm = llm,

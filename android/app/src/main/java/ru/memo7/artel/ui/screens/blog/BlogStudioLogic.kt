@@ -4,6 +4,9 @@ package ru.memo7.artel.ui.screens.blog
 
 import ru.memo7.artel.data.api.BlogDto
 
+/** Число редактируемых блог-агентов (синхронно с core blogAgentPrompts.ts). */
+internal const val BLOG_AGENT_COUNT = 7
+
 private val TRANSLIT = mapOf(
     'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e",
     'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m",
