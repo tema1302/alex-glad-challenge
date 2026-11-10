@@ -6,8 +6,11 @@
 // каждая поверхность имеет loading/error/empty.
 package ru.memo7.artel.ui.screens.blog
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -56,17 +59,18 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import ru.memo7.artel.core.UiState
+import ru.memo7.artel.data.api.BlogCreateRequest
 import ru.memo7.artel.data.api.BlogDto
 import ru.memo7.artel.data.api.BlogPipelineDto
 import ru.memo7.artel.data.api.BlogScheduleEntryDto
 import ru.memo7.artel.data.api.BlogScheduleResponse
 import ru.memo7.artel.data.api.DigestResponse
 import ru.memo7.artel.data.api.GeneratePostsResponse
-import ru.memo7.artel.data.api.PatchBlogRequest
 import ru.memo7.artel.data.api.PostListItemDto
 import ru.memo7.artel.data.api.PostTgDto
 import ru.memo7.artel.data.api.PublishedOutcomeDto
 import ru.memo7.artel.data.api.StyleSampleDto
+import ru.memo7.artel.data.api.blogGeneralPatchJson
 import ru.memo7.artel.di.AppContainer
 import ru.memo7.artel.ui.components.BentoCard
 import ru.memo7.artel.ui.components.PillBadge
@@ -92,16 +96,17 @@ private val TIME_LOCAL_REGEX = Regex("""^([01]\d|2[0-3]):[0-5]\d$""")
 private val DAY_NAMES = listOf("Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб")
 
 /** Разделы меню блога — входы из хаба. */
-private enum class BlogSection(val label: String, val hint: String) {
-    POSTS("Посты", "Лента постов с статусом отправки в Telegram"),
-    GENERATE("Генерация по теме", "Ручной пост по теме, до 3 вариантов"),
-    NEWS("Новости", "News-пайплайн: RSS → агенты → пост"),
-    SCOUT("Scout", "Разведка хайповых тем по источникам"),
-    DIGEST("Дайджест", "Сводка новостей за N дней"),
-    STYLE("Стиль", "Образцы стиля для генерации"),
-    PIPELINE("Пайплайн", "Состояние FSM блог-агентов"),
-    SCHEDULE("Расписание", "Недельное расписание постов"),
-    SETTINGS("Настройки блога", "Имя, профиль, промпты, источники"),
+private enum class BlogSection(val label: String, val hint: String, val group: String) {
+    POSTS("Посты", "Лента постов с статусом отправки в Telegram", "Контент"),
+    GENERATE("Генерация по теме", "Ручной пост по теме, до 3 вариантов", "Контент"),
+    NEWS("Новости", "News-пайплайн: RSS → агенты → пост", "Контент"),
+    SCOUT("Scout", "Разведка хайповых тем по источникам", "Контент"),
+    DIGEST("Дайджест", "Сводка новостей за N дней", "Контент"),
+    PROMPTS("Промпты агентов", "Все 8 агентов: переопределить или сбросить", "Настройка"),
+    STYLE("Стиль", "Образцы стиля для генерации", "Настройка"),
+    SCHEDULE("Расписание", "Недельное расписание постов", "Настройка"),
+    SETTINGS("Настройки блога", "Имя, профиль, источники, архив", "Настройка"),
+    PIPELINE("Пайплайн", "Состояние FSM блог-агентов", "Служебное"),
 }
 
 @Composable
@@ -191,65 +196,242 @@ private fun FieldLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/* ---------- Хаб: список блогов ---------- */
+/* ---------- Хаб: список блогов и управление ---------- */
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun BlogHubScreen(container: AppContainer, onBack: () -> Unit) {
     val vm = blogViewModel(container, "hub", null)
     val blogs by vm.blogs.collectAsStateWithLifecycle()
+    val createState by vm.createBlog.collectAsStateWithLifecycle()
     var selected by remember { mutableStateOf<BlogDto?>(null) }
+    var createOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) { vm.loadBlogs() }
+    // Перезагрузка после возврата из блога и после создания.
+    LaunchedEffect(selected) { if (selected == null) vm.loadBlogs() }
+    LaunchedEffect(createState) {
+        if (createState is ActionState.Done) {
+            createOpen = false
+            vm.loadBlogs()
+        }
+    }
 
     val current = selected
     if (current != null) {
-        BlogMenuScreen(container, current, onBack = { selected = null })
+        BlogMenuScreen(container, current, onBack = {
+            selected = null
+            vm.loadBlogs()
+        })
         return
     }
     Column(Modifier.fillMaxSize()) {
-        BlogHeader("Блог", "Выберите блог", onBack)
+        BlogHeader("Блоги", "Управление, промпты и готовность", onBack)
         StateContainer(
             state = blogs,
             onRetry = vm::loadBlogs,
             emptyCheck = { it.isEmpty() },
             emptyMessage = "Блогов пока нет",
-            emptyHint = "Блоги создаются на сервере, в веб-интерфейсе",
+            emptyHint = "Создайте первый блог — профиль и RSS настроите внутри",
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth(),
         ) { list ->
+            val summary = blogHubSummary(list)
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(list, key = { it.id }) { blog ->
-                    BentoCard(onClick = { selected = blog }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(18.dp)) {
-                            Text(blog.name, style = MaterialTheme.typography.titleMedium)
+                item(key = "summary") {
+                    BentoCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Text(
-                                blog.slug,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                "${summary.total} блогов · ${summary.ready} готовы · ${summary.attention} требуют настройки",
+                                style = MaterialTheme.typography.titleMedium,
                             )
-                            Spacer(Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                PillBadge("Стиль: ${blog.stylePreset}", MaterialTheme.colorScheme.primary)
-                                if (blog.hasProfile) {
-                                    PillBadge("Профиль голоса", MaterialTheme.colorScheme.secondary)
-                                }
-                                PillBadge(
-                                    if (blog.tgChatIdSet) "TG задан" else "TG не задан",
-                                    if (blog.tgChatIdSet) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                )
-                                PillBadge("Источников: ${blog.sourcesCount}", MaterialTheme.colorScheme.tertiary)
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                PillBadge("профиль + RSS = news", MaterialTheme.colorScheme.primary)
+                                PillBadge("промпты всех агентов", MaterialTheme.colorScheme.secondary)
+                            }
+                            Button(
+                                onClick = { createOpen = true },
+                                shape = ArtelShapes.pill,
+                                enabled = createState !is ActionState.Busy,
+                            ) {
+                                Icon(Icons.Rounded.Add, contentDescription = null)
+                                Spacer(Modifier.width(6.dp))
+                                Text("Новый блог")
                             }
                         }
                     }
                 }
+                items(list, key = { it.id }) { blog ->
+                    BlogHubCard(blog, onClick = { selected = blog })
+                }
+                item(key = "hint") {
+                    Text(
+                        "Внутри блога: «Промпты агентов» — 8 агентов, override и сброс к встроенному; «Настройки» — профиль, RSS и архив.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
+
+    if (createOpen) {
+        BlogCreateDialog(
+            busy = createState is ActionState.Busy,
+            error = (createState as? ActionState.Failed)?.message,
+            onClose = { createOpen = false },
+            onCreate = vm::createBlog,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BlogHubCard(blog: BlogDto, onClick: () -> Unit) {
+    BentoCard(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    blog.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                PillBadge(
+                    text = when {
+                        blog.status == "archived" -> "архив"
+                        newsReady(blog.hasProfile, blog.sourcesCount) -> "готов"
+                        else -> "настройка"
+                    },
+                    tint = MaterialTheme.colorScheme.onBackground,
+                    containerColor = when {
+                        blog.status == "archived" -> MaterialTheme.colorScheme.surfaceVariant
+                        newsReady(blog.hasProfile, blog.sourcesCount) -> MaterialTheme.colorScheme.secondary
+                        else -> MaterialTheme.colorScheme.tertiary
+                    },
+                )
+            }
+            Text(
+                blog.slug,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PillBadge(readinessHint(blog), MaterialTheme.colorScheme.primary)
+                PillBadge("постов ${blog.counts.posts}", MaterialTheme.colorScheme.secondary)
+                PillBadge("промпты ${blog.agentPromptsCount}/8", MaterialTheme.colorScheme.tertiary)
+                if (blog.tgChatIdSet) PillBadge("TG свой", MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BlogCreateDialog(
+    busy: Boolean,
+    error: String?,
+    onClose: () -> Unit,
+    onCreate: (BlogCreateRequest) -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var slug by remember { mutableStateOf("") }
+    var slugTouched by remember { mutableStateOf(false) }
+    var profile by remember { mutableStateOf("") }
+    var tgChatId by remember { mutableStateOf("") }
+    var stylePreset by remember { mutableStateOf("default") }
+    var localError by remember { mutableStateOf<String?>(null) }
+
+    fun submit() {
+        val cleanName = name.trim()
+        val cleanSlug = slug.trim()
+        if (cleanName.isEmpty()) {
+            localError = "Название обязательно"
+            return
+        }
+        if (!Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$").matches(cleanSlug) || cleanSlug.length < 2) {
+            localError = "Slug: латиница, цифры и дефис, минимум 2 символа"
+            return
+        }
+        localError = null
+        onCreate(
+            BlogCreateRequest(
+                slug = cleanSlug,
+                name = cleanName,
+                profile = profile.trim().ifBlank { null },
+                tgChatId = tgChatId.trim().ifBlank { null },
+                stylePreset = stylePreset,
+            ),
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onClose() },
+        title = { Text("Новый блог") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = {
+                        name = it.take(MAX_BLOG_NAME_LENGTH)
+                        if (!slugTouched) slug = slugifyRu(name)
+                    },
+                    label = { Text("Название") },
+                    singleLine = true,
+                    enabled = !busy,
+                )
+                OutlinedTextField(
+                    value = slug,
+                    onValueChange = {
+                        slugTouched = true
+                        slug = slugifyRu(it)
+                    },
+                    label = { Text("Slug (латиница, стабильный)") },
+                    singleLine = true,
+                    enabled = !busy,
+                )
+                OutlinedTextField(
+                    value = profile,
+                    onValueChange = { profile = it },
+                    label = { Text("Профиль голоса (пусто — позже)") },
+                    singleLine = true,
+                    enabled = !busy,
+                )
+                OutlinedTextField(
+                    value = tgChatId,
+                    onValueChange = { tgChatId = it },
+                    label = { Text("Telegram chat_id (необязательно)") },
+                    singleLine = true,
+                    enabled = !busy,
+                )
+                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                    listOf("default" to "Обычный", "antonov" to "Антонов").forEachIndexed { index, (value, label) ->
+                        SegmentedButton(
+                            selected = stylePreset == value,
+                            onClick = { stylePreset = value },
+                            shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
+                            enabled = !busy,
+                        ) { Text(label, style = MaterialTheme.typography.labelMedium) }
+                    }
+                }
+                (localError ?: error)?.let {
+                    Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = ::submit, enabled = !busy) {
+                Text(if (busy) "Создаю…" else "Создать")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onClose, enabled = !busy) { Text("Отмена") }
+        },
+    )
 }
 
 /* ---------- Меню разделов выбранного блога ---------- */
@@ -257,6 +439,7 @@ fun BlogHubScreen(container: AppContainer, onBack: () -> Unit) {
 @Composable
 private fun BlogMenuScreen(container: AppContainer, blog: BlogDto, onBack: () -> Unit) {
     var section by remember { mutableStateOf<BlogSection?>(null) }
+    BackHandler(enabled = section != null) { section = null }
     when (val current = section) {
         null -> Column(Modifier.fillMaxSize()) {
             BlogHeader(blog.name, "Раздел блога", onBack)
@@ -265,15 +448,32 @@ private fun BlogMenuScreen(container: AppContainer, blog: BlogDto, onBack: () ->
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                items(BlogSection.values().toList(), key = { it.name }) { item ->
-                    BentoCard(onClick = { section = item }, modifier = Modifier.fillMaxWidth()) {
-                        Column(Modifier.padding(18.dp)) {
-                            Text(item.label, style = MaterialTheme.typography.titleMedium)
+                item(key = "blog-status") {
+                    BentoCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(readinessHint(blog), style = MaterialTheme.typography.titleMedium)
                             Text(
-                                item.hint,
+                                "постов ${blog.counts.posts} · промпты ${blog.agentPromptsCount}/8 · RSS ${blog.sourcesCount}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                        }
+                    }
+                }
+                BlogSection.values().groupBy { it.group }.forEach { (group, items) ->
+                    item(key = "group-$group") {
+                        FieldLabel(group)
+                    }
+                    items(items, key = { it.name }) { item ->
+                        BentoCard(onClick = { section = item }, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(18.dp)) {
+                                Text(item.label, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    item.hint,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -284,10 +484,16 @@ private fun BlogMenuScreen(container: AppContainer, blog: BlogDto, onBack: () ->
         BlogSection.NEWS -> BlogNewsScreen(container, blog, onBack = { section = null })
         BlogSection.SCOUT -> BlogScoutScreen(container, blog, onBack = { section = null })
         BlogSection.DIGEST -> BlogDigestScreen(container, blog, onBack = { section = null })
+        BlogSection.PROMPTS -> BlogPromptsScreen(container, blog, onBack = { section = null })
         BlogSection.STYLE -> BlogStyleScreen(container, blog, onBack = { section = null })
         BlogSection.PIPELINE -> BlogPipelineScreen(container, onBack = { section = null })
         BlogSection.SCHEDULE -> BlogScheduleScreen(container, blog, onBack = { section = null })
-        BlogSection.SETTINGS -> BlogSettingsScreen(container, blog, onBack = { section = null })
+        BlogSection.SETTINGS -> BlogSettingsScreen(
+            container,
+            blog,
+            onBack = { section = null },
+            onOpenPrompts = { section = BlogSection.PROMPTS },
+        )
     }
 }
 
@@ -1534,15 +1740,196 @@ private fun ScheduleContent(
     }
 }
 
+/* ---------- Промпты всех агентов ---------- */
+
+private fun promptSourceLabel(source: String): String = when (source) {
+    "blog" -> "кастомный"
+    "legacy-blog-system" -> "системный промпт"
+    "preset" -> "пресет"
+    else -> "по умолчанию"
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun BlogPromptsScreen(container: AppContainer, blog: BlogDto, onBack: () -> Unit) {
+    val vm = blogViewModel(container, "prompts", blog.slug)
+    val prompts by vm.prompts.collectAsStateWithLifecycle()
+    val putState by vm.putPrompt.collectAsStateWithLifecycle()
+    var selectedAgent by remember { mutableStateOf<String?>(null) }
+    var draft by remember { mutableStateOf("") }
+    var pendingAgent by remember { mutableStateOf<String?>(null) }
+    var resetOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) { vm.loadPrompts() }
+
+    Column(Modifier.fillMaxSize()) {
+        BlogHeader("Промпты агентов", blog.name, onBack)
+        StateContainer(
+            state = prompts,
+            onRetry = vm::loadPrompts,
+            emptyCheck = { it.prompts.isEmpty() },
+            emptyMessage = "Промпты не найдены",
+            emptyHint = "Обновите экран или проверьте сервер",
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+        ) { data ->
+            val selected = data.prompts.firstOrNull { it.agent == selectedAgent } ?: data.prompts.firstOrNull()
+            LaunchedEffect(data, selectedAgent) {
+                if (selectedAgent == null && selected != null) selectedAgent = selected.agent
+                draft = selected?.prompt.orEmpty()
+            }
+            val dirty = selected != null && draft != selected.prompt.orEmpty()
+
+            fun choose(agent: String) {
+                val current = data.prompts.firstOrNull { it.agent == selectedAgent }
+                if (draft != current?.prompt.orEmpty()) {
+                    pendingAgent = agent
+                } else {
+                    selectedAgent = agent
+                    draft = data.prompts.firstOrNull { it.agent == agent }?.prompt.orEmpty()
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    data.prompts.forEach { item ->
+                        FilterChip(
+                            selected = item.agent == selected?.agent,
+                            onClick = { choose(item.agent) },
+                            label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                        )
+                    }
+                }
+                if (selected != null) {
+                    BentoCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    selected.label,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                PillBadge(
+                                    promptSourceLabel(selected.source),
+                                    if (selected.isOverridden) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                            }
+                            Text(
+                                selected.description,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Меняется: ${selected.editableScope}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            OutlinedTextField(
+                                value = draft,
+                                onValueChange = { draft = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                label = { Text("Промпт агента") },
+                                supportingText = {
+                                    Text("${draft.length} / ${selected.maxLength}${if (dirty) " · не сохранено" else ""}")
+                                },
+                                isError = draft.length > selected.maxLength,
+                                minLines = 8,
+                                maxLines = 16,
+                                enabled = putState !is OpState.Busy,
+                            )
+                            Text(
+                                "Пустое поле = сброс к встроенному. JSON-контракты и данные источника добавляются автоматически.",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { vm.putPrompt(selected.agent, draft.trim().ifBlank { null }) },
+                                    enabled = dirty && draft.length <= selected.maxLength && putState !is OpState.Busy,
+                                    shape = ArtelShapes.pill,
+                                ) { Text("Сохранить") }
+                                Button(
+                                    onClick = { draft = selected.prompt.orEmpty() },
+                                    enabled = dirty && putState !is OpState.Busy,
+                                    shape = ArtelShapes.pill,
+                                ) { Text("Отменить") }
+                                if (selected.isOverridden) {
+                                    Button(
+                                        onClick = { resetOpen = true },
+                                        enabled = putState !is OpState.Busy,
+                                        shape = ArtelShapes.pill,
+                                    ) { Text("Сбросить") }
+                                }
+                            }
+                            OpStateText(putState)
+                        }
+                    }
+                }
+            }
+
+            if (resetOpen && selected != null) {
+                AlertDialog(
+                    onDismissRequest = { resetOpen = false },
+                    title = { Text("Сбросить промпт?") },
+                    text = { Text("Кастомный текст агента «${selected.label}» будет удалён, вернётся встроенное поведение.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            resetOpen = false
+                            vm.putPrompt(selected.agent, null)
+                        }) { Text("Сбросить") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { resetOpen = false }) { Text("Отмена") }
+                    },
+                )
+            }
+
+            if (pendingAgent != null) {
+                AlertDialog(
+                    onDismissRequest = { pendingAgent = null },
+                    title = { Text("Есть несохранённые изменения") },
+                    text = { Text("Переключение агента потеряет правки в текущем промпте.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val next = pendingAgent
+                            pendingAgent = null
+                            selectedAgent = next
+                            draft = data.prompts.firstOrNull { it.agent == next }?.prompt.orEmpty()
+                        }) { Text("Отменить правки") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { pendingAgent = null }) { Text("Остаться") }
+                    },
+                )
+            }
+        }
+    }
+}
+
 /* ---------- Настройки блога ---------- */
 
 @Composable
-private fun BlogSettingsScreen(container: AppContainer, blog: BlogDto, onBack: () -> Unit) {
+private fun BlogSettingsScreen(
+    container: AppContainer,
+    blog: BlogDto,
+    onBack: () -> Unit,
+    onOpenPrompts: () -> Unit,
+) {
     val vm = blogViewModel(container, "settings", blog.slug)
     val detail by vm.blogDetail.collectAsStateWithLifecycle()
     val patchState by vm.patchBlog.collectAsStateWithLifecycle()
+    var archiveOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.loadBlogDetail() }
+    LaunchedEffect(patchState) {
+        if (patchState is OpState.Done) archiveOpen = false
+    }
 
     Column(Modifier.fillMaxSize()) {
         BlogHeader("Настройки блога", blog.name, onBack)
@@ -1553,8 +1940,42 @@ private fun BlogSettingsScreen(container: AppContainer, blog: BlogDto, onBack: (
                 .weight(1f)
                 .fillMaxWidth(),
         ) { data ->
-            BlogSettingsForm(data, patchState, onSave = vm::patchBlog)
+            BlogSettingsForm(
+                data = data,
+                patchState = patchState,
+                onSave = vm::patchBlog,
+                onOpenPrompts = onOpenPrompts,
+                onArchive = { archiveOpen = true },
+            )
         }
+    }
+
+    if (archiveOpen) {
+        val archived = (detail as? UiState.Success)?.data?.status == "archived"
+        AlertDialog(
+            onDismissRequest = { archiveOpen = false },
+            title = { Text(if (archived) "Вернуть блог?" else "Архивировать блог?") },
+            text = {
+                Text(
+                    if (archived) {
+                        "Блог снова станет доступен для генерации и расписания."
+                    } else {
+                        "Блог скроется из селекторов, автоматизация и расписание остановятся. Данные сохранятся."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        vm.setArchived(!archived)
+                    },
+                    enabled = patchState !is OpState.Busy,
+                ) { Text(if (archived) "Вернуть" else "Архивировать") }
+            },
+            dismissButton = {
+                TextButton(onClick = { archiveOpen = false }) { Text("Отмена") }
+            },
+        )
     }
 }
 
@@ -1562,16 +1983,29 @@ private fun BlogSettingsScreen(container: AppContainer, blog: BlogDto, onBack: (
 private fun BlogSettingsForm(
     data: BlogDto,
     patchState: OpState,
-    onSave: (PatchBlogRequest) -> Unit,
+    onSave: (kotlinx.serialization.json.JsonObject) -> Unit,
+    onOpenPrompts: () -> Unit,
+    onArchive: () -> Unit,
 ) {
     var name by remember(data) { mutableStateOf(data.name) }
     var profile by remember(data) { mutableStateOf(data.profile.orEmpty()) }
     var tgChatId by remember(data) { mutableStateOf(data.tgChatId.orEmpty()) }
     var stylePreset by remember(data) { mutableStateOf(data.stylePreset) }
-    var systemPrompt by remember(data) { mutableStateOf(data.systemPrompt.orEmpty()) }
     var contextPrompt by remember(data) { mutableStateOf(data.contextPrompt.orEmpty()) }
     var sourcesText by remember(data) { mutableStateOf(data.sources.joinToString("\n")) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    val sources = sourcesText
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
+    val profileChanged = profile != data.profile.orEmpty()
+    val tgChanged = tgChatId != data.tgChatId.orEmpty()
+    val sourcesChanged = sourcesText != data.sources.joinToString("\n")
+    val contextChanged = contextPrompt != data.contextPrompt.orEmpty()
+    val dirty = name != data.name || profileChanged || tgChanged || stylePreset != data.stylePreset ||
+        sourcesChanged || contextChanged
 
     fun save() {
         val trimmedName = name.trim()
@@ -1579,16 +2013,10 @@ private fun BlogSettingsForm(
             error = "Название обязательно, до $MAX_BLOG_NAME_LENGTH символов"
             return
         }
-        if (systemPrompt.length > MAX_BLOG_PROMPT_LENGTH || contextPrompt.length > MAX_BLOG_PROMPT_LENGTH) {
-            error = "Промпты — до $MAX_BLOG_PROMPT_LENGTH символов каждый"
+        if (contextPrompt.length > MAX_BLOG_PROMPT_LENGTH) {
+            error = "Контекстный промпт — до $MAX_BLOG_PROMPT_LENGTH символов"
             return
         }
-        val sources = sourcesText
-            .lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .take(MAX_SOURCES_COUNT + 1)
-            .toList()
         if (sources.size > MAX_SOURCES_COUNT) {
             error = "Источников не больше $MAX_SOURCES_COUNT"
             return
@@ -1599,14 +2027,15 @@ private fun BlogSettingsForm(
         }
         error = null
         onSave(
-            PatchBlogRequest(
-                name = trimmedName,
+            blogGeneralPatchJson(
+                name = if (trimmedName != data.name) trimmedName else null,
                 profile = profile.trim().ifBlank { null },
-                tgChatId = tgChatId.trim(),
-                stylePreset = stylePreset,
-                systemPrompt = systemPrompt.trim().ifBlank { null },
-                contextPrompt = contextPrompt.trim().ifBlank { null },
-                sources = sources,
+                profileChanged = profileChanged,
+                tgChatId = tgChatId.trim().ifBlank { null },
+                tgChanged = tgChanged,
+                stylePreset = if (stylePreset != data.stylePreset) stylePreset else null,
+                sources = if (sourcesChanged) sources else null,
+                contextPrompt = if (contextChanged) contextPrompt.trim() else null,
             ),
         )
     }
@@ -1619,6 +2048,14 @@ private fun BlogSettingsForm(
         item(key = "form") {
             BentoCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Общие настройки",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (dirty) PillBadge("не сохранено", MaterialTheme.colorScheme.tertiary)
+                    }
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it.take(MAX_BLOG_NAME_LENGTH) },
@@ -1651,17 +2088,11 @@ private fun BlogSettingsForm(
                         }
                     }
                     OutlinedTextField(
-                        value = systemPrompt,
-                        onValueChange = { systemPrompt = it.take(MAX_BLOG_PROMPT_LENGTH) },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Системный промпт (пусто — сброс)") },
-                        minLines = 3,
-                    )
-                    OutlinedTextField(
                         value = contextPrompt,
                         onValueChange = { contextPrompt = it.take(MAX_BLOG_PROMPT_LENGTH) },
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Контекстный промпт (пусто — сброс)") },
+                        label = { Text("Контекст блога (постоянные факты, аудитория, тон)") },
+                        supportingText = { Text("${contextPrompt.length} / $MAX_BLOG_PROMPT_LENGTH") },
                         minLines = 3,
                     )
                     OutlinedTextField(
@@ -1669,18 +2100,55 @@ private fun BlogSettingsForm(
                         onValueChange = { sourcesText = it },
                         modifier = Modifier.fillMaxWidth(),
                         label = { Text("RSS-источники: по одной ссылке в строке") },
+                        supportingText = { Text("Пусто = news недоступен; ссылок ${sources.size}/$MAX_SOURCES_COUNT") },
                         minLines = 3,
                     )
-                    ActionButton(
-                        label = "Сохранить настройки",
-                        busy = patchState is OpState.Busy,
+                    Button(
                         onClick = ::save,
+                        enabled = dirty && patchState !is OpState.Busy,
+                        shape = ArtelShapes.pill,
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                    ) { Text(if (patchState is OpState.Busy) "Сохраняю…" else "Сохранить настройки") }
                     error?.let {
                         Text(it, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
                     OpStateText(patchState)
+                }
+            }
+        }
+        item(key = "prompts") {
+            BentoCard(onClick = onOpenPrompts, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Промпты агентов", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Все 8 агентов: переопределить, сбросить, посмотреть источник",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        item(key = "archive") {
+            BentoCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (data.status == "archived") "Блог в архиве" else "Архив",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        if (data.status == "archived") {
+                            "Селекторы и автогенерация его не используют. Верните, чтобы снова работать."
+                        } else {
+                            "Скрывает блог из селекторов и останавливает автогенерацию. Данные сохраняются."
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Button(
+                        onClick = onArchive,
+                        shape = ArtelShapes.pill,
+                        enabled = patchState !is OpState.Busy,
+                    ) { Text(if (data.status == "archived") "Вернуть из архива" else "Архивировать блог") }
                 }
             }
         }

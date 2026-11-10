@@ -294,4 +294,90 @@ class BlogModelsTest {
         assertTrue(dto.truncated)
         assertEquals("https://a.ru/1", dto.sources.single().url)
     }
+
+    @Test
+    fun `blog list декодирует status counts и readiness`() {
+        val payload = """
+            {
+              "blogs": [
+                {
+                  "id": 1, "slug": "main", "name": "Главный", "profile": "default",
+                  "hasProfile": true, "sourcesCount": 2, "tgChatIdSet": false,
+                  "stylePreset": "default", "status": "active", "archivedAt": null,
+                  "counts": {"posts": 4, "news": 5, "styleSamples": 1, "postsLast7Days": 3, "lastPostAt": "2026-11-09"},
+                  "lastPostAt": "2026-11-09", "agentPromptsCount": 2, "readyForNews": true,
+                  "createdAt": "2026-01-01 00:00:00"
+                }
+              ],
+              "profiles": ["default"]
+            }
+        """.trimIndent()
+
+        val dto = json.decodeFromString<BlogsResponse>(payload)
+
+        val blog = dto.blogs.single()
+        assertEquals("active", blog.status)
+        assertEquals(4, blog.counts.posts)
+        assertEquals(3, blog.counts.postsLast7Days)
+        assertEquals(2, blog.agentPromptsCount)
+        assertTrue(blog.readyForNews)
+        assertNull(blog.archivedAt)
+    }
+
+    @Test
+    fun `agent prompts декодирует override источник и default`() {
+        val payload = """
+            {
+              "blog": {"slug": "main", "name": "Главный"},
+              "prompts": [
+                {
+                  "agent": "factcheck.verdict", "label": "Фактчекер: вердикт",
+                  "description": "Вердикт", "group": "quality",
+                  "defaultPrompt": "Ты фактчекер", "prompt": "Строгий",
+                  "effectivePrompt": "Строгий", "source": "blog",
+                  "isOverridden": true, "updatedAt": "2026-11-10",
+                  "maxLength": 8000, "editableScope": "роль"
+                },
+                {
+                  "agent": "digest.weekly", "label": "Дайджест",
+                  "prompt": null, "defaultPrompt": "Ты редактор",
+                  "effectivePrompt": "Ты редактор", "source": "default",
+                  "isOverridden": false, "maxLength": 8000
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val dto = json.decodeFromString<BlogAgentPromptsResponse>(payload)
+
+        assertEquals("main", dto.blog?.slug)
+        assertEquals(2, dto.prompts.size)
+        assertTrue(dto.prompts[0].isOverridden)
+        assertEquals("Строгий", dto.prompts[0].prompt)
+        assertFalse(dto.prompts[1].isOverridden)
+        assertNull(dto.prompts[1].prompt)
+        assertEquals(8000, dto.prompts[1].maxLength)
+    }
+
+    @Test
+    fun `blog pulse декодирует totals и блоги`() {
+        val payload = """
+            {
+              "generatedAt": "2026-11-10T12:00:00Z",
+              "totals": {"blogs": 2, "active": 2, "needsAttention": 1, "posts": 6, "postsLast7Days": 3, "customPrompts": 2},
+              "blogs": [
+                {"id": 1, "slug": "main", "name": "Главный", "hasProfile": true, "sourcesCount": 1,
+                 "readyForNews": true, "counts": {"posts": 4, "postsLast7Days": 3}, "agentPromptsCount": 2}
+              ]
+            }
+        """.trimIndent()
+
+        val dto = json.decodeFromString<BlogPulseResponse>(payload)
+
+        assertEquals(2, dto.totals.active)
+        assertEquals(1, dto.totals.needsAttention)
+        assertEquals(3, dto.totals.postsLast7Days)
+        assertEquals("main", dto.blogs.single().slug)
+        assertTrue(dto.blogs.single().readyForNews)
+    }
 }

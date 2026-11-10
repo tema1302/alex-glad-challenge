@@ -15,10 +15,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonObject
 import ru.memo7.artel.core.UiState
 import ru.memo7.artel.core.network.ApiResult
 import ru.memo7.artel.data.ArtelRepository
 import ru.memo7.artel.data.api.AddStyleSampleRequest
+import ru.memo7.artel.data.api.BlogAgentPromptsResponse
+import ru.memo7.artel.data.api.BlogCreateRequest
 import ru.memo7.artel.data.api.BlogDto
 import ru.memo7.artel.data.api.BlogNewsRequest
 import ru.memo7.artel.data.api.BlogPipelineDto
@@ -34,13 +37,13 @@ import ru.memo7.artel.data.api.DigestResponse
 import ru.memo7.artel.data.api.GeneratePostsRequest
 import ru.memo7.artel.data.api.GeneratePostsResponse
 import ru.memo7.artel.data.api.NewsPostDto
-import ru.memo7.artel.data.api.PatchBlogRequest
 import ru.memo7.artel.data.api.PostListItemDto
 import ru.memo7.artel.data.api.PutBlogScheduleRequest
 import ru.memo7.artel.data.api.ScoutAgentDto
 import ru.memo7.artel.data.api.ScoutRankedDto
 import ru.memo7.artel.data.api.StyleSampleDto
 import ru.memo7.artel.data.api.TopNewsDto
+import ru.memo7.artel.data.api.blogStatusPatchJson
 
 /** Простая мутация без результата: кнопка → Busy → Done/Failed (один тап до ответа). */
 sealed interface OpState {
@@ -101,6 +104,17 @@ class BlogViewModel(
 
     private val _patchBlog = MutableStateFlow<OpState>(OpState.Idle)
     val patchBlog: StateFlow<OpState> = _patchBlog.asStateFlow()
+
+    private val _createBlog = MutableStateFlow<ActionState<BlogDto>>(ActionState.Idle)
+    val createBlog: StateFlow<ActionState<BlogDto>> = _createBlog.asStateFlow()
+
+    /* ---------- Промпты агентов ---------- */
+
+    private val _prompts = MutableStateFlow<UiState<BlogAgentPromptsResponse>>(UiState.Loading)
+    val prompts: StateFlow<UiState<BlogAgentPromptsResponse>> = _prompts.asStateFlow()
+
+    private val _putPrompt = MutableStateFlow<OpState>(OpState.Idle)
+    val putPrompt: StateFlow<OpState> = _putPrompt.asStateFlow()
 
     /* ---------- Посты ---------- */
 
@@ -250,7 +264,7 @@ class BlogViewModel(
 
     /* ---------- Настройки блога (PATCH) ---------- */
 
-    fun patchBlog(request: PatchBlogRequest) {
+    fun patchBlog(body: JsonObject) {
         val slug = blogSlug ?: run {
             _patchBlog.value = OpState.Failed("Блог не выбран")
             return
@@ -258,13 +272,66 @@ class BlogViewModel(
         if (_patchBlog.value is OpState.Busy) return
         _patchBlog.value = OpState.Busy
         viewModelScope.launch {
-            _patchBlog.value = when (val result = repository.patchBlog(slug, request)) {
+            _patchBlog.value = when (val result = repository.patchBlog(slug, body)) {
                 is ApiResult.Success -> {
                     _blogDetail.value = UiState.Success(result.data.blog)
+                    loadBlogs()
                     OpState.Done("Настройки блога сохранены")
                 }
                 is ApiResult.Failure ->
                     OpState.Failed(result.error.message ?: "Не удалось сохранить настройки")
+            }
+        }
+    }
+
+    fun setArchived(archived: Boolean) = patchBlog(blogStatusPatchJson(if (archived) "archived" else "active"))
+
+    fun createBlog(request: BlogCreateRequest) {
+        if (_createBlog.value is ActionState.Busy) return
+        _createBlog.value = ActionState.Busy
+        viewModelScope.launch {
+            _createBlog.value = when (val result = repository.createBlog(request)) {
+                is ApiResult.Success -> {
+                    loadBlogs()
+                    ActionState.Done(result.data.blog)
+                }
+                is ApiResult.Failure ->
+                    ActionState.Failed(result.error.message ?: "Не удалось создать блог")
+            }
+        }
+    }
+
+    fun loadPrompts() {
+        val slug = blogSlug ?: run {
+            _prompts.value = UiState.Error("Блог не выбран")
+            return
+        }
+        _prompts.value = UiState.Loading
+        viewModelScope.launch {
+            _prompts.value = when (val result = repository.blogAgentPrompts(slug)) {
+                is ApiResult.Success -> UiState.Success(result.data)
+                is ApiResult.Failure ->
+                    UiState.Error(result.error.message ?: "Не удалось загрузить промпты")
+            }
+        }
+    }
+
+    fun putPrompt(agent: String, prompt: String?) {
+        val slug = blogSlug ?: run {
+            _putPrompt.value = OpState.Failed("Блог не выбран")
+            return
+        }
+        if (_putPrompt.value is OpState.Busy) return
+        _putPrompt.value = OpState.Busy
+        viewModelScope.launch {
+            _putPrompt.value = when (val result = repository.putBlogAgentPrompt(slug, agent, prompt)) {
+                is ApiResult.Success -> {
+                    loadPrompts()
+                    loadBlogDetail()
+                    OpState.Done(if (prompt == null) "Промпт сброшен" else "Промпт сохранён")
+                }
+                is ApiResult.Failure ->
+                    OpState.Failed(result.error.message ?: "Не удалось сохранить промпт")
             }
         }
     }

@@ -25,6 +25,9 @@ import ru.memo7.artel.data.api.AutomationConfigureRequest
 import ru.memo7.artel.data.api.AutomationResponse
 import ru.memo7.artel.data.api.AutomationRunRequest
 import ru.memo7.artel.data.api.AutomationRunResponse
+import ru.memo7.artel.data.api.BlogAgentPromptsResponse
+import ru.memo7.artel.data.api.BlogCreateRequest
+import ru.memo7.artel.data.api.BlogCreateResponse
 import ru.memo7.artel.data.api.BlogDetailResponse
 import ru.memo7.artel.data.api.BlogNewsRequest
 import ru.memo7.artel.data.api.BlogPipelineDto
@@ -32,12 +35,14 @@ import ru.memo7.artel.data.api.BlogPipelineResetRequest
 import ru.memo7.artel.data.api.BlogPipelineTransitionRequest
 import ru.memo7.artel.data.api.BlogPostResponse
 import ru.memo7.artel.data.api.BlogPostsResponse
+import ru.memo7.artel.data.api.BlogPulseResponse
 import ru.memo7.artel.data.api.BlogScheduleResponse
 import ru.memo7.artel.data.api.BlogScoutRequest
 import ru.memo7.artel.data.api.BlogsResponse
 import ru.memo7.artel.data.api.BlogSseParser
 import ru.memo7.artel.data.api.BlogStreamEvent
 import ru.memo7.artel.data.api.BlogStyleRequest
+import ru.memo7.artel.data.api.blogAgentPromptJson
 import ru.memo7.artel.data.api.DigestGenerateRequest
 import ru.memo7.artel.data.api.DigestResponse
 import ru.memo7.artel.data.api.EvoluteAgentRequest
@@ -48,8 +53,8 @@ import ru.memo7.artel.data.api.GeneratePostsResponse
 import ru.memo7.artel.data.api.McpCallRequest
 import ru.memo7.artel.data.api.McpCallResponse
 import ru.memo7.artel.data.api.McpToolsResponse
-import ru.memo7.artel.data.api.PatchBlogRequest
 import ru.memo7.artel.data.api.PatchBlogResponse
+import ru.memo7.artel.data.api.PutBlogAgentPromptResponse
 import ru.memo7.artel.data.api.PatchPostRequest
 import ru.memo7.artel.data.api.PatchPostResponse
 import ru.memo7.artel.data.api.PublishPostResponse
@@ -619,16 +624,38 @@ class ArtelRepository(private val store: CredentialsStore) {
         api.blogs()
     }
 
+    suspend fun createBlog(request: BlogCreateRequest): ApiResult<BlogCreateResponse> = call { api ->
+        api.createBlog(request)
+    }
+
+    suspend fun blogPulse(): ApiResult<BlogPulseResponse> = call { api ->
+        api.blogPulse()
+    }
+
     suspend fun blog(slug: String): ApiResult<BlogDetailResponse> = call { api ->
         api.blog(slug)
     }
 
-    /** PATCH /api/blogs/{slug}: null-поля означают «сбросить» — сервер различает
-     *  «не передано» и explicit null, поэтому кодируем null'ы явно. */
-    suspend fun patchBlog(slug: String, request: PatchBlogRequest): ApiResult<PatchBlogResponse> = call { api ->
-        val body = patchJson.encodeToString(PatchBlogRequest.serializer(), request)
+    /** PATCH /api/blogs/{slug} с частичным телом: отправляем только изменённые ключи,
+     *  иначе null-поля сбрасывают чужие настройки. */
+    suspend fun patchBlog(slug: String, body: JsonObject): ApiResult<PatchBlogResponse> = call { api ->
+        val request = patchJson.encodeToString(JsonObject.serializer(), body)
             .toRequestBody("application/json".toMediaType())
-        api.patchBlog(slug, body)
+        api.patchBlog(slug, request)
+    }
+
+    suspend fun blogAgentPrompts(slug: String): ApiResult<BlogAgentPromptsResponse> = call { api ->
+        api.blogAgentPrompts(slug)
+    }
+
+    suspend fun putBlogAgentPrompt(
+        slug: String,
+        agent: String,
+        prompt: String?,
+    ): ApiResult<PutBlogAgentPromptResponse> = call { api ->
+        val body = patchJson.encodeToString(JsonObject.serializer(), blogAgentPromptJson(agent, prompt))
+            .toRequestBody("application/json".toMediaType())
+        api.putBlogAgentPrompt(slug, body)
     }
 
     suspend fun blogPosts(limit: Int?, blog: String?): ApiResult<BlogPostsResponse> = call { api ->

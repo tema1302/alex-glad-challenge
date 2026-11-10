@@ -162,11 +162,26 @@ interface ArtelApi {
     @GET("api/blogs")
     suspend fun blogs(): BlogsResponse
 
+    @POST("api/blogs")
+    suspend fun createBlog(@Body body: BlogCreateRequest): BlogCreateResponse
+
     @GET("api/blogs/{slug}")
     suspend fun blog(@Path("slug") slug: String): BlogDetailResponse
 
     @PATCH("api/blogs/{slug}")
     suspend fun patchBlog(@Path("slug") slug: String, @Body body: RequestBody): PatchBlogResponse
+
+    @GET("api/blogs/{slug}/agent-prompts")
+    suspend fun blogAgentPrompts(@Path("slug") slug: String): BlogAgentPromptsResponse
+
+    @PUT("api/blogs/{slug}/agent-prompts")
+    suspend fun putBlogAgentPrompt(
+        @Path("slug") slug: String,
+        @Body body: RequestBody,
+    ): PutBlogAgentPromptResponse
+
+    @GET("api/blog/pulse")
+    suspend fun blogPulse(): BlogPulseResponse
 
     @GET("api/blog/posts")
     suspend fun blogPosts(
