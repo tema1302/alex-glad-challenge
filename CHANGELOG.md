@@ -5,6 +5,48 @@
 
 ---
 
+## Blog Studio + Content Pulse (2026-11-10)
+**Ветка:** `feat/blog-studio` (loop run-2026-11-10, эпики #243/#244)
+
+**Что сделано:**
+- Управление всеми блогами на сайте и в Android: создание, архив/возврат,
+  статистика, готовность к news (профиль + RSS), последний пост, число
+  кастомных промптов. Новый хаб `/blog/settings` и карточка
+  `/blog/settings/[slug]` с вкладками «Обзор / Промпты / Настройки / Расписание».
+- Промпты всех блог-агентов per-blog: `post.writer`, `post.topic`,
+  `scout.news`, `scout.orchestrator`, `factcheck.reasoning`,
+  `factcheck.verdict`, `digest.weekly`, `post.reviser`. Override →
+  `blogs.system_prompt` (writer, легаси) → пресет → встроенный default; сброс
+  возвращает встроенное поведение. JSON-контракты и grounding-правила остаются
+  в коде.
+- Core: `blog_agent_prompts` (UPSERT/clear), `archived_at`, `createBlog`,
+  `blogStats`, `listBlogStats`, `agentPromptsCount` с учётом writer-override;
+  идемпотентная миграция.
+- API: `POST /api/blogs`, `status` в PATCH, `GET/PUT
+  /api/blogs/[slug]/agent-prompts`, `GET /api/blog/pulse`. Исправлен старый
+  баг: PATCH отдавал snake_case `BlogRow`, из-за чего веб/Android теряли
+  `systemPrompt`/`sources`; теперь единый camelCase `toBlogDto`.
+- Android: частичный PATCH через `JsonObject` (сохранение промпта больше не
+  сбрасывает имя/профиль/источники), хаб со сводкой и созданием, экран
+  «Промпты агентов», `BackHandler`, архивация, «Пульс блогов» на dashboard.
+- Дизайн: dashboard «Пульс контента» (веб + Android), grouped-меню блога,
+  FlowRow-бейджи, readiness-подсказки, пустые состояния.
+- Архивный блог блокируется в news/scout/topic/digest и в
+  автоматизации/расписании; чтение постов остаётся.
+
+**Коды:** `POST /api/blogs` — 201/400/409/401; `PATCH` — 200/400/404/401;
+`agent-prompts` — 200/400/404/401; `pulse` — 200/401.
+
+**Риски:** override может ухудшить качество текста (не ломает парсинг);
+`post.reviser` в web-автоматизации не участвует, помечен как REPL/FSM;
+жёсткого удаления блога нет — только архив.
+
+**Валидация:** challenge typecheck/test (617), web typecheck/test
+(698, `--maxWorkers=2`), web build (49 маршрутов), Android
+`:app:testDebugUnitTest` + `:app:compileDebugKotlin`; live smoke
+создания/правки промпта/частичного PATCH/архива/пульса и рендера
+`/blog/settings`, `/blog/settings/[slug]`, `/dashboard`.
+
 ## ADVANCED Day 15 — партнёрский red team round 2: Input Guard hardening (2026-11-08)
 **Ветка:** `main` (фикс по входящему отчёту партнёра; push — по явному запросу)
 

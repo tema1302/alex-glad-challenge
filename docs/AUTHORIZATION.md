@@ -25,10 +25,14 @@ admin_session = `${exp}.${hex(HMAC-SHA256(WEB_AUTH_SECRET, "admin:" + exp))}`
    (`web/middleware.ts:30-53`, exact match pathname, без префиксов).
    Неавторизованным: страницы → `302 /login?next=<pathname>` (query отбрасывается),
    `/api/*` → `401 JSON`. Fail-closed: без `WEB_AUTH_SECRET` валидных сессий не бывает.
-2. **Второй слой `requireAuth(req)`** — в роутах с внешними эффектами:
-   `blog/digest/generate`, `blog/posts/[id]/publish`, `blogs/[slug]`, `rag/index-tg`,
-   `rag/notes` (POST/DELETE/GET), `summary`, `telegram/publish`, `tg/collect`,
-   `rag/index` (унифицировано 2026-10-23, issue #25). Защита от пропуска middleware
+2. **Второй слой `requireApiAuth(req)`** — в роутах, которые меняют данные или
+   жгут LLM: `blog/digest/generate`, `blog/posts/[id]/publish`,
+   `blogs` (POST), `blogs/[slug]`, `blogs/[slug]/posts`,
+   `blogs/[slug]/schedule`, `blogs/[slug]/agent-prompts`, `blog/pulse`,
+   `rag/index-tg`, `rag/notes` (POST/DELETE/GET), `summary`,
+   `telegram/publish`, `tg/collect`, `rag/index` (унифицировано 2026-10-23,
+   issue #25). `requireApiAuth` принимает cookie-сессию или mobile Bearer —
+   это важно для Android-студии блогов. Защита от пропуска middleware
    (например, edge-кейс деплоя).
 
 Для Server Components — `web/lib/server/session.ts` (`isAdminAuthed()` через `cookies()`).
@@ -43,8 +47,10 @@ admin_session = `${exp}.${hex(HMAC-SHA256(WEB_AUTH_SECRET, "admin:" + exp))}`
   (`web/lib/auth.ts:100-107`) принимает подписанную session-строку **или**
   статический `MOBILE_API_TOKEN` (остаётся для автоматизации). Bearer действует
   только на `/api/*` через middleware (`web/middleware.ts:86-87`), страницы он
-  не открывает; `requireAuth`-роуты (cookie-only: summary, rag/*, blog
-  digest/publish, telegram/publish, tg/collect) Bearer не принимают.
+  не открывает. Blog-мутации (`blogs`, `blogs/[slug]`, `agent-prompts`,
+  `digest/generate`, `publish`) идут через `requireApiAuth` и принимают Bearer;
+  cookie-only `requireAuth` остаётся у summary, rag/*, telegram/publish,
+  tg/collect.
 - Rate-limit общий с `/api/auth/login` — `web/lib/server/loginRateLimit.ts`
   (10 неудач / 15 мин, глобальное окно; успех сбрасывает окно).
 - Отзыва токена нет: он живёт до `exp`; инвалидация — только смена
