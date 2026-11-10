@@ -17,7 +17,20 @@ export { Constraints } from './constraints.js';
 export type { Constraint, ConstraintType } from './constraints.js';
 
 export { BlogDb } from './db.js';
-export type { NewsRow, PostRow, StyleSampleRow } from './db.js';
+export type { NewsRow, PostRow, StyleSampleRow, BlogAgentPromptRow, BlogStats } from './db.js';
+export {
+  BLOG_AGENT_IDS,
+  BLOG_AGENT_SPECS,
+  BLOG_AGENT_SOURCE_LABELS,
+  findBlogAgentSpec,
+  resolveBlogAgentPrompt,
+} from './blogAgentPrompts.js';
+export type {
+  BlogAgentId,
+  BlogAgentSpec,
+  BlogAgentPromptSource,
+  ResolvedBlogAgentPrompt,
+} from './blogAgentPrompts.js';
 export { STYLE_PRESETS, resolveStylePreset, stylePresetLabel, presetSystemPrompt, ANTONOV_SYSTEM_PROMPT } from './stylePreset.js';
 export type { StylePreset } from './stylePreset.js';
 export { DialogDb } from './dialogDb.js';

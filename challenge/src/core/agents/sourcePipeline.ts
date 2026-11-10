@@ -3,8 +3,9 @@
 // каждый видит только свой источник.
 // Оркестратор ждёт всех, выбирает финальный топ-3.
 
-import type { BlogDb } from '../db.js';
+import type { BlogDb, BlogRow } from '../db.js';
 import type { LlmClient } from '../client.js';
+import { resolveBlogAgentPrompt } from '../blogAgentPrompts.js';
 import { DATA_DIR } from '../paths.js';
 import type { SourceAgent } from './sourceAgent.js';
 import { RssSourceAgent } from './rssSource.js';
@@ -23,6 +24,8 @@ export async function runSourceAgents(
     enableForum?: boolean;
     sessionDir?: string;
     ask?: AskFn;
+    /** Блог для per-blog промпта оркестратора; null/undefined — legacy default. */
+    blog?: BlogRow | null;
     signal?: AbortSignal;
     /** Прогресс в sink вызова (CLI/REPL = console.log). Default — тишина:
      * вызывается из web SSE, шуметь в stdout сервера нельзя (§8.2). */
@@ -75,7 +78,10 @@ export async function runSourceAgents(
   // поэтому fetch-abort тут не действует (только guard между стадиями).
   opts.signal?.throwIfAborted();
   log(`[stage1] Оркестратор: выбор топ-${topK}...`);
-  const orchestrator = new Orchestrator(client);
+  const orchestratorPrompt = opts.blog
+    ? resolveBlogAgentPrompt(db, opts.blog, 'scout.orchestrator').prompt
+    : null;
+  const orchestrator = new Orchestrator(client, orchestratorPrompt);
   const orchResult = await orchestrator.decide(results, userQuery, topK);
 
   log(`[stage1] Оркестратор: выбрано ${orchResult.ranked.length} тем`);

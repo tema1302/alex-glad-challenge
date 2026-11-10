@@ -12,7 +12,11 @@ export interface OrchestratorResult {
 }
 
 export class Orchestrator {
-  constructor(private client: LlmClient) {}
+  constructor(
+    private client: LlmClient,
+    /** per-blog override: роль/критерии; список тем и JSON-контракт — код. */
+    private criteria?: string | null,
+  ) {}
 
   async decide(
     results: SourceAgentResult[],
@@ -38,16 +42,20 @@ export class Orchestrator {
       return `${idx}: (${topic.source}) ${topic.title}${hype}`;
     });
 
-    const prompt = `Ты спортивный редактор-оркестратор. Тебе пришли темы от трёх источников.
+    const criteria = this.criteria?.trim()
+      ? this.criteria.replace(/\{\{topK\}\}/g, String(topK))
+      : `Ты спортивный редактор-оркестратор. Тебе пришли темы от трёх источников.
+
+Выбери ТОП-${topK} самых актуальных и обсуждаемых тем, которые лучше всего подходят для поста.
+Учитывай: совпадения между источниками (одна тема в RSS и Reddit = высокий приоритет),
+количество обсуждений (reactions, comments, upvotes), и релевантность запросу.`;
+
+    const prompt = `${criteria}
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: ${userQuery}
 
 ИСТОЧНИКИ И ТЕМЫ:
 ${lines.join('\n')}
-
-Выбери ТОП-${topK} самых актуальных и обсуждаемых тем, которые лучше всего подходят для поста.
-Учитывай: совпадения между источниками (одна тема в RSS и Reddit = высокий приоритет),
-количество обсуждений (reactions, comments, upvotes), и релевантность запросу.
 
 Ответь СТРОГО JSON-массивом. ПЕРВЫЙ СИМВОЛ — "[".
 [{"idx": "rss-0", "score": 95, "reason": "Тема везде обсуждается"}]

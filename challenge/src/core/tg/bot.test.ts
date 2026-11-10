@@ -688,6 +688,7 @@ test('dispatch #58: owner проходит гейт — /блоги отвеча
       style_preset: 'default',
       system_prompt: null,
       context_prompt: null,
+      archived_at: null,
       created_at: '2026-01-01T00:00:00.000Z',
     },
   ];

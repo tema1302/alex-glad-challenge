@@ -8,6 +8,7 @@
 import { BlogDb, type BlogRow } from '../db.js';
 import type { LlmClient } from '../client.js';
 import type { ProfileManager } from '../profile.js';
+import { resolveBlogAgentPrompt } from '../blogAgentPrompts.js';
 import { fetchAllFeedsDetailed, filterRecent, toNewsRow, feedsFromUrls } from './rss.js';
 import { NewsFetcher, type NewsFetchResult } from './newsFetcher.js';
 import { PostWriter, type WrittenPost } from './postWriter.js';
@@ -106,6 +107,12 @@ export async function runNewsPipeline(
   const checker = new FactChecker(client, {
     channel: profileActive?.канал,
     topic: profileActive?.тематика,
+    reasoningPrompt: blog
+      ? resolveBlogAgentPrompt(db, blog, 'factcheck.reasoning').prompt
+      : null,
+    verdictPrompt: blog
+      ? resolveBlogAgentPrompt(db, blog, 'factcheck.verdict').prompt
+      : null,
   });
   const factCheck = await checker.check(post.content, chosen);
   log(`[pipeline] Агент 3: verdict=${factCheck.verdict}, issues=${factCheck.issues.length}`);
