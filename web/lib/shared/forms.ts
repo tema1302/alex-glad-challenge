@@ -328,7 +328,15 @@ export const blogPatchSchema = z.object({
         .string()
         .trim()
         .max(500)
-        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL'),
+        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL')
+        .refine((u) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.username === '' && parsed.password === '';
+          } catch {
+            return false;
+          }
+        }, 'URL источника не должен содержать логин/пароль'),
     )
     .max(20, 'Источников — не больше 20')
     .optional(),
@@ -345,7 +353,8 @@ export const blogCreateSchema = z.object({
     .trim()
     .min(2, 'Slug: минимум 2 символа')
     .max(64, 'Slug: до 64 символов')
-    .regex(BLOG_SLUG_RE, 'Slug: только латиница, цифры и дефис (например, nevsky-hram)'),
+    .regex(BLOG_SLUG_RE, 'Slug: только латиница, цифры и дефис (например, nevsky-hram)')
+    .refine((s) => !/^\d+$/.test(s), 'Slug не может состоять только из цифр — это похоже на id'),
   name: z.string().trim().min(1, 'Имя обязательно').max(120, 'Имя: до 120 символов'),
   profile: z.string().trim().max(100).nullable().optional(),
   tgChatId: z.string().trim().max(100).nullable().optional(),
@@ -356,7 +365,15 @@ export const blogCreateSchema = z.object({
         .string()
         .trim()
         .max(500)
-        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL'),
+        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL')
+        .refine((u) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.username === '' && parsed.password === '';
+          } catch {
+            return false;
+          }
+        }, 'URL источника не должен содержать логин/пароль'),
     )
     .max(20, 'Источников — не больше 20')
     .optional(),
@@ -372,7 +389,6 @@ export const BLOG_AGENT_IDS = [
   'factcheck.reasoning',
   'factcheck.verdict',
   'digest.weekly',
-  'post.reviser',
 ] as const;
 export type BlogAgentId = (typeof BLOG_AGENT_IDS)[number];
 

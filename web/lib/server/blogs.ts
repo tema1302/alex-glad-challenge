@@ -162,8 +162,12 @@ export function resolveBlog(blogRef?: string | null): BlogResolution {
   if (blogRef == null || blogRef === '') {
     return { blog: db.getBlogBySlug(DEFAULT_BLOG_SLUG) };
   }
+  // Slug важнее numeric id: slug может быть «12», и он должен оставаться
+  // адресуемым; числовой id — запасной вариант для старых вызовов.
+  const bySlug = db.getBlogBySlug(blogRef);
+  if (bySlug) return { blog: bySlug };
   const byId = Number(blogRef);
-  const blog = Number.isInteger(byId) && byId > 0 ? db.getBlog(byId) : db.getBlogBySlug(blogRef);
+  const blog = Number.isInteger(byId) && byId > 0 ? db.getBlog(byId) : null;
   if (!blog) return { blog: null, error: `Блог «${blogRef}» не найден` };
   return { blog };
 }

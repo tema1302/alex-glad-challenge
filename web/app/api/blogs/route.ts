@@ -53,7 +53,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     if (db.getBlogBySlug(input.slug)) {
       return { error: `Блог со slug «${input.slug}» уже существует`, status: 409 } as const;
     }
-    if (input.profile) {
+    if (input.profile?.trim()) {
       const names = new ProfileManager(dataPath('profiles')).list();
       if (!names.includes(input.profile)) {
         return { error: `Профиль «${input.profile}» не найден — создайте его в /chat`, status: 400 } as const;
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       const blog = db.createBlog({
         slug: input.slug,
         name: input.name,
-        profile: input.profile ?? null,
+        profile: input.profile?.trim() || null,
         tg_chat_id: input.tgChatId?.trim() ? input.tgChatId.trim() : null,
         sources: input.sources && input.sources.length > 0 ? JSON.stringify(input.sources) : null,
         style_preset: input.stylePreset ?? 'default',
@@ -76,9 +76,12 @@ export async function POST(req: NextRequest): Promise<Response> {
           agentPromptsCount: 0,
         }),
       } as const;
-    } catch {
-      // UNIQUE-гонка между проверкой и INSERT.
-      return { error: `Блог со slug «${input.slug}» уже существует`, status: 409 } as const;
+    } catch (e) {
+      // UNIQUE-гонка между проверкой и INSERT; остальные ошибки не маскируем 409.
+      if (e instanceof Error && e.message.includes('UNIQUE')) {
+        return { error: `Блог со slug «${input.slug}» уже существует`, status: 409 } as const;
+      }
+      throw e;
     }
   });
 

@@ -15,6 +15,7 @@ export {
   BLOG_AGENT_IDS,
   BLOG_AGENT_SPECS,
   BLOG_AGENT_SOURCE_LABELS,
+  applyPromptVars,
   findBlogAgentSpec,
   resolveBlogAgentPrompt,
 } from '@challenge/core/blogAgentPrompts';

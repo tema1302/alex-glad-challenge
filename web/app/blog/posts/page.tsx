@@ -77,6 +77,12 @@ export default function BlogPostsPage() {
       .catch(() => setBlogs([]));
   }, []);
 
+  useEffect(() => {
+    // Ссылка из карточки блога: /blog/posts?blog=<slug>.
+    const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+    if (fromQuery) setBlogFilter(fromQuery);
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {

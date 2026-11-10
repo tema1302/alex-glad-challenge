@@ -58,6 +58,7 @@ export async function GET(
     const rows = new Map(db.listAgentPrompts(blog.id).map((r) => [r.agent, r]));
     return {
       blog: { slug: blog.slug, name: blog.name },
+      customCount: db.agentPromptsCount(blog.id),
       prompts: BLOG_AGENT_SPECS.map((spec) => {
         const resolved = resolveBlogAgentPrompt(db, blog, spec.id);
         return promptItem(spec, rows.get(spec.id) ?? null, resolved);
@@ -99,7 +100,13 @@ export async function PUT(
       db.updateBlog(blog.id, { system_prompt: prompt });
       db.clearAgentPrompt(blog.id, spec.id);
     } else if (prompt === null) {
-      db.clearAgentPrompt(blog.id, spec.id);
+      if (spec.id === 'post.topic' && blog.system_prompt?.trim()) {
+        // Tombstone: сброс topic не должен снова подхватывать system_prompt
+        // автора; пустая строка перекрывает легаси-fallback.
+        db.setAgentPrompt(blog.id, spec.id, '');
+      } else {
+        db.clearAgentPrompt(blog.id, spec.id);
+      }
     } else {
       db.setAgentPrompt(blog.id, spec.id, prompt);
     }
@@ -110,6 +117,7 @@ export async function PUT(
     return {
       ok: true,
       blog: { slug: fresh.slug, name: fresh.name },
+      customCount: db.agentPromptsCount(fresh.id),
       prompt: promptItem(spec, row ?? null, resolveBlogAgentPrompt(db, fresh, spec.id)),
     };
   });

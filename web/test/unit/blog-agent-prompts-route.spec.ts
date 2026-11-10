@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getAgentPrompt: vi.fn(),
   setAgentPrompt: vi.fn(),
   clearAgentPrompt: vi.fn(),
+  agentPromptsCount: vi.fn(() => 0),
 }));
 
 vi.mock('../../lib/server/db', () => ({
@@ -27,6 +28,7 @@ vi.mock('../../lib/server/db', () => ({
     getAgentPrompt: mocks.getAgentPrompt,
     setAgentPrompt: mocks.setAgentPrompt,
     clearAgentPrompt: mocks.clearAgentPrompt,
+    agentPromptsCount: mocks.agentPromptsCount,
   })),
   withDb: vi.fn((fn: () => unknown) => fn()),
 }));
@@ -50,6 +52,15 @@ const SPECS = [
     editableScope: 'роль',
     group: 'quality',
   },
+  {
+    id: 'post.topic',
+    label: 'Автор по теме',
+    description: 'Пост по теме',
+    defaultPrompt: 'Ты автор темы',
+    maxLength: 8000,
+    editableScope: 'роль',
+    group: 'content',
+  },
 ];
 
 vi.mock('../../lib/server/challenge', () => ({
@@ -62,8 +73,12 @@ vi.mock('../../lib/server/challenge', () => ({
     agent: string,
   ) => {
     if (!blog) return { agent, prompt: null, source: 'default' };
-    const stored = db.getAgentPrompt(blog.id, agent)?.prompt?.trim();
-    if (stored) return { agent, prompt: stored, source: 'blog' };
+    const row = db.getAgentPrompt(blog.id, agent);
+    if (row) {
+      const stored = row.prompt.trim();
+      if (stored) return { agent, prompt: stored, source: 'blog' };
+      return { agent, prompt: null, source: 'default' };
+    }
     if ((agent === 'post.writer' || agent === 'post.topic') && blog.system_prompt?.trim()) {
       return { agent, prompt: blog.system_prompt.trim(), source: 'legacy-blog-system' };
     }
@@ -114,8 +129,9 @@ beforeEach(() => {
     [...stored.entries()].map(([agent, prompt]) => ({ agent, prompt, updated_at: '2026-11-10T00:00:00Z' })),
   );
   mocks.getAgentPrompt.mockReset().mockImplementation((_id: number, agent: string) => {
-    const prompt = stored.get(agent);
-    return prompt ? { prompt, updated_at: '2026-11-10T00:00:00Z' } : null;
+    if (!stored.has(agent)) return null;
+    const prompt = stored.get(agent) ?? '';
+    return { prompt, updated_at: '2026-11-10T00:00:00Z' };
   });
   mocks.setAgentPrompt.mockReset().mockImplementation((_id: number, agent: string, prompt: string) => {
     stored.set(agent, prompt);
@@ -223,5 +239,16 @@ describe('PUT /api/blogs/[slug]/agent-prompts', () => {
     const res = await PUT(req('PUT', { agent: 'factcheck.verdict', prompt: '   ' }), ctx());
     expect(res.status).toBe(200);
     expect(mocks.clearAgentPrompt).toHaveBeenCalledWith(1, 'factcheck.verdict');
+  });
+
+  it('reset post.topic при system_prompt ставит tombstone, а не подхватывает legacy', async () => {
+    blog.system_prompt = 'Промпт автора';
+    const res = await PUT(req('PUT', { agent: 'post.topic', prompt: null }), ctx());
+    expect(res.status).toBe(200);
+    expect(mocks.setAgentPrompt).toHaveBeenCalledWith(1, 'post.topic', '');
+    expect(mocks.clearAgentPrompt).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({
+      prompt: { agent: 'post.topic', prompt: null, source: 'default', isOverridden: false },
+    });
   });
 });

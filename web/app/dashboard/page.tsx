@@ -69,7 +69,7 @@ async function readStats(): Promise<DashboardStats> {
     const tgStats = tg.stats();
     const chats = dialog.listChats(2000);
     return {
-      blogs: blog.listBlogs().length,
+      blogs: blog.listBlogs().filter((b) => b.archived_at === null).length,
       news: blog.newsCount(),
       posts: blog.postsCount(),
       styleSamples: blog.styleSamplesCount(),

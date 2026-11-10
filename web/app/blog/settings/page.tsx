@@ -15,6 +15,7 @@ import { Field, INPUT_CLASS } from '../../components/ui/Field';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Textarea } from '../../components/ui/Textarea';
 import { useToast } from '../../components/ui/Toast';
+import { BLOG_AGENT_IDS } from '../../../lib/shared/forms';
 import { BlogCheatSheet } from './BlogCheatSheet';
 
 interface BlogCounts {
@@ -95,7 +96,7 @@ function Readiness({ blog }: { blog: BlogSummary }) {
         {blog.tgChatIdSet ? 'TG свой' : 'TG общий'}
       </Badge>
       <Badge tone={blog.agentPromptsCount > 0 ? 'accent' : 'dim'}>
-        промпты {blog.agentPromptsCount}/8
+        промпты {blog.agentPromptsCount}/{BLOG_AGENT_IDS.length}
       </Badge>
     </div>
   );
@@ -176,8 +177,8 @@ export default function BlogHubPage() {
       setFormError('Название обязательно');
       return;
     }
-    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleanSlug) || cleanSlug.length < 2) {
-      setFormError('Slug: латиница, цифры и дефис, минимум 2 символа');
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cleanSlug) || cleanSlug.length < 2 || /^\d+$/.test(cleanSlug)) {
+      setFormError('Slug: латиница, цифры и дефис; не только цифры, минимум 2 символа');
       return;
     }
     const sources = sourcesText

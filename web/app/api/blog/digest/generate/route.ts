@@ -21,7 +21,7 @@ import { pickLlmClient } from '../../../../../lib/server/llm';
 import { getKeysStatus } from '../../../../../lib/server/env';
 import { resolveBlog, loadBlogProfile, blogArchivedError } from '../../../../../lib/server/blogs';
 import { safeMessage } from '../../../../../lib/server/safe-message';
-import { clean, msg, resolveBlogAgentPrompt } from '../../../../../lib/server/challenge';
+import { clean, msg, resolveBlogAgentPrompt, applyPromptVars } from '../../../../../lib/server/challenge';
 import type { ChatMessage } from '../../../../../lib/server/challenge';
 
 export const runtime = 'nodejs';
@@ -41,10 +41,7 @@ function digestSystem(channel: string, topic: string, override?: string | null):
     '2. Каждый пункт завершается точным URL из списка — других ссылок нет.',
   ];
   if (override?.trim()) {
-    const intro = override
-      .replace(/\{\{channel\}\}/g, channel)
-      .replace(/\{\{topic\}\}/g, topic)
-      .trim();
+    const intro = applyPromptVars(override, { channel, topic }).trim();
     return [
       intro,
       'Жёсткие правила (не редактируются):',

@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getBlogDb, withDb } from '../../../../../../lib/server/db';
 import { requireApiAuth } from '../../../../../../lib/auth';
+import { blogArchivedError } from '../../../../../../lib/server/blogs';
 import { publishToTelegram, tgPublishResponse } from '../../../../../../lib/server/tg-publish';
 
 export const runtime = 'nodejs';
@@ -32,6 +33,10 @@ export async function POST(
   // без него — в общий канал из TG_CHAT_ID (fallback внутри publishPost).
   const blog =
     post.blog_id !== null ? await withDb(() => getBlogDb().getBlog(post.blog_id!)) : null;
+  if (blog) {
+    const archived = blogArchivedError(blog);
+    if (archived) return NextResponse.json({ error: archived }, { status: 400 });
+  }
 
   const outcome = await publishToTelegram(post.content, 'blog', id, 'HTML', blog?.tg_chat_id ?? undefined);
   return tgPublishResponse(outcome);

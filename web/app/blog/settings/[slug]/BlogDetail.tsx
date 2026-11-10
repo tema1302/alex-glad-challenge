@@ -18,6 +18,7 @@ import { SectionHead } from '../../../components/ui/SectionHead';
 import { Tabs } from '../../../components/ui/Tabs';
 import { Textarea } from '../../../components/ui/Textarea';
 import { useToast } from '../../../components/ui/Toast';
+import { BLOG_AGENT_IDS } from '../../../../lib/shared/forms';
 
 interface BlogCounts {
   posts: number;
@@ -89,6 +90,7 @@ interface PostItem {
 
 const TABS = [
   { id: 'overview', label: 'Обзор' },
+  { id: 'post', label: 'Пост' },
   { id: 'prompts', label: 'Промпты' },
   { id: 'general', label: 'Настройки' },
   { id: 'schedule', label: 'Расписание' },
@@ -166,6 +168,15 @@ export function BlogDetail({ slug }: { slug: string }) {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
 
+  // manual topic post
+  const [topic, setTopic] = useState('');
+  const [comment, setComment] = useState('');
+  const [variants, setVariants] = useState(1);
+  const [publishNow, setPublishNow] = useState(false);
+  const [creatingPost, setCreatingPost] = useState(false);
+  const [createdPosts, setCreatedPosts] = useState<Array<{ id: number; variant: number; angle: string }>>([]);
+  const [postError, setPostError] = useState<string | null>(null);
+
   const applyBlog = useCallback((b: BlogDetailDto) => {
     setBlog(b);
     setName(b.name);
@@ -175,6 +186,21 @@ export function BlogDetail({ slug }: { slug: string }) {
     setSourcesText(b.sources.join('\n'));
     setContextPrompt(b.contextPrompt ?? '');
   }, []);
+
+  const refreshPrompts = useCallback(async (): Promise<AgentPromptItem[]> => {
+    const resp = await fetch(`/api/blogs/${encodeURIComponent(slug)}/agent-prompts`, { cache: 'no-store' });
+    if (!resp.ok) return [];
+    const data = (await resp.json().catch(() => ({}))) as {
+      prompts?: AgentPromptItem[];
+      customCount?: number;
+    };
+    const list = data.prompts ?? [];
+    setPrompts(list);
+    if (typeof data.customCount === 'number') {
+      setBlog((prev) => (prev ? { ...prev, agentPromptsCount: data.customCount! } : prev));
+    }
+    return list;
+  }, [slug]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -334,11 +360,59 @@ export function BlogDetail({ slug }: { slug: string }) {
       const data = (await resp.json().catch(() => ({}))) as { blog?: BlogDetailDto; error?: string };
       if (!resp.ok || !data.blog) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       applyBlog(data.blog);
+      await refreshPrompts();
       toast('ok', 'Настройки сохранены');
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const createPost = async (): Promise<void> => {
+    if (creatingPost || !blog) return;
+    const cleanTopic = topic.trim();
+    if (cleanTopic.length < 3) {
+      setPostError('Тема: минимум 3 символа');
+      return;
+    }
+    setCreatingPost(true);
+    setPostError(null);
+    setCreatedPosts([]);
+    try {
+      const resp = await fetch(`/api/blogs/${encodeURIComponent(blog.slug)}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: cleanTopic,
+          ...(comment.trim() ? { comment: comment.trim() } : {}),
+          variants,
+          publishNow,
+        }),
+      });
+      const data = (await resp.json().catch(() => ({}))) as {
+        error?: string;
+        posts?: Array<{ id: number; variant: number; angle: string }>;
+        published?: { ok: boolean; error?: string } | null;
+      };
+      if (!resp.ok) throw new Error(errorOf(data, `HTTP ${resp.status}`));
+      setCreatedPosts(data.posts ?? []);
+      setTopic('');
+      setComment('');
+      if (data.published && !data.published.ok) {
+        toast('err', `Пост создан, но публикация не удалась: ${data.published.error ?? 'ошибка'}`);
+      } else {
+        toast('ok', data.published?.ok ? 'Пост создан и опубликован' : 'Черновики созданы');
+      }
+      const postsResp = await fetch(`/api/blog/posts?limit=5&blog=${encodeURIComponent(blog.slug)}`, { cache: 'no-store' });
+      if (postsResp.ok) {
+        const postsData = (await postsResp.json().catch(() => ({}))) as { posts?: PostItem[] };
+        setPosts(postsData.posts ?? []);
+      }
+    } catch (e) {
+      setPostError(e instanceof Error ? e.message : 'Не удалось создать пост');
+    } finally {
+      setCreatingPost(false);
     }
   };
 
@@ -361,13 +435,10 @@ export function BlogDetail({ slug }: { slug: string }) {
       };
       if (!resp.ok || !data.prompt) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       const updated = data.prompt;
-      const nextPrompts = prompts.map((p) => (p.agent === updated.agent ? updated : p));
-      setPrompts(nextPrompts);
-      setBlog((prev) =>
-        prev ? { ...prev, agentPromptsCount: nextPrompts.filter((p) => p.isOverridden).length } : prev,
-      );
-      setPromptDraft(updated.prompt ?? '');
-      toast('ok', updated.isOverridden ? 'Промпт сохранён' : 'Промпт сброшен');
+      const list = await refreshPrompts();
+      const item = list.find((p) => p.agent === updated.agent) ?? updated;
+      setPromptDraft(item.prompt ?? '');
+      toast('ok', item.isOverridden ? 'Промпт сохранён' : 'Промпт сброшен');
     } catch (e) {
       setPromptError(e instanceof Error ? e.message : 'Не удалось сохранить промпт');
     } finally {
@@ -391,12 +462,9 @@ export function BlogDetail({ slug }: { slug: string }) {
       };
       if (!resp.ok || !data.prompt) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       const updated = data.prompt;
-      const nextPrompts = prompts.map((p) => (p.agent === updated.agent ? updated : p));
-      setPrompts(nextPrompts);
-      setBlog((prev) =>
-        prev ? { ...prev, agentPromptsCount: nextPrompts.filter((p) => p.isOverridden).length } : prev,
-      );
-      setPromptDraft(updated.prompt ?? '');
+      const list = await refreshPrompts();
+      const item = list.find((p) => p.agent === updated.agent) ?? updated;
+      setPromptDraft(item.prompt ?? '');
       setResetOpen(false);
       toast('ok', 'Возвращён встроенный промпт');
     } catch (e) {
@@ -500,7 +568,7 @@ export function BlogDetail({ slug }: { slug: string }) {
             </Badge>
             <span>{blog.hasProfile ? `профиль: ${blog.profile}` : 'профиль не задан'}</span>
             <span>· RSS: {blog.sourcesCount}</span>
-            <span>· промпты: {blog.agentPromptsCount}/8</span>
+            <span>· промпты: {blog.agentPromptsCount}/{BLOG_AGENT_IDS.length}</span>
           </span>
         }
         actions={
@@ -543,7 +611,7 @@ export function BlogDetail({ slug }: { slug: string }) {
                 </li>
                 <li className="flex items-center justify-between gap-3">
                   <span>Кастомные промпты</span>
-                  <Badge tone={blog.agentPromptsCount > 0 ? 'accent' : 'dim'}>{blog.agentPromptsCount}/8</Badge>
+                  <Badge tone={blog.agentPromptsCount > 0 ? 'accent' : 'dim'}>{blog.agentPromptsCount}/{BLOG_AGENT_IDS.length}</Badge>
                 </li>
                 <li className="flex items-center justify-between gap-3">
                   <span>Последний пост</span>
@@ -604,6 +672,87 @@ export function BlogDetail({ slug }: { slug: string }) {
             <Button className="mt-3" variant={blog.status === 'archived' ? 'primary' : 'danger'} onClick={() => setArchiveOpen(true)}>
               {blog.status === 'archived' ? 'Вернуть из архива' : 'Архивировать блог'}
             </Button>
+          </Card>
+        </div>
+      ) : null}
+
+      {tab === 'post' ? (
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card label="новый пост по теме">
+            <div className="space-y-3">
+              <Field id="manual-topic" label="Тема" hint="Праздник, объявление, важная дата. Без RSS.">
+                <input
+                  className={`${INPUT_CLASS} w-full`}
+                  value={topic}
+                  maxLength={500}
+                  onChange={(e) => setTopic(e.target.value)}
+                  placeholder="Рождественская служба 7 января"
+                  disabled={creatingPost}
+                />
+              </Field>
+              <Field id="manual-comment" label="Комментарий автора (необязательно)" hint="Что обязательно упомянуть: время, место, детали, тон.">
+                <Textarea value={comment} onValueChange={setComment} max={1000} rows={4} disabled={creatingPost} />
+              </Field>
+              <div className="flex flex-wrap items-center gap-3 text-sm text-dim">
+                <label className="flex items-center gap-2">
+                  вариантов:
+                  <select
+                    aria-label="Количество вариантов"
+                    className={INPUT_CLASS}
+                    value={variants}
+                    onChange={(e) => setVariants(Number(e.target.value))}
+                    disabled={creatingPost}
+                  >
+                    <option value={1}>1</option>
+                    <option value={2}>2</option>
+                    <option value={3}>3</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={publishNow}
+                    onChange={(e) => setPublishNow(e.target.checked)}
+                    className="accent-accent"
+                    disabled={creatingPost}
+                  />
+                  сразу опубликовать первый вариант
+                </label>
+              </div>
+              {publishNow ? (
+                <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
+                  Первый вариант уйдёт в Telegram-канал блога{blog.tgChatId ? ` (${blog.tgChatId})` : ' (общий канал)'}.
+                </p>
+              ) : null}
+              {postError ? <p className="text-xs text-err">{postError}</p> : null}
+              <Button variant="primary" onClick={() => void createPost()} disabled={creatingPost || topic.trim().length < 3} loading={creatingPost}>
+                Создать пост
+              </Button>
+              {createdPosts.length > 0 ? (
+                <div className="rounded-md border border-line bg-surface-2 p-3 text-sm">
+                  <p className="text-dim">Созданные варианты:</p>
+                  <ul className="mt-1 space-y-1">
+                    {createdPosts.map((p) => (
+                      <li key={p.id}>
+                        <Link href={`/blog/posts/${p.id}`} className="text-accent hover:underline">#{p.id}</Link>{' '}
+                        <span className="text-dim">· вариант {p.variant + 1} · {p.angle}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </Card>
+          <Card label="как это работает">
+            <p className="text-sm leading-relaxed text-dim">
+              Пост пишется агентом «Автор по теме»: канал, подпись, табу, контекст блога и угол
+              варианта добавляются автоматически. Без галочки публикации остаются черновики —
+              их можно проверить и отправить из «Постов».
+            </p>
+            <p className="mt-3 text-xs leading-relaxed text-dim">
+              Если нужен регулярный поток, настройте расписание: слоты создают черновики по теме
+              или регулярный пост блога.
+            </p>
           </Card>
         </div>
       ) : null}

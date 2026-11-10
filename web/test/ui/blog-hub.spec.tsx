@@ -83,7 +83,7 @@ describe('BlogHubPage', () => {
     expect(screen.getByText('готов')).toBeInTheDocument();
     expect(screen.getByText('нужна настройка')).toBeInTheDocument();
     expect(screen.getByText('нет профиля')).toBeInTheDocument();
-    expect(screen.getByText('промпты 2/8')).toBeInTheDocument();
+    expect(screen.getByText('промпты 2/7')).toBeInTheDocument();
   });
 
   it('создаёт блог через диалог и отправляет только заполненные поля', async () => {
