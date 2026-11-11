@@ -1,0 +1,18 @@
+{
+  "model": "qwen2.5-coder:7b",
+  "tasks_file": "training/day-09/data/train_tasks_v2.jsonl",
+  "generated_at": "2026-11-11T15:41:59.034372+00:00",
+  "seed": 42,
+  "temperature": 0.7,
+  "samples": 3,
+  "total_tasks": 120,
+  "generated_samples": 360,
+  "accepted_tasks": 108,
+  "task_accept_rate": 0.9,
+  "accepted_samples": 197,
+  "sample_accept_rate": 0.5472,
+  "rejected_samples": 163,
+  "dedup_dropped": 118,
+  "latency_avg_ms": 3409,
+  "wall_clock_sec": 1227.1
+}

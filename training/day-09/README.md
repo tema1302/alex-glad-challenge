@@ -37,6 +37,25 @@ temperature=0, seed=42); фильтр: извлечённая функция д�
 пул для учителя лёгкий (честно зафиксировано: ученику нечему учиться в
 части «сложности»). Датасет: `data/distill_train.jsonl` (messages-формат).
 
+## s2 v2 — hard-mined пул и семплирование учителя (distill-v2 s1, #188)
+
+Причина: v1-пул дал accept 120/120 и train loss 0.0 — ученик зазубрил шаблоны.
+v2: 12 шаблонов уровня eval (композиция циклов/условий) × 10 = 120 задач,
+seed=42, пересечений с eval-30 нет (assert по именам и spec в
+`gen_train_tasks_v2.py`). Учитель `qwen2.5-coder:7b` локально: temperature=0.7,
+3 сэмпла на задачу, rule-фильтр (все тесты зелёные), дедуп по коду.
+
+Результат (`data/distill_v2_stats.json`):
+
+- accepted tasks **108/120 (90%)**, accepted samples **197/360 (54.7%)**;
+- rejected: duplicate 118, wrong 39, runtime 6;
+- latency avg 3409 мс, wall 1227 с;
+- сложные шаблоны: `merge_intervals` 2/10, `top_two` 6/10, остальные 10/10.
+
+Датасет: `data/distill_train_v2.jsonl` (messages-формат, поле `sample`),
+rejected — `data/distill_rejected_v2.jsonl`.
+Запуск: `python training\day-09\gen_train_tasks_v2.py`; `python training\day-09\gen_teacher.py --tasks training/day-09/data/train_tasks_v2.jsonl --temperature 0.7 --samples 3 --out training/day-09/data/distill_train_v2.jsonl --rejected training/day-09/data/distill_rejected_v2.jsonl --stats training/day-09/data/distill_v2_stats.json`
+
 ## s3 — обучение ученика (#176)
 
 `train_student.py` (стек day-07: QLoRA NF4 r=16, fp16, маска assistant,
