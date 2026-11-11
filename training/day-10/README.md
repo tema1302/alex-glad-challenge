@@ -16,6 +16,27 @@
 | Бенчмарки | `docs/advanced-day-10/bench/` |
 | Смоук выката/отката | `docs/advanced-day-10/smoke.md` |
 
+## distill-v2: Windows-путь merge (2026-11-11)
+
+Второй выкат — по адаптеру v2 (`training/day-09/artifacts-v2/adapter`, r=8)
+без Kaggle: `merge_gguf_v2.py` делает merge на CPU, конверт GGUF F16 и
+квантизацию готовым `tools/llama.cpp/b12023/llama-quantize.exe`.
+Конвертер берётся из клона llama.cpp той же сборки:
+`git clone --depth 1 --branch b12023 https://github.com/ggml-org/llama.cpp <dir>`.
+
+| Что | Где |
+|---|---|
+| Скрипт | `training/day-10/merge_gguf_v2.py` (Windows, ROCm venv) |
+| GGUF Q4_K_M (986 МБ, sha256 `0cefa4d0…`) | `training/day-09/artifacts-v2/gguf/` (gitignored) |
+| Merge report | `docs/advanced-day-10/gguf-v2/merge_report.json` |
+| Ollama-модель | `qwen2.5-coder-1.5b-distilled-v2` |
+| Бенчмарк | `docs/advanced-day-10/bench/distilled-v2.json` |
+| Смоук переключения | `docs/advanced-day-10/smoke-v2.md` |
+
+Итог: размер/память/скорость как у v1 (986 МБ, 1.2 ГБ, 145.4 tok/s), качество
+26/30 против 18/30 у v1 и 24/30 у base. Runbook выката ниже применим с заменой
+имени модели и sha256.
+
 ## Runbook выката (новая версия tuned)
 
 1. **Собрать адаптер** — обучение по day-09 (`train_student.py`, Kaggle T4).

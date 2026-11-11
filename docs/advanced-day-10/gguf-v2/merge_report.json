@@ -1,0 +1,15 @@
+{
+  "model": "qwen2.5-coder-1.5b-distilled-v2",
+  "base": "Qwen/Qwen2.5-Coder-1.5B",
+  "adapter": "training/day-09/artifacts-v2/adapter",
+  "files": {
+    "student-f16.gguf": {
+      "bytes": 3093668960,
+      "sha256": "7a28b2c8961d3ebfe7f48a8b3efec42d48b140678a132af9b60409c9d7f88d07"
+    },
+    "student-Q4_K_M.gguf": {
+      "bytes": 986048096,
+      "sha256": "0cefa4d063fa5cb198f883aee33fc1bb7aee4973f5547db2bf5a5d5ad4c442bd"
+    }
+  }
+}
