@@ -15,6 +15,15 @@ import kotlinx.serialization.Serializable
  * дефолты закрывают оба случая одним классом.
  */
 @Serializable
+data class BlogCountsDto(
+    val posts: Int = 0,
+    val news: Int = 0,
+    val styleSamples: Int = 0,
+    val postsLast7Days: Int = 0,
+    val lastPostAt: String? = null,
+)
+
+@Serializable
 data class BlogDto(
     val id: Long,
     val slug: String,
@@ -28,7 +37,13 @@ data class BlogDto(
     val systemPrompt: String? = null,
     val contextPrompt: String? = null,
     val sources: List<String> = emptyList(),
-    val createdAt: String,
+    val status: String = "active",
+    val archivedAt: String? = null,
+    val counts: BlogCountsDto = BlogCountsDto(),
+    val lastPostAt: String? = null,
+    val agentPromptsCount: Int = 0,
+    val readyForNews: Boolean = false,
+    val createdAt: String = "",
 )
 
 @Serializable
@@ -58,6 +73,97 @@ data class PatchBlogRequest(
 data class PatchBlogResponse(
     val ok: Boolean,
     val blog: BlogDto,
+)
+
+/** POST /api/blogs — создание; null-поля не отправляются (ApiFactory.json). */
+@Serializable
+data class BlogCreateRequest(
+    val slug: String,
+    val name: String,
+    val profile: String? = null,
+    val tgChatId: String? = null,
+    val stylePreset: String? = null,
+    val sources: List<String>? = null,
+)
+
+@Serializable
+data class BlogCreateResponse(
+    val ok: Boolean = false,
+    val blog: BlogDto,
+)
+
+/** GET /api/blogs/{slug}/agent-prompts — один агент реестра. */
+@Serializable
+data class BlogAgentPromptDto(
+    val agent: String,
+    val label: String = "",
+    val description: String = "",
+    val group: String = "content",
+    val defaultPrompt: String = "",
+    val prompt: String? = null,
+    val effectivePrompt: String = "",
+    val source: String = "default",
+    val isOverridden: Boolean = false,
+    val updatedAt: String? = null,
+    val maxLength: Int = 8000,
+    val editableScope: String = "",
+)
+
+@Serializable
+data class BlogAgentPromptsResponse(
+    val blog: BlogRefDto? = null,
+    val prompts: List<BlogAgentPromptDto> = emptyList(),
+)
+
+@Serializable
+data class BlogRefDto(
+    val slug: String = "",
+    val name: String = "",
+)
+
+/** PUT /api/blogs/{slug}/agent-prompts; prompt=null — сброс. */
+@Serializable
+data class PutBlogAgentPromptRequest(
+    val agent: String,
+    val prompt: String? = null,
+)
+
+@Serializable
+data class PutBlogAgentPromptResponse(
+    val ok: Boolean = false,
+    val blog: BlogRefDto? = null,
+    val prompt: BlogAgentPromptDto,
+)
+
+/** GET /api/blog/pulse — сводка для dashboard. */
+@Serializable
+data class BlogPulseTotalsDto(
+    val blogs: Int = 0,
+    val active: Int = 0,
+    val needsAttention: Int = 0,
+    val posts: Int = 0,
+    val postsLast7Days: Int = 0,
+    val customPrompts: Int = 0,
+)
+
+@Serializable
+data class BlogPulseItemDto(
+    val id: Long,
+    val slug: String,
+    val name: String,
+    val hasProfile: Boolean = false,
+    val sourcesCount: Int = 0,
+    val readyForNews: Boolean = false,
+    val counts: BlogCountsDto = BlogCountsDto(),
+    val lastPostAt: String? = null,
+    val agentPromptsCount: Int = 0,
+)
+
+@Serializable
+data class BlogPulseResponse(
+    val generatedAt: String = "",
+    val totals: BlogPulseTotalsDto = BlogPulseTotalsDto(),
+    val blogs: List<BlogPulseItemDto> = emptyList(),
 )
 
 /* ---------- Посты ---------- */
@@ -283,6 +389,7 @@ data class BlogScoutRequest(
     val hours: Int? = null,
     val topK: Int? = null,
     val query: String? = null,
+    val blog: String? = null,
     val enableTelegram: Boolean? = null,
     val enableForum: Boolean? = null,
     val llm: String? = null,

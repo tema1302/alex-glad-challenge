@@ -86,3 +86,105 @@ tg/collect) её не принимают. Ошибки 400/401/429/503 такж�
 
 - Инвариант доли: `pnpm --filter challenge test` (`gamification.test.ts`).
 - Типы роутов: `pnpm --filter web typecheck`.
+
+## Blog Studio: блоги и промпты агентов
+
+Источник: `web/app/api/blogs/**`, `web/app/api/blog/pulse/route.ts`,
+`challenge/src/core/db.ts`, `challenge/src/core/blogAgentPrompts.ts`.
+Полное описание — `docs/blog-studio.md`.
+
+### `GET /api/blogs`
+
+Активные блоги по умолчанию; `?includeArchived=1` — вместе с архивом. Ответ
+`{ blogs: BlogDto[], profiles: string[] }`, `Cache-Control: no-store`.
+
+`BlogDto` (camelCase, единый маппер `toBlogDto`):
+
+| Поле | Тип | Семантика |
+|---|---|---|
+| `id`, `slug`, `name` | `number/string/string` | slug стабилен после создания |
+| `profile`, `hasProfile` | `string \| null`, `boolean` | профиль голоса существует |
+| `tgChatId`, `tgChatIdSet` | `string \| null`, `boolean` | пусто = общий канал |
+| `stylePreset` | `'default' \| 'antonov'` | пресет стиля |
+| `sources`, `sourcesCount` | `string[]`, `number` | RSS-источники |
+| `status`, `archivedAt` | `'active' \| 'archived'`, `string \| null` | архив |
+| `systemPrompt`, `contextPrompt` | `string \| null` | легаси-промпты |
+| `counts` | `{ posts, news, styleSamples, postsLast7Days, lastPostAt }` | статистика |
+| `lastPostAt`, `agentPromptsCount` | `string \| null`, `number` | активность/override |
+| `readyForNews` | `boolean` | `hasProfile && sourcesCount > 0` |
+
+### `POST /api/blogs`
+
+`requireApiAuth` (cookie/Bearer). Тело `blogCreateSchema`:
+`slug` `^[a-z0-9]+(?:-[a-z0-9]+)*$` 2–64, `name` 1–120, `profile?`,
+`tgChatId?`, `stylePreset?`, `sources?` (≤20 http(s)). Ответы: `201 {ok, blog}`,
+`400` — валидация/неизвестный профиль, `409` — дубль slug, `401` — нет auth.
+
+### `PATCH /api/blogs/[slug]`
+
+`requireApiAuth`. Поля `blogPatchSchema`: `name?`, `profile?`, `tgChatId?`,
+`stylePreset?`, `status?('active'|'archived')`, `systemPrompt?`, `contextPrompt?`,
+`sources?`. Пустая строка промпта = `null`; `sources: []` = сброс на дефолтные
+фиды. Ответ `{ok, blog: BlogDto}`; `404` — неизвестный slug.
+
+### `GET /api/blogs/[slug]/agent-prompts`
+
+`requireApiAuth`, `Cache-Control: no-store`. Ответ:
+
+```json
+{
+  "blog": { "slug": "main", "name": "Главный" },
+  "customCount": 1,
+  "prompts": [{
+    "agent": "factcheck.verdict",
+    "label": "Фактчекер: вердикт",
+    "description": "...",
+    "group": "quality",
+    "defaultPrompt": "...",
+    "prompt": "кастомный или null",
+    "effectivePrompt": "...",
+    "source": "blog | legacy-blog-system | preset | default",
+    "isOverridden": true,
+    "updatedAt": "2026-11-10 12:00:00",
+    "maxLength": 8000,
+    "editableScope": "..."
+  }]
+}
+```
+
+Порядок разрешения: `blog_agent_prompts` → `blogs.system_prompt` (только
+`post.writer`/`post.topic`) → `style_preset` → встроенный default.
+
+### `PUT /api/blogs/[slug]/agent-prompts`
+
+`requireApiAuth`. Тело `{ agent: BlogAgentId, prompt: string | null }`;
+`null`/пустая строка сбрасывают override. `post.writer` пишется в
+`blogs.system_prompt` (легаси-совместимость), остальные — в
+`blog_agent_prompts`. Ответ `{ok, blog, customCount, prompt: <элемент реестра>}`.
+Сброс `post.topic` при заданном `system_prompt` пишет пустой tombstone, чтобы
+не подхватить legacy-промпт автора.
+`400` — неизвестный агент/длина >8000, `404` — неизвестный блог, `401` — нет auth.
+
+### `GET /api/blog/pulse`
+
+`requireApiAuth`, `Cache-Control: no-store`. Только активные блоги.
+
+```json
+{
+  "generatedAt": "2026-11-10T12:00:00.000Z",
+  "totals": { "blogs": 2, "active": 2, "needsAttention": 1, "posts": 6, "postsLast7Days": 3, "customPrompts": 2 },
+  "blogs": [{
+    "id": 1, "slug": "main", "name": "Главный",
+    "hasProfile": true, "sourcesCount": 1, "readyForNews": true,
+    "counts": { "posts": 4, "news": 5, "styleSamples": 1, "postsLast7Days": 3, "lastPostAt": "..." },
+    "lastPostAt": "...", "agentPromptsCount": 2
+  }]
+}
+```
+
+### Архивный блог
+
+`news`, `scout`, `blogs/[slug]/posts`, `digest/generate`, `blog/posts/[id]/publish`
+и Telegram-команда `/пост` возвращают/сообщают ошибку «блог в архиве»;
+автоматизация и расписание помечают запуск ошибкой «блог в архиве — пропущено».
+Чтение постов/новостей остаётся доступным.

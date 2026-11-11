@@ -121,3 +121,25 @@ test('postWriter: preset default — старое поведение (профи
     safeRm(dir);
   }
 });
+
+test('postWriter: {{channel}}/{{style}} в override подставляются', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pw-vars-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const blog = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    db.setAgentPrompt(blog.id, 'post.writer', 'Пиши для «{{channel}}» в стиле {{style}}. Язык: {{language}}.');
+
+    const captured: ChatMessage[][] = [];
+    await new PostWriter(fakeClient(captured)).write(db, NEWS, { blogId: blog.id });
+
+    const system = captured[0][0].content;
+    assert.match(system, /Пиши для «Иди на факты глянь» в стиле ироничный, резкий, с подколами\./);
+    assert.match(system, /Язык: русский/);
+    assert.match(system, /ЖЁСТКИЕ ПРАВИЛА \(не редактируются\)/);
+    assert.match(system, /Не выдумывай факты/);
+    assert.ok(!system.includes('{{channel}}'));
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});

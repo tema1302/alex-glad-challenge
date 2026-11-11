@@ -184,6 +184,19 @@ export function createBlogScheduleRunner(
           });
           continue;
         }
+        if (blog.archived_at) {
+          const message = `Блог «${blog.name}» в архиве — слот пропущен`;
+          opts.store.finish(runId, 'error', null, message, now());
+          out.push({
+            scheduleId: slot.schedule.id,
+            blogId: slot.blogId,
+            slotKey: slot.slotKey,
+            status: 'error',
+            postId: null,
+            message,
+          });
+          continue;
+        }
 
         const claimed = opts.store.getRun(runId);
         if (claimed?.post_id != null && opts.blogDb.getPost(claimed.post_id)) {

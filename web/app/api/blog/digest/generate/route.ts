@@ -19,9 +19,9 @@ import { requireApiAuth } from '../../../../../lib/auth';
 import { getBlogDb, withDb } from '../../../../../lib/server/db';
 import { pickLlmClient } from '../../../../../lib/server/llm';
 import { getKeysStatus } from '../../../../../lib/server/env';
-import { resolveBlog, loadBlogProfile } from '../../../../../lib/server/blogs';
+import { resolveBlog, loadBlogProfile, blogArchivedError } from '../../../../../lib/server/blogs';
 import { safeMessage } from '../../../../../lib/server/safe-message';
-import { clean, msg } from '../../../../../lib/server/challenge';
+import { clean, msg, resolveBlogAgentPrompt, applyPromptVars } from '../../../../../lib/server/challenge';
 import type { ChatMessage } from '../../../../../lib/server/challenge';
 
 export const runtime = 'nodejs';
@@ -34,12 +34,27 @@ const DIGEST_MAX_CHARS = 4096; // жёсткий лимит TG-сообщени�
 const PROMPT_TARGET_CHARS = 3500; // буфер под лимит TG (clamp — страховка)
 
 // Голос дайджеста — от блога: имя канала + тематика профиля голоса (если настроен).
-function digestSystem(channel: string, topic: string): string {
+// per-blog override заменяет роль/формат; grounding-правила и clamp остаются в коде.
+function digestSystem(channel: string, topic: string, override?: string | null): string {
+  const fixedGrounding = [
+    '1. Использовать ТОЛЬКО факты из списка новостей: не добавлять факты, которых нет в списке.',
+    '2. Каждый пункт завершается точным URL из списка — других ссылок нет.',
+  ];
+  if (override?.trim()) {
+    const intro = applyPromptVars(override, { channel, topic }).trim();
+    return [
+      intro,
+      'Жёсткие правила (не редактируются):',
+      ...fixedGrounding,
+      '3. Plain text, без HTML/Markdown-разметки.',
+      `4. Формат: заголовок + 5-7 пунктов вида «заголовок — 1-2 предложения — URL». Объём ≤${PROMPT_TARGET_CHARS} символов.`,
+      '5. Последняя строка: «Подборка по новостям недели — полные разборы в канале».',
+    ].join('\n');
+  }
   return [
     `Ты — редактор телеграм-канала «${channel}»${topic ? ` (${topic})` : ''}. Собираешь дайджест недели.`,
     'Жёсткие правила:',
-    '1. Использовать ТОЛЬКО факты из списка новостей: не добавлять факты, которых нет в списке.',
-    '2. Каждый пункт завершается точным URL из списка — других ссылок нет.',
+    ...fixedGrounding,
     '3. Plain text, без HTML/Markdown-разметки.',
     `4. Формат: заголовок + 5-7 пунктов вида «заголовок — 1-2 предложения — URL». Объём ≤${PROMPT_TARGET_CHARS} символов.`,
     '5. Последняя строка: «Подборка по новостям недели — полные разборы в канале».',
@@ -53,10 +68,15 @@ interface DigestNewsItem {
   published_at: string;
 }
 
-function digestMessages(news: DigestNewsItem[], channel: string, topic: string): ChatMessage[] {
+function digestMessages(
+  news: DigestNewsItem[],
+  channel: string,
+  topic: string,
+  override?: string | null,
+): ChatMessage[] {
   const payload = JSON.stringify(news, null, 2);
   return [
-    msg.system(digestSystem(channel, topic)),
+    msg.system(digestSystem(channel, topic, override)),
     msg.user(`Собери дайджест недели ТОЛЬКО по новостям из списка.\n\nНовости:\n${payload}`),
   ];
 }
@@ -92,15 +112,23 @@ export async function POST(req: NextRequest): Promise<Response> {
   let blogId: number | null | undefined;
   let channel = 'Иди на факты глянь';
   let topic = 'футбол: Челси, АПЛ';
+  let digestPrompt: string | null = null;
   if (parsed.data.blog) {
     const res = resolveBlog(parsed.data.blog);
     if (!res.blog) {
       return Response.json({ ok: false, error: res.error ?? 'blog not found' }, { status: 400 });
     }
+    const archived = blogArchivedError(res.blog);
+    if (archived) {
+      return Response.json({ ok: false, error: archived }, { status: 400 });
+    }
     blogId = res.blog.id;
     channel = res.blog.name;
     const profile = loadBlogProfile(res.blog);
     if (profile?.active?.тематика) topic = profile.active.тематика;
+    digestPrompt = await withDb(() =>
+      resolveBlogAgentPrompt(getBlogDb(), res.blog!, 'digest.weekly').prompt,
+    );
   }
 
   // Чтение окна — короткий sync-read внутри withDb; LLM-вызов ниже — вне мьютекса,
@@ -143,7 +171,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   const keys = getKeysStatus();
   try {
     const client = pickLlmClient(keys.cloud.configured ? 'cloud' : 'local');
-    const raw = await client.chat(digestMessages(news, channel, topic), {
+    const raw = await client.chat(digestMessages(news, channel, topic, digestPrompt), {
       temperature: 0.4,
       maxTokens: 1500,
     });

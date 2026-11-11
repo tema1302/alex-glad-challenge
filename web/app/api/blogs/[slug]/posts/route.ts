@@ -12,6 +12,7 @@ import { blogTopicPostSchema } from '../../../../../lib/shared/forms';
 import { clean, ProfileManager, TopicPostWriter, dataPath } from '../../../../../lib/server/challenge';
 import { getBlogDb, withDb } from '../../../../../lib/server/db';
 import { jsonError, jsonOk } from '../../../../../lib/server/http';
+import { blogArchivedError } from '../../../../../lib/server/blogs';
 import { pickLlmClient } from '../../../../../lib/server/llm';
 import { safeMessage } from '../../../../../lib/server/safe-message';
 import { publishToTelegram } from '../../../../../lib/server/tg-publish';
@@ -53,6 +54,8 @@ export async function POST(
   if (!prepared) return jsonError('not found', 404);
 
   const { blog, recent } = prepared;
+  const archived = blogArchivedError(blog);
+  if (archived) return jsonError(archived, 400);
   let profile: ProfileManager | undefined;
   if (blog.profile) {
     const mgr = new ProfileManager(dataPath('profiles'));

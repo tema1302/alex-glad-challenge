@@ -168,3 +168,54 @@ test('pipeline: инъецированный log получает прогрес
     safeRm(dir);
   }
 });
+
+test('pipeline: архивный блог не запускает news-пайплайн', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-archived-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const stored = db.getBlogBySlug('nevsky-hram')!;
+    await assert.rejects(
+      () => runNewsPipeline(db, fakeClient([]), {
+        blog: { ...stored, archived_at: '2026-11-10T00:00:00Z', sources: OFFLINE_SOURCES },
+      }),
+      /в архиве/,
+    );
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('pipeline: per-blog override автора и фактчекера доходит до агентов', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-overrides-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const stored = db.getBlogBySlug('nevsky-hram')!;
+    db.updateBlog(stored.id, { system_prompt: 'Мой авторский промпт блога' });
+    db.setAgentPrompt(stored.id, 'factcheck.reasoning', 'Мой разбор для «{{channel}}»');
+    db.setAgentPrompt(stored.id, 'factcheck.verdict', 'Мой вердикт для «{{channel}}»');
+    db.insertNews(NEWS_ROW, stored.id);
+
+    const captured: ChatMessage[][] = [];
+    const result = await runNewsPipeline(db, fakeClient(captured), {
+      blog: { ...stored, sources: OFFLINE_SOURCES },
+    });
+    assert.ok(result.post, 'пост должен быть написан');
+
+    const writerSystem = writerSystemPrompt(captured);
+    assert.match(writerSystem, /Мой авторский промпт блога/);
+
+    const reasoningCall = captured.find((messages) =>
+      messages.some((m) => m.content.includes('Мой разбор')),
+    );
+    assert.ok(reasoningCall, 'reasoning-промпт с override не найден');
+    const verdictCall = captured.find((messages) =>
+      messages.some((m) => m.content.includes('Мой вердикт')),
+    );
+    assert.ok(verdictCall, 'verdict-промпт с override не найден');
+    assert.match(verdictCall[0].content, /"verdict": "ok" \| "needs_revision"/);
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});

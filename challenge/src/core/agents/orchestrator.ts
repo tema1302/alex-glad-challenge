@@ -12,7 +12,11 @@ export interface OrchestratorResult {
 }
 
 export class Orchestrator {
-  constructor(private client: LlmClient) {}
+  constructor(
+    private client: LlmClient,
+    /** per-blog override: роль/критерии; список тем и JSON-контракт — код. */
+    private criteria?: string | null,
+  ) {}
 
   async decide(
     results: SourceAgentResult[],
@@ -38,7 +42,25 @@ export class Orchestrator {
       return `${idx}: (${topic.source}) ${topic.title}${hype}`;
     });
 
-    const prompt = `Ты спортивный редактор-оркестратор. Тебе пришли темы от трёх источников.
+    const criteria = this.criteria?.trim()
+      ? this.criteria.replace(/\{\{topK\}\}/g, String(topK))
+      : null;
+
+    // Без override сохраняем ровно прежний порядок промпта (темы → критерии),
+    // чтобы поведение scout не менялось от появления реестра.
+    const prompt = criteria
+      ? `${criteria}
+
+ЗАПРОС ПОЛЬЗОВАТЕЛЯ: ${userQuery}
+
+ИСТОЧНИКИ И ТЕМЫ:
+${lines.join('\n')}
+
+Ответь СТРОГО JSON-массивом. ПЕРВЫЙ СИМВОЛ — "[".
+[{"idx": "rss-0", "score": 95, "reason": "Тема везде обсуждается"}]
+
+idx — точный индекс из списка выше. score — 0-100. reason — почему.`
+      : `Ты спортивный редактор-оркестратор. Тебе пришли темы от трёх источников.
 
 ЗАПРОС ПОЛЬЗОВАТЕЛЯ: ${userQuery}
 

@@ -11,6 +11,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -72,6 +74,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import ru.memo7.artel.core.UiState
 import ru.memo7.artel.data.ArtelRepository
+import ru.memo7.artel.data.api.BlogPulseResponse
 import ru.memo7.artel.data.api.BootstrapResponse
 import ru.memo7.artel.data.api.GamificationDto
 import ru.memo7.artel.di.AppContainer
@@ -92,6 +95,12 @@ class DashboardViewModel(private val repository: ArtelRepository) : ViewModel() 
     private val _state = MutableStateFlow<UiState<BootstrapResponse>>(UiState.Loading)
     val state: StateFlow<UiState<BootstrapResponse>> = _state.asStateFlow()
 
+    private val _pulse = MutableStateFlow<BlogPulseResponse?>(null)
+    val pulse: StateFlow<BlogPulseResponse?> = _pulse.asStateFlow()
+
+    private val _pulseError = MutableStateFlow(false)
+    val pulseError: StateFlow<Boolean> = _pulseError.asStateFlow()
+
     init {
         repository.cachedBootstrap?.let { _state.value = UiState.Success(it) }
         refresh()
@@ -105,6 +114,17 @@ class DashboardViewModel(private val repository: ArtelRepository) : ViewModel() 
                     _state.value = UiState.Success(result.data)
                 is ru.memo7.artel.core.network.ApiResult.Failure ->
                     if (_state.value !is UiState.Success) _state.value = UiState.Error(result.error.message ?: "Ошибка")
+            }
+        }
+        loadPulse()
+    }
+
+    fun loadPulse() {
+        viewModelScope.launch {
+            _pulseError.value = false
+            when (val result = repository.blogPulse()) {
+                is ru.memo7.artel.core.network.ApiResult.Success -> _pulse.value = result.data
+                is ru.memo7.artel.core.network.ApiResult.Failure -> _pulseError.value = true
             }
         }
     }
@@ -135,6 +155,8 @@ fun DashboardScreen(
         factory = viewModelFactory { initializer { DashboardViewModel(container.repository) } }
     )
     val state by vm.state.collectAsStateWithLifecycle()
+    val pulse by vm.pulse.collectAsStateWithLifecycle()
+    val pulseError by vm.pulseError.collectAsStateWithLifecycle()
 
     Column(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -177,6 +199,8 @@ fun DashboardScreen(
         ) { data ->
             DashboardContent(
                 data = data,
+                pulse = pulse,
+                pulseError = pulseError,
                 onOpenNotifications = onOpenNotifications,
                 onOpenSupport = onOpenSupport,
                 onOpenProjects = onOpenProjects,
@@ -197,9 +221,12 @@ fun DashboardScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DashboardContent(
     data: BootstrapResponse,
+    pulse: BlogPulseResponse?,
+    pulseError: Boolean,
     onOpenNotifications: () -> Unit,
     onOpenSupport: () -> Unit,
     onOpenProjects: () -> Unit,
@@ -331,6 +358,66 @@ private fun DashboardContent(
                 tint = MaterialTheme.colorScheme.tertiary,
                 onClick = onOpenNotifications,
             )
+        }
+
+        // Blog pulse: cross-blog summary and readiness (same API as web dashboard).
+        BentoCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+            onClick = onOpenBlog,
+        ) {
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.Newspaper,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Пульс блогов", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.weight(1f))
+                    Text("→", color = MaterialTheme.colorScheme.primary)
+                }
+                if (pulseError) {
+                    Text(
+                        "Пульс недоступен — обновите экран.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (pulse == null) {
+                    Text(
+                        "Загружаю сводку…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else if (pulse.blogs.isEmpty()) {
+                    Text(
+                        "Блогов пока нет — создайте первый в веб-студии.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Text(
+                        "${pulse.totals.active} активных · ${pulse.totals.needsAttention} требуют настройки · ${pulse.totals.postsLast7Days} постов за 7 дней",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pulse.blogs.take(3).forEach { blog ->
+                            PillBadge(
+                                text = "${blog.name}: ${if (blog.readyForNews) "готов" else "настройка"}",
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                containerColor = if (blog.readyForNews) {
+                                    MaterialTheme.colorScheme.secondary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                },
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         // Achievements

@@ -158,3 +158,93 @@ test('db: миграция легаси-базы — ALTER blogs + antonov бл�
     safeRm(dir);
   }
 });
+
+test('db: createBlog + уникальный slug + архив', () => {
+  const { dir, file } = tmpDb();
+  const db = new BlogDb(file);
+  try {
+    const created = db.createBlog({
+      slug: 'new-blog',
+      name: 'Новый блог',
+      profile: 'default',
+      style_preset: 'default',
+    });
+    assert.equal(created.slug, 'new-blog');
+    assert.equal(created.archived_at, null);
+    assert.equal(db.getBlogBySlug('new-blog')?.name, 'Новый блог');
+    assert.throws(() => db.createBlog({ slug: 'new-blog', name: 'Дубль' }));
+
+    db.setBlogArchived(created.id, true);
+    assert.ok(db.getBlog(created.id)?.archived_at);
+    db.setBlogArchived(created.id, false);
+    assert.equal(db.getBlog(created.id)?.archived_at, null);
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('db: blogStats считает посты/новости/стиль и последнюю активность по блогу', () => {
+  const { dir, file } = tmpDb();
+  const db = new BlogDb(file);
+  try {
+    const a = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    const b = db.getBlogBySlug('nevsky-hram')!;
+    const now = new Date().toISOString();
+    db.insertNews({ url: 'https://example.com/a', title: 'A', summary: 'A', published_at: now, source: 'rss' }, a.id);
+    db.insertNews({ url: 'https://example.com/b', title: 'B', summary: 'B', published_at: now, source: 'rss' }, b.id);
+    db.insertPost('Пост A', null, null, a.id);
+    db.insertPost('Пост B1', null, null, b.id);
+    db.insertPost('Пост B2', null, null, b.id);
+    db.addStyleSample('образец', a.id);
+
+    const statsA = db.blogStats(a.id);
+    assert.equal(statsA.posts, 1);
+    assert.equal(statsA.news, 1);
+    assert.equal(statsA.styleSamples, 1);
+    assert.equal(statsA.postsLast7Days, 1);
+    assert.ok(statsA.lastPostAt);
+
+    const statsB = db.blogStats(b.id);
+    assert.equal(statsB.posts, 2);
+    assert.equal(statsB.news, 1);
+    assert.equal(statsB.styleSamples, 0);
+
+    const all = db.listBlogStats();
+    assert.equal(all.find((x) => x.id === b.id)?.posts, 2);
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('db: agent prompts — upsert, clear, count и persist', () => {
+  const { dir, file } = tmpDb();
+  let db = new BlogDb(file);
+  const blogId = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!.id;
+  try {
+    assert.equal(db.getAgentPrompt(blogId, 'factcheck.verdict'), null);
+    db.setAgentPrompt(blogId, 'factcheck.verdict', 'строгий разбор');
+    db.setAgentPrompt(blogId, 'factcheck.verdict', 'очень строгий разбор');
+    assert.equal(db.getAgentPrompt(blogId, 'factcheck.verdict')?.prompt, 'очень строгий разбор');
+    db.setAgentPrompt(blogId, 'digest.weekly', 'дайджест');
+    assert.equal(db.agentPromptsCount(blogId), 2);
+    db.updateBlog(blogId, { system_prompt: 'авторский системный промпт' });
+    assert.equal(db.agentPromptsCount(blogId), 3, 'system_prompt считается writer-override');
+    db.updateBlog(blogId, { system_prompt: null });
+    assert.equal(db.agentPromptsCount(blogId), 2);
+    assert.equal(db.listAgentPrompts(blogId).length, 2);
+    assert.equal(db.clearAgentPrompt(blogId, 'digest.weekly'), true);
+    assert.equal(db.clearAgentPrompt(blogId, 'digest.weekly'), false);
+  } finally {
+    db.close();
+  }
+  db = new BlogDb(file);
+  try {
+    assert.equal(db.getAgentPrompt(blogId, 'factcheck.verdict')?.prompt, 'очень строгий разбор');
+    assert.equal(db.agentPromptsCount(blogId), 1);
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});

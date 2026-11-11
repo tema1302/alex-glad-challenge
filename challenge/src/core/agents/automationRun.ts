@@ -67,6 +67,7 @@ export function createAutomationRunner(
     async runBlog(blogId: number): Promise<BlogRunOutcome> {
       const blog: BlogRow | null = opts.blogDb.getBlog(blogId);
       if (!blog) throw new Error(`Блог ${blogId} не найден`);
+      if (blog.archived_at) throw new Error(`Блог «${blog.name}» в архиве — автозапуск пропущен`);
 
       const result = await runNewsPipeline(opts.blogDb, resolveClient(), {
         blog,

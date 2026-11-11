@@ -21,7 +21,8 @@ import { scoutOptsSchema } from '../../../../lib/shared/forms';
 import type { SseBlogScoutEvent } from '../../../../lib/shared/sse';
 import { pickLlmClient } from '../../../../lib/server/llm';
 import { getBlogDb, withDb } from '../../../../lib/server/db';
-import { runSourceAgents } from '../../../../lib/server/challenge';
+import { blogArchivedError, resolveBlog } from '../../../../lib/server/blogs';
+import { runSourceAgents, type BlogRow } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
 
 export const runtime = 'nodejs';
@@ -35,10 +36,29 @@ export async function POST(req: NextRequest): Promise<Response> {
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }
-  const { hours, topK, query, llm = 'cloud' } = parsed.data;
+  const { hours, topK, query, llm = 'cloud', blog: blogRef } = parsed.data;
   // TG по умолчанию выкл (MTProto), Forum по умолчанию вкл — см. шапку.
   const enableTelegram = parsed.data.enableTelegram ?? false;
   const enableForum = parsed.data.enableForum ?? true;
+
+  let blog: BlogRow | null = null;
+  if (blogRef) {
+    const res = resolveBlog(blogRef);
+    if (!res.blog) {
+      return new Response(JSON.stringify({ error: res.error ?? 'blog not found' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    const archived = blogArchivedError(res.blog);
+    if (archived) {
+      return new Response(JSON.stringify({ error: archived }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    blog = res.blog;
+  }
   const client = pickLlmClient(llm);
 
   const encoder = new TextEncoder();
@@ -59,6 +79,7 @@ export async function POST(req: NextRequest): Promise<Response> {
             userQuery: query,
             enableTelegram,
             enableForum,
+            blog,
             signal: req.signal,
           }),
         );

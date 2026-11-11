@@ -224,6 +224,7 @@ export const scoutOptsSchema = z.object({
   enableTelegram: z.boolean().optional(),
   enableForum: z.boolean().optional(),
   llm: z.enum(['local', 'cloud']).optional(),
+  blog: z.string().trim().min(1).max(100).optional(),
 });
 export type ScoutOptsInput = z.infer<typeof scoutOptsSchema>;
 
@@ -318,6 +319,7 @@ export const blogPatchSchema = z.object({
   profile: z.string().trim().max(100).nullable().optional(),
   tgChatId: z.string().trim().max(100).nullable().optional(),
   stylePreset: z.enum(['default', 'antonov']).optional(),
+  status: z.enum(['active', 'archived']).optional(),
   systemPrompt: z.string().max(8000, 'System prompt: до 8000 символов').nullable().optional(),
   contextPrompt: z.string().max(8000, 'Context prompt: до 8000 символов').nullable().optional(),
   sources: z
@@ -326,12 +328,75 @@ export const blogPatchSchema = z.object({
         .string()
         .trim()
         .max(500)
-        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL'),
+        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL')
+        .refine((u) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.username === '' && parsed.password === '';
+          } catch {
+            return false;
+          }
+        }, 'URL источника не должен содержать логин/пароль'),
     )
     .max(20, 'Источников — не больше 20')
     .optional(),
 });
 export type BlogPatchInput = z.infer<typeof blogPatchSchema>;
+
+// Слаг стабилен после создания: он входит в URL/Telegram-команды, поэтому
+// переименование допускается только через имя, слаг — нет.
+export const BLOG_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export const blogCreateSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .min(2, 'Slug: минимум 2 символа')
+    .max(64, 'Slug: до 64 символов')
+    .regex(BLOG_SLUG_RE, 'Slug: только латиница, цифры и дефис (например, nevsky-hram)')
+    .refine((s) => !/^\d+$/.test(s), 'Slug не может состоять только из цифр — это похоже на id'),
+  name: z.string().trim().min(1, 'Имя обязательно').max(120, 'Имя: до 120 символов'),
+  profile: z.string().trim().max(100).nullable().optional(),
+  tgChatId: z.string().trim().max(100).nullable().optional(),
+  stylePreset: z.enum(['default', 'antonov']).optional(),
+  sources: z
+    .array(
+      z
+        .string()
+        .trim()
+        .max(500)
+        .regex(/^https?:\/\//, 'Источник должен быть http(s)-URL')
+        .refine((u) => {
+          try {
+            const parsed = new URL(u);
+            return parsed.username === '' && parsed.password === '';
+          } catch {
+            return false;
+          }
+        }, 'URL источника не должен содержать логин/пароль'),
+    )
+    .max(20, 'Источников — не больше 20')
+    .optional(),
+});
+export type BlogCreateInput = z.infer<typeof blogCreateSchema>;
+
+// id синхронны с core blogAgentPrompts.ts; shared не импортирует core.
+export const BLOG_AGENT_IDS = [
+  'post.writer',
+  'post.topic',
+  'scout.news',
+  'scout.orchestrator',
+  'factcheck.reasoning',
+  'factcheck.verdict',
+  'digest.weekly',
+] as const;
+export type BlogAgentId = (typeof BLOG_AGENT_IDS)[number];
+
+export const blogAgentPromptPutSchema = z.object({
+  agent: z.enum(BLOG_AGENT_IDS, { message: 'Неизвестный агент' }),
+  prompt: z.string().max(8000, 'Промпт: до 8000 символов').nullable(),
+});
+export type BlogAgentPromptPutInput = z.infer<typeof blogAgentPromptPutSchema>;
 
 // POST /api/blogs/[slug]/posts — ручной/праздничный пост по теме (без RSS).
 // variants: 1..3 разных подачи; publishNow — реальная отправка первого варианта

@@ -175,7 +175,9 @@ const DETECTORS: readonly Detector[] = [
     kind: 'email',
     label: 'email address',
     severity: 'medium',
-    re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
+    // Локальная часть ограничена 64 символами (RFC 5321): без границы `+`
+    // на строке из '%41' без '@' даёт O(n²) и вешает gateway (ReDoS).
+    re: /\b[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     redaction: '[REDACTED_EMAIL]',
   },
 ];

@@ -8,9 +8,9 @@
 
 import { DEFAULT_BLOG_SLUG, type BlogDb, type NewsRow, type StyleSampleRow } from '../db.js';
 import type { LlmClient } from '../client.js';
+import { resolveBlogAgentPrompt, applyPromptVars } from '../blogAgentPrompts.js';
 import { msg } from '../types.js';
 import type { ProfileManager } from '../profile.js';
-import { presetSystemPrompt } from '../stylePreset.js';
 
 export interface WrittenPost {
   content: string;
@@ -32,20 +32,19 @@ export class PostWriter {
 
   async write(db: BlogDb, news: NewsRow, opts: WriteOptions = {}): Promise<WrittenPost> {
     const blog = opts.blogId != null ? db.getBlog(opts.blogId) : null;
+    if (blog?.archived_at) {
+      throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+    }
     // Легаси-дефолты (футбольный канал/@lookatfacts) допустимы только для блога
     // по умолчанию или вызова без блога; остальные блоги без профиля получают
     // своё имя и нейтральный стиль, а не чужой голос.
     const legacyDefaults = !blog || blog.slug === DEFAULT_BLOG_SLUG;
 
-    // Приоритет system-промпта: явный per-blog → пресет → шаблон по профилю.
+    // Приоритет system-промпта: override агента → легаси system_prompt → пресет.
     // Явный промпт самодостаточен: few-shot образцы к нему не подмешиваются.
-    const explicitPrompt = blog?.system_prompt?.trim() || null;
-    const presetPrompt =
-      !explicitPrompt && opts.blogId != null
-        ? presetSystemPrompt(db.getStylePreset(opts.blogId))
-        : null;
-    const basePrompt = explicitPrompt ?? presetPrompt;
-    const samples = basePrompt ? [] : db.styleSamples(3, opts.blogId);
+    const resolved = resolveBlogAgentPrompt(db, blog, 'post.writer');
+    const rawBasePrompt = resolved.prompt;
+    const samples = rawBasePrompt ? [] : db.styleSamples(3, opts.blogId);
     const contextPrompt = blog?.context_prompt?.trim() || null;
 
     // --- Извлекаем ВСЕ поля профиля ---
@@ -60,6 +59,20 @@ export class PostWriter {
     const taboos = p?.табу ?? 'без мата, без политики';
     const humor = p?.приемы_юмора ?? '';
     const language = p?.язык ?? 'русский';
+    const basePrompt = rawBasePrompt
+      ? applyPromptVars(rawBasePrompt, {
+          channel,
+          topic,
+          style,
+          language,
+          length: lengthRule,
+          format: formatRule,
+          emoji: emojiRule,
+          taboos,
+          signature,
+          humor,
+        })
+      : null;
     const signatureLine = signature ? `- Подпись в конце: ${signature}\n` : '';
     const contextBlock = contextPrompt
       ? `\n\n=== КОНТЕКСТ БЛОГА (постоянные факты, аудитория и тон) ===\n${contextPrompt}`
@@ -74,7 +87,14 @@ export class PostWriter {
 КАНАЛ И ПРОФИЛЬ (обязательно):
 - Шапка поста: «${channel}: » (без даты/времени). Первый символ ответа — «${channel[0]}».
 ${signatureLine}- Табу: ${taboos}.
-- Язык: ${language}.${contextBlock}`
+- Язык: ${language}.
+
+ЖЁСТКИЕ ПРАВИЛА (не редактируются):
+- ОБЪЁМ: ${lengthRule}. НЕ РАСТЯГИВАЙ.
+- ФОРМАТ: ${formatRule}.
+- ЭМОДЗИ: ${emojiRule}.
+- Не выдумывай факты, которых нет в источнике.
+- Не обрезай пост на полуслове.${contextBlock}`
       : `Ты — автор Telegram-канала «${channel}» (${topic}).
 Ты пишешь ${style}. Язык: ${language}.
 
@@ -165,10 +185,27 @@ export async function rewritePost(
   edit: string,
   news: NewsRow,
   profile?: import('../profile.js').ProfileManager,
+  systemPrompt?: string | null,
 ): Promise<string> {
   const p = profile?.active;
   const channel = p?.канал ?? 'Иди на факты глянь';
-  const system = `Ты — автор Telegram-канала «${channel}».
+  const override = systemPrompt?.trim()
+    ? applyPromptVars(systemPrompt.trim(), {
+        channel,
+        style: p?.стиль ?? '',
+        emoji: p?.эмодзи ?? 'без эмодзи',
+        signature: p?.подпись ?? '',
+        length: p?.длина_постов ?? '100-500 символов',
+      })
+    : null;
+  const system = override
+    ? `${override}
+
+КАНАЛ: «${channel}».
+Перепиши пост с учётом правок. Сохрани стиль, шапку, подпись.
+Объём: ${p?.длина_постов ?? '100-500 символов'}.
+НЕ выдумывай факты. НЕ обрезай на полуслове.`
+    : `Ты — автор Telegram-канала «${channel}».
 ${p ? `Стиль: ${p.стиль}. Эмодзи: ${p.эмодзи}. Подпись: ${p.подпись}.` : ''}
 Перепиши пост с учётом правок. Сохрани стиль, шапку, подпись.
 Объём: ${p?.длина_постов ?? '100-500 символов'}.

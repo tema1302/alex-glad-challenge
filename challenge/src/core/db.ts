@@ -24,7 +24,35 @@ export interface BlogRow {
   style_preset: StylePreset; // пресет стиля (stylePreset.ts); 'default' = профиль + few-shot
   system_prompt: string | null;  // per-blog override системного промпта; null = пресет/шаблон
   context_prompt: string | null; // постоянный контекст блога (факты, аудитория, тон)
+  archived_at: string | null;    // null = активен; ISO-время = архив (данные сохраняются)
   created_at: string;
+}
+
+export interface BlogAgentPromptRow {
+  id: number;
+  blog_id: number;
+  agent: string;
+  prompt: string;
+  updated_at: string;
+}
+
+export interface BlogStats {
+  posts: number;
+  news: number;
+  styleSamples: number;
+  postsLast7Days: number;
+  lastPostAt: string | null;
+}
+
+export interface CreateBlogInput {
+  slug: string;
+  name: string;
+  profile?: string | null;
+  tg_chat_id?: string | null;
+  sources?: string | null;
+  style_preset?: StylePreset;
+  system_prompt?: string | null;
+  context_prompt?: string | null;
 }
 
 // Блог по умолчанию: весь существующий контент и дефолтные RSS-фиды — его.
@@ -34,9 +62,9 @@ export const DEFAULT_BLOG_SLUG = 'lookatfacts';
 // двух новых блогов заполняются позже (PATCH /api/blogs/[slug], профили — /chat).
 // Блог «Факты» (lookatfacts) пишет пресетом Антонова (stylePreset.ts).
 const SEED_BLOGS: Array<Omit<BlogRow, 'id' | 'created_at'>> = [
-  { slug: DEFAULT_BLOG_SLUG, name: 'Иди на факты глянь', profile: 'default', tg_chat_id: null, sources: null, style_preset: 'antonov', system_prompt: null, context_prompt: null },
-  { slug: 'artemia-artel', name: 'Артемия Артель', profile: null, tg_chat_id: null, sources: null, style_preset: 'default', system_prompt: null, context_prompt: null },
-  { slug: 'nevsky-hram', name: 'Невский храм на Доваторцев', profile: null, tg_chat_id: null, sources: null, style_preset: 'default', system_prompt: null, context_prompt: null },
+  { slug: DEFAULT_BLOG_SLUG, name: 'Иди на факты глянь', profile: 'default', tg_chat_id: null, sources: null, style_preset: 'antonov', system_prompt: null, context_prompt: null, archived_at: null },
+  { slug: 'artemia-artel', name: 'Артемия Артель', profile: null, tg_chat_id: null, sources: null, style_preset: 'default', system_prompt: null, context_prompt: null, archived_at: null },
+  { slug: 'nevsky-hram', name: 'Невский храм на Доваторцев', profile: null, tg_chat_id: null, sources: null, style_preset: 'default', system_prompt: null, context_prompt: null, archived_at: null },
 ];
 
 export interface NewsRow {
@@ -80,7 +108,17 @@ CREATE TABLE IF NOT EXISTS blogs (
   style_preset TEXT NOT NULL DEFAULT 'default',
   system_prompt TEXT,
   context_prompt TEXT,
+  archived_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS blog_agent_prompts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  blog_id INTEGER NOT NULL,
+  agent TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (blog_id, agent)
 );
 
 CREATE TABLE IF NOT EXISTS news (
@@ -153,6 +191,11 @@ export class BlogDb {
     if (!this.hasColumn('blogs', 'context_prompt')) {
       this.db.exec('ALTER TABLE blogs ADD COLUMN context_prompt TEXT');
     }
+    // Архив вместо удаления: данные постов/новостей/расписания остаются, блог
+    // скрывается из селекторов и не запускает автоматизацию.
+    if (!this.hasColumn('blogs', 'archived_at')) {
+      this.db.exec('ALTER TABLE blogs ADD COLUMN archived_at TEXT');
+    }
     // На базах, созданных до мульти-блога, колонок нет — ALTER + разовый бэкфилл
     // всего существующего контента в блог по умолчанию. На свежей БД колонки уже
     // в CREATE, строк нет — бэкфилл не нужен.
@@ -223,6 +266,113 @@ export class BlogDb {
     return (row ?? null) as BlogRow | null;
   }
 
+  // Создание блога из UI/API. UNIQUE(slug) — последняя линия защиты; route
+  // проверяет дубль заранее, чтобы отдать 409 с понятным сообщением.
+  createBlog(input: CreateBlogInput): BlogRow {
+    const stmt = this.db.prepare(
+      'INSERT INTO blogs (slug, name, profile, tg_chat_id, sources, style_preset, system_prompt, context_prompt, archived_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+    );
+    const result = stmt.run(
+      input.slug,
+      input.name,
+      input.profile ?? null,
+      input.tg_chat_id ?? null,
+      input.sources ?? null,
+      input.style_preset ?? 'default',
+      input.system_prompt ?? null,
+      input.context_prompt ?? null,
+    );
+    const row = this.getBlog(Number(result.lastInsertRowid));
+    if (!row) throw new Error('созданный блог не найден');
+    return row;
+  }
+
+  setBlogArchived(id: number, archived: boolean): void {
+    this.db
+      .prepare('UPDATE blogs SET archived_at = ? WHERE id = ?')
+      .run(archived ? new Date().toISOString() : null, id);
+  }
+
+  blogStats(blogId: number): BlogStats {
+    const row = this.db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM posts WHERE blog_id = ?) AS posts,
+           (SELECT COUNT(*) FROM news WHERE blog_id = ?) AS news,
+           (SELECT COUNT(*) FROM style_samples WHERE blog_id = ?) AS styleSamples,
+           (SELECT COUNT(*) FROM posts WHERE blog_id = ? AND created_at >= datetime('now', '-7 days')) AS postsLast7Days,
+           (SELECT MAX(created_at) FROM posts WHERE blog_id = ?) AS lastPostAt`,
+      )
+      .get(blogId, blogId, blogId, blogId, blogId) as unknown as {
+      posts: number;
+      news: number;
+      styleSamples: number;
+      postsLast7Days: number;
+      lastPostAt: string | null;
+    };
+    return {
+      posts: Number(row.posts),
+      news: Number(row.news),
+      styleSamples: Number(row.styleSamples),
+      postsLast7Days: Number(row.postsLast7Days),
+      lastPostAt: row.lastPostAt,
+    };
+  }
+
+  // Все блоги со статистикой одним проходом (для списка/пульса).
+  listBlogStats(): Array<BlogRow & BlogStats> {
+    const rows = this.listBlogs();
+    return rows.map((blog) => ({ ...blog, ...this.blogStats(blog.id) }));
+  }
+
+  // --- blog_agent_prompts ---
+  listAgentPrompts(blogId: number): BlogAgentPromptRow[] {
+    return this.db
+      .prepare('SELECT * FROM blog_agent_prompts WHERE blog_id = ? ORDER BY agent')
+      .all(blogId) as unknown as BlogAgentPromptRow[];
+  }
+
+  getAgentPrompt(blogId: number, agent: string): BlogAgentPromptRow | null {
+    const row = this.db
+      .prepare('SELECT * FROM blog_agent_prompts WHERE blog_id = ? AND agent = ?')
+      .get(blogId, agent);
+    return (row ?? null) as BlogAgentPromptRow | null;
+  }
+
+  setAgentPrompt(blogId: number, agent: string, prompt: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO blog_agent_prompts (blog_id, agent, prompt, updated_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(blog_id, agent) DO UPDATE SET
+           prompt = excluded.prompt,
+           updated_at = datetime('now')`,
+      )
+      .run(blogId, agent, prompt);
+  }
+
+  clearAgentPrompt(blogId: number, agent: string): boolean {
+    const result = this.db
+      .prepare('DELETE FROM blog_agent_prompts WHERE blog_id = ? AND agent = ?')
+      .run(blogId, agent);
+    return result.changes > 0;
+  }
+
+  agentPromptsCount(blogId: number): number {
+    // post.writer исторически живёт в blogs.system_prompt — считаем его
+    // эффективным override'ом, иначе UI показывал бы 0/8 после настройки автора.
+    const row = this.db
+      .prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM blog_agent_prompts
+              WHERE blog_id = ? AND TRIM(prompt) <> '') +
+           (SELECT CASE WHEN TRIM(COALESCE(system_prompt, '')) <> '' THEN 1 ELSE 0 END
+              FROM blogs WHERE id = ?) AS n`,
+      )
+      .get(blogId, blogId) as { n: number };
+    return Number(row.n);
+  }
+
   updateBlog(
     id: number,
     patch: {
@@ -233,6 +383,7 @@ export class BlogDb {
       style_preset?: StylePreset;
       system_prompt?: string | null;
       context_prompt?: string | null;
+      archived_at?: string | null;
     },
   ): void {
     const sets: string[] = [];
@@ -245,6 +396,7 @@ export class BlogDb {
       'style_preset',
       'system_prompt',
       'context_prompt',
+      'archived_at',
     ] as const) {
       const val = patch[key];
       if (val !== undefined) {

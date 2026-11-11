@@ -5,6 +5,7 @@
 
 import type { BlogDb, NewsRow } from '../db.js';
 import type { LlmClient } from '../client.js';
+import { applyPromptVars, resolveBlogAgentPrompt } from '../blogAgentPrompts.js';
 import { msg } from '../types.js';
 
 export interface RankedNews {
@@ -52,7 +53,12 @@ export class NewsFetcher {
     }));
 
     const priority = opts.focus ?? 'Челси, АПЛ, топ-игроки, ЧМ, трансферы';
-    const prompt = `Из списка новостей ниже выбери топ-${topK} самых важных для аудитории канала (приоритет: ${priority}).
+    const blog = opts.blogId != null ? db.getBlog(opts.blogId) : null;
+    const resolved = blog ? resolveBlogAgentPrompt(db, blog, 'scout.news') : null;
+    const instructions = resolved?.prompt
+      ? applyPromptVars(resolved.prompt, { topK, priority, channel: blog?.name })
+      : `Из списка новостей ниже выбери топ-${topK} самых важных для аудитории канала (приоритет: ${priority}).`;
+    const prompt = `${instructions}
 
 Новости:
 ${JSON.stringify(payload, null, 2)}

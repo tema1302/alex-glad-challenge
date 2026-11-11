@@ -56,7 +56,14 @@ export default function BlogNewsPage() {
   useEffect(() => {
     fetch('/api/blogs')
       .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => setBlogs(j.blogs ?? []))
+      .then((j: { blogs?: BlogOption[] }) => {
+        const list = j.blogs ?? [];
+        setBlogs(list);
+        const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+        if (fromQuery && list.some((b) => b.slug === fromQuery)) {
+          setBlog((prev) => prev || fromQuery);
+        }
+      })
       .catch(() => setBlogs([]));
   }, []);
 

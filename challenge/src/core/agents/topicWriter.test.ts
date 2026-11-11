@@ -100,3 +100,20 @@ test('topicWriter: последние посты попадают в anti-repeat
     safeRm(dir);
   }
 });
+
+test('topicWriter: архивный блог не генерирует контент (центральный guard)', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'topic-archived-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const blog = db.getBlogBySlug('artemia-artel')!;
+    db.setBlogArchived(blog.id, true);
+    const writer = new TopicPostWriter(fakeClient([]));
+    await assert.rejects(
+      () => writer.writeMany(db, { ...blog, archived_at: '2026-11-10T00:00:00Z' }, { topic: 'Игротека' }),
+      /в архиве/,
+    );
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});

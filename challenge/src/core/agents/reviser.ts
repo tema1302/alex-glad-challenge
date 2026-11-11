@@ -22,6 +22,7 @@ export class Reviser {
   constructor(
     private client: LlmClient,
     private profile?: ProfileManager,
+    private systemPrompt?: string | null,
   ) {}
 
   // Решает и выполняет: переписать или сменить новость.
@@ -51,6 +52,7 @@ export class Reviser {
       editInstruction,
       news,
       this.profile,
+      this.systemPrompt,
     );
 
     const issuesAddressed = factCheck.issues.map(

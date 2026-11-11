@@ -11,6 +11,8 @@ import type { Metadata } from 'next';
 import type { ComponentType, ReactNode } from 'react';
 import { getBlogDb, getDialogDb, getRagStore, getTgStore, withDb } from '../../lib/server/db';
 import { getKeysStatus } from '../../lib/server/env';
+import { readBlogPulse } from '../../lib/server/blogs';
+import { BlogPulse } from './BlogPulse';
 import { SectionHead } from '../components/ui/SectionHead';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { Card } from '../components/ui/Card';
@@ -67,7 +69,7 @@ async function readStats(): Promise<DashboardStats> {
     const tgStats = tg.stats();
     const chats = dialog.listChats(2000);
     return {
-      blogs: blog.listBlogs().length,
+      blogs: blog.listBlogs().filter((b) => b.archived_at === null).length,
       news: blog.newsCount(),
       posts: blog.postsCount(),
       styleSamples: blog.styleSamplesCount(),
@@ -301,7 +303,11 @@ const CAPABILITY_GROUPS: Array<{
 ];
 
 export default async function DashboardPage() {
-  const [stats, keys] = await Promise.all([readStats(), Promise.resolve(getKeysStatus())]);
+  const [stats, keys, pulse] = await Promise.all([
+    readStats(),
+    Promise.resolve(getKeysStatus()),
+    readBlogPulse(),
+  ]);
   const ragTotal = stats.ragFixed + stats.ragStructure + stats.ragTelegram;
   const deepseekOn = keys.cloud.configured && keys.cloud.provider === 'DeepSeek';
   const openrouterOn = keys.cloud.configured && keys.cloud.provider === 'OpenRouter';
@@ -326,10 +332,19 @@ export default async function DashboardPage() {
         description="Карта возможностей: что умеет система и куда нажимать. Ключи показаны только как факт настройки — значения секретов не отображаются."
       />
 
+      {/* ── Пульс контента: что происходит во всех блогах ── */}
+      <BlogPulse totals={pulse.totals} blogs={pulse.blogs} />
+
       {/* ── Быстрые действия (J1/J2/J3) ── */}
       <section>
         <SectionLabel>быстрые действия</SectionLabel>
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickAction
+            href="/blog/settings"
+            icon={IconRss}
+            title="Блоги"
+            desc="Создать блог, настроить голос, RSS и промпты агентов"
+          />
           <QuickAction
             href="/telegram/publish"
             icon={IconSend}

@@ -4,7 +4,7 @@
 // оркестратора + сводка по агентам. НИКАКИХ импортов core/.
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SseBlogScoutEvent } from '../../../lib/shared/sse';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -28,7 +28,14 @@ interface AgentSummary {
   error: string | null;
 }
 
+interface BlogOption {
+  slug: string;
+  name: string;
+}
+
 export default function BlogScoutPage() {
+  const [blogs, setBlogs] = useState<BlogOption[]>([]);
+  const [blog, setBlog] = useState('');
   const [query, setQuery] = useState('');
   const [hours, setHours] = useState(24);
   const [topK, setTopK] = useState(3);
@@ -42,6 +49,18 @@ export default function BlogScoutPage() {
   const [error, setError] = useState<string | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    fetch('/api/blogs')
+      .then((r) => r.json())
+      .then((j: { blogs?: BlogOption[] }) => {
+        const list = j.blogs ?? [];
+        setBlogs(list);
+        const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+        if (fromQuery && list.some((b) => b.slug === fromQuery)) setBlog(fromQuery);
+      })
+      .catch(() => setBlogs([]));
+  }, []);
 
   const reset = (): void => {
     setRanked([]);
@@ -77,6 +96,7 @@ export default function BlogScoutPage() {
         body: JSON.stringify({
           hours,
           topK,
+          ...(blog ? { blog } : {}),
           query: query.trim() || undefined,
           enableForum,
           enableTelegram,
@@ -122,7 +142,7 @@ export default function BlogScoutPage() {
       setRunning(false);
       abortRef.current = null;
     }
-  }, [query, hours, topK, enableForum, enableTelegram, llm, running]);
+  }, [query, hours, topK, enableForum, enableTelegram, llm, blog, running]);
 
   const cancel = (): void => {
     abortRef.current?.abort();
@@ -138,6 +158,21 @@ export default function BlogScoutPage() {
 
       <Card label="Параметры сбора">
         <div className="flex flex-wrap items-end gap-4">
+          <label className="text-sm">
+            <span className="block text-xs font-medium text-dim">Блог</span>
+            <select
+              className={`mt-1 ${INPUT_CLASS}`}
+              value={blog}
+              onChange={(e) => setBlog(e.target.value)}
+              disabled={running}
+            >
+              <option value="">— без блога —</option>
+              {blogs.map((b) => (
+                <option key={b.slug} value={b.slug}>{b.name}</option>
+              ))}
+            </select>
+          </label>
+
           <label className="flex-1 min-w-[200px] text-sm">
             <span className="block text-xs font-medium text-dim">Запрос</span>
             <input

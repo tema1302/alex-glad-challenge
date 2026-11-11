@@ -8,8 +8,8 @@ import type { LlmClient } from '../client.js';
 import type { BlogDb, BlogRow } from '../db.js';
 import { DEFAULT_BLOG_SLUG } from '../db.js';
 import type { ProfileManager } from '../profile.js';
+import { resolveBlogAgentPrompt, applyPromptVars } from '../blogAgentPrompts.js';
 import { clean } from '../sanitize.js';
-import { presetSystemPrompt } from '../stylePreset.js';
 import { msg } from '../types.js';
 import { cleanPost } from './postWriter.js';
 
@@ -78,7 +78,7 @@ export class TopicPostWriter {
     const out: WrittenTopicPost[] = [];
     for (let i = 0; i < count; i++) {
       out.push(
-        await this.writeOne(blog, {
+        await this.writeOne(db, blog, {
           topic: opts.topic,
           comment: opts.comment,
           variantIndex: i,
@@ -90,7 +90,12 @@ export class TopicPostWriter {
     return out;
   }
 
-  async writeOne(blog: BlogRow, opts: TopicWriteOptions): Promise<WrittenTopicPost> {
+  async writeOne(db: BlogDb, blog: BlogRow, opts: TopicWriteOptions): Promise<WrittenTopicPost> {
+    // Архив — общий инвариант ядра, а не только web-route: TG-команды,
+    // расписание и auto-drafts не должны создавать контент архивного блога.
+    if (blog.archived_at) {
+      throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+    }
     const variant = Math.min(Math.max(Math.trunc(opts.variantIndex ?? 0), 0), TOPIC_VARIANTS.length - 1);
     const angle = TOPIC_VARIANTS[variant];
     const p = opts.profile?.active;
@@ -102,10 +107,18 @@ export class TopicPostWriter {
     const language = p?.язык ?? 'русский';
     const styleLine = p?.стиль ? `Стиль: ${p.стиль}.` : '';
     const contextPrompt = blog.context_prompt?.trim() || null;
-    const explicitPrompt = blog.system_prompt?.trim() || presetSystemPrompt(blog.style_preset);
-
+    const resolved = resolveBlogAgentPrompt(db, blog, 'post.topic');
     const base =
-      explicitPrompt ??
+      (resolved.prompt
+        ? applyPromptVars(resolved.prompt, {
+            channel,
+            topic: opts.topic,
+            style: p?.стиль ?? '',
+            language,
+            taboos,
+            signature,
+          })
+        : null) ??
       `Ты — автор Telegram-канала «${channel}». Пиши живым, человеческим языком, без канцелярита, штампов и пафоса. ${styleLine}`.trim();
 
     const system = `${base}

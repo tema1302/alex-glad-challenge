@@ -37,48 +37,80 @@ v2 всё ещё на одну задачу позади учителя. Рег�
 
 ---
 
-## ADVANCED Day 15 — Gateway Input Guard round-5 (2026-11-10)
+## Blog Studio + Content Pulse (2026-11-10)
+**Ветка:** `feat/blog-studio` (loop run-2026-11-10, эпики #243/#244)
 
-**Повод:** отчёт атакующего (`imfailing/ai_advent_challenge`, week 10 / day 5,
-2026-11-08): живой прогон 28 векторов против нашего шлюза на локальных моделях.
-Прямой утечки не было, но 4 вектора прошли Input Guard и остановились только
-Output Guard'ом (второй, последний слой).
+**Что сделано:**
+- Управление всеми блогами на сайте и в Android: создание, архив/возврат,
+  статистика, готовность к news (профиль + RSS), последний пост, число
+  кастомных промптов. Новый хаб `/blog/settings` и карточка
+  `/blog/settings/[slug]` с вкладками «Обзор / Промпты / Настройки / Расписание».
+- Промпты всех блог-агентов per-blog: `post.writer`, `post.topic`,
+  `scout.news`, `scout.orchestrator`, `factcheck.reasoning`,
+  `factcheck.verdict`, `digest.weekly`. Override → `blogs.system_prompt`
+  (writer, легаси) → пресет → встроенный default; сброс возвращает встроенное
+  поведение (для topic — явный tombstone, перекрывающий legacy). JSON-контракты
+  и grounding-правила остаются в коде.
+- Core: `blog_agent_prompts` (UPSERT/clear), `archived_at`, `createBlog`,
+  `blogStats`, `listBlogStats`, `agentPromptsCount` с учётом writer-override;
+  идемпотентная миграция.
+- API: `POST /api/blogs`, `status` в PATCH, `GET/PUT
+  /api/blogs/[slug]/agent-prompts`, `GET /api/blog/pulse`. Исправлен старый
+  баг: PATCH отдавал snake_case `BlogRow`, из-за чего веб/Android теряли
+  `systemPrompt`/`sources`; теперь единый camelCase `toBlogDto`.
+- Android: частичный PATCH через `JsonObject` (сохранение промпта больше не
+  сбрасывает имя/профиль/источники), хаб со сводкой и созданием, экран
+  «Промпты агентов», `BackHandler`, архивация, «Пульс блогов» на dashboard.
+- Дизайн: dashboard «Пульс контента» (веб + Android), grouped-меню блога,
+  FlowRow-бейджи, readiness-подсказки, пустые состояния.
+- Архивный блог блокируется в news/scout/topic/digest, publish-by-id и
+  Telegram-команде `/пост`; guard вынесен в ядро (`PostWriter`,
+  `TopicPostWriter`, `runNewsPipeline`), автоматизация/расписание
+  останавливаются. Чтение постов остаётся.
+- Веб-карточка блога: вкладка «Пост» вернула ручной пост по теме (1–3 варианта,
+  опциональная публикация), ссылки `?blog=` читаются на news/posts/scout.
+- Android: архивные блоги видны в хабе и возвращаются; «Пульс блогов» имеет
+  error-state; экран промптов скроллится.
 
-**Что сделано** (`challenge/src/core/gateway/inputGuard.ts`):
-- детекция инструкций идёт по нескольким видам строки: `flat` (любая
-  последовательность не-буквенных разделителей → пробел), `latin`
-  (кириллические/греческие гомоглифы → латиница), `leet` (цифры → буквы);
-  два базовых нормализатора (невидимый → пробел и невидимый → удалён);
-  базовый вид сохранён для служебных токенов (`<|im_start|>`, `<<SYS>>`);
-- новые точные паттерны: отказ от роли/ограничений (L02/L15), просьба
-  процитировать системную инструкцию (L23), гипотетическая рамка вокруг своего
-  system prompt, «повтори всё до role: system» (L24); в основной exfil-паттерн
-  добавлены уточняющие прилагательные («print your FULL/EXACT system prompt»);
-- закрыты L03/L09 (разделители), L07 (псевдокод), L11 (гомоглифы),
-  L23 (рамка), L24, L25 (leetspeak);
-- preview инструкции строится только из базового вида и проходит `maskSecrets`;
-  для flat/leet/latin — константа `[BLOCKED_INSTRUCTION]` (иначе секрет из окна
-  паттерна попадал бы в `audit.jsonl`); потолок 32 находки на запрос, выше
-  32k символов — только базовые виды и без decode-and-scan (защита от
-  амплификации 422 и O(виды × декоды) на 1 MB тела).
+**Коды:** `POST /api/blogs` — 201/400/409/401; `PATCH` — 200/400/404/401;
+`agent-prompts` — 200/400/404/401; `pulse` — 200/401.
 
-**Не закрыто (осознанно):**
-- L19/L22 (просьба «собрать/раскодировать» похожий на секрет паттерн без самого
-  секрета) и L28 (JSON с полем `system_prompt`) — низкая точность regex.
-- Ввод >32k символов теряет decode-and-scan и виды гомоглифов/leet.
-- Строка/путь, буквально кодирующие «ignore all previous instructions»
-  небуквенными разделителями (`docs/ignore-all-previous-instructions.md`,
-  `feat/ignore-previous-instructions`), теперь блокируются — плата за
-  нормализацию разделителей (рекомендация №1 отчёта).
-- История `assistant` по-прежнему сканируется: многоходовой разговор *о*
-  prompt injection блокирует следующий ход. Это осознанно — отражённая
-  инъекция через `role: assistant` (L05) иначе проходит.
+**Риски:** override может ухудшить качество текста (не ломает парсинг);
+жёсткого удаления блога нет — только архив; `post.reviser` не входит в реестр
+(web-автоматизация его не вызывает).
 
-**Валидация:** `pnpm --filter challenge typecheck`; `pnpm --filter challenge test`
-(612/612); `red-team` 98 baseline/hardening + 4 новых (RT-100..RT-103)
-защищены; FP-тесты на обычные вопросы о системных промптах, `role: system` в
-коде и «system message» в документации зелёные; утечек секрета в preview нет
-(проверено отдельным аудитом на sk-/AKIA/ghp_/email и base64-слоях).
+**Валидация:** challenge typecheck/test (641), web typecheck/test
+(699, `--maxWorkers=2`), web build (49 маршрутов), Android
+`:app:testDebugUnitTest` + `:app:compileDebugKotlin`; live smoke
+создания/правки промпта/частичного PATCH/архива/пульса и рендера
+`/blog/settings`, `/blog/settings/[slug]`, `/dashboard`.
+
+## ADVANCED Day 15 — партнёрский red team round 2: Input Guard hardening (2026-11-08)
+**Ветка:** `main` (фикс по входящему отчёту партнёра; push — по явному запросу)
+
+**Что сделано:**
+- Разобран отчёт `imfailing/ai_advent_challenge` round 2: 4 подтверждённых
+  обхода Input Guard (эмодзи/точки/гомоглифы/«гипотетически») и 7 классов
+  перефразов. Output Guard остановил все 4; прямой утечки не было.
+- `challenge/src/core/gateway/inputGuard.ts`: detection-view теперь декодирует
+  `%NN`, сворачивает кириллические/греческие гомоглифы отдельным view, leetspeak
+  и любые разделители (эмодзи, точка, `_`) в пробел; серии внутрисловных
+  разделителей (`pre--vious`) удаляются отдельным вклеенным view. Добавлены паттерны на
+  гипотетическую рамку, повтор контекста, JSON-поле `system_prompt`, сборку
+  секрета из кодировки, DAN/developer mode; клиентский `role: system`
+  сканируется полным набором; негативная политика отсекается фильтром
+  отрицания только для exfil-фраз. Исправлен ReDoS в email-детекторе
+  (локальная часть ≤64 символов).
+- Регрессия: `inputGuard.test.ts` (новые векторы, FP и ReDoS), `server.test.ts`
+  (сквозной `422` до upstream для L09/L03/L11/L23/L15), отчёт
+  `docs/advanced-day-15/partner-round2-defense.md`.
+
+**Проверки:** `pnpm --filter challenge typecheck` — ok; `pnpm --filter challenge
+test` — 621/621; повторный прогон payload'ов партнёра — все проверенные
+векторы `blocked`, прежние FP-вопросы `allow`.
+
+**Риски:** regex-слой не заменяет семантику; L05/L06/L13/L19/L22 остаются
+частично за Output Guard'ом (в отчёте партнёра это отказы модели, не breach).
 
 ---
 

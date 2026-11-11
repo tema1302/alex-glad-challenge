@@ -11,6 +11,7 @@
 
 import type { NewsRow } from '../db.js';
 import type { LlmClient } from '../client.js';
+import { applyPromptVars } from '../blogAgentPrompts.js';
 import { msg } from '../types.js';
 
 export interface FactCheckIssue {
@@ -29,18 +30,28 @@ export interface FactCheckResult {
 export class FactChecker {
   constructor(
     private client: LlmClient,
-    private opts: { channel?: string; topic?: string } = {},
+    private opts: {
+      channel?: string;
+      topic?: string;
+      /** per-blog overrides: заменяют роль/чек-лист, JSON-контракт остаётся. */
+      reasoningPrompt?: string | null;
+      verdictPrompt?: string | null;
+    } = {},
   ) {}
 
   async check(post: string, news: NewsRow): Promise<FactCheckResult> {
     const channel = this.opts.channel ?? 'Иди на факты глянь';
     const topicSuffix = this.opts.topic ? ` (${this.opts.topic})` : '';
+    const vars = { channel, topic: this.opts.topic ?? '' };
     // --- Шаг 1: reasoning (chain-of-thought). ---
     // Агент проходит по типам фактов и записывает свои наблюдения.
     // Без жёсткого формата — здесь важен именно «разговор с собой».
-    const reasoningPrompt = `Ты строгий редактор-фактчекер Telegram-канала «${channel}»${topicSuffix}.
+    const reasoningIntro = this.opts.reasoningPrompt
+      ? applyPromptVars(this.opts.reasoningPrompt, vars)
+      : `Ты строгий редактор-фактчекер Telegram-канала «${channel}»${topicSuffix}.
 Твоя задача сейчас — НЕ выносить финальный вердикт, а расписать рассуждения
-по шагам, проверяя каждое утверждение поста против источника.
+по шагам, проверяя каждое утверждение поста против источника.`;
+    const reasoningPrompt = `${reasoningIntro}
 
 === ИСТОЧНИК (НОВОСТЬ) ===
 Заголовок: ${news.title}
@@ -70,9 +81,12 @@ ${post}
     );
 
     // --- Шаг 2: финальный verdict на основе рассуждений. ---
-    const verdictPrompt = `Ты строгий редактор-фактчекер Telegram-канала «${channel}»${topicSuffix}.
+    const verdictIntro = this.opts.verdictPrompt
+      ? applyPromptVars(this.opts.verdictPrompt, vars)
+      : `Ты строгий редактор-фактчекер Telegram-канала «${channel}»${topicSuffix}.
 Только что ты провёл пошаговый анализ поста против источника. Ниже — твои
-собственные рассуждения. Прими финальное решение.
+собственные рассуждения. Прими финальное решение.`;
+    const verdictPrompt = `${verdictIntro}
 
 === ИСТОЧНИК (НОВОСТЬ) ===
 Заголовок: ${news.title}
