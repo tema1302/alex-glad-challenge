@@ -1,0 +1,7 @@
+[
+  {
+    "model": "qwen3.5:4b",
+    "think": true,
+    "error": "timed out"
+  }
+]
