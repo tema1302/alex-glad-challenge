@@ -66,6 +66,7 @@ training/**/data/
 !training/football/**/eval/
 training/**/artifacts/
 training/**/artifacts-v2/
+training/**/artifacts-v9/
 __pycache__/
 training/.venv/
 training/.venv-rocm/

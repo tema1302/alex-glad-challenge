@@ -72,7 +72,28 @@ train v8 в пул (его LLM-входы не теряются); строки v
 конвенцией eval (boundary без дословного text, typed без «в HH:MM»), из
 мерджа исключаются (`stats.json: merged_v8_dropped_convention`). Порог
 приёмки неизменен: full_match ≥21/30 на фиксированном `eval/eval_set.jsonl`;
-обучение и evaluate_tuned — на T4 (Kaggle-runbook ниже). Статус: ждёт GPU-прогон.
+обучение и evaluate_tuned — на T4 (Kaggle-runbook ниже). Статус: GPU-прогон
+v9 выполнен 2026-11-11 на локальной RX 7600 (см. ниже), порог не достигнут.
+
+## v9-прогон на RX 7600 (2026-11-11, #179)
+
+Датасет v9 (933/63), QLoRA r=16, batch 2 × grad-accum 8, 6 эпох с early
+stopping; `configs/qlora-v9-rx7600.yaml`, артефакты в `artifacts-v9/`
+(gitignored). Обучение — **1206.3 с**, best checkpoint-90 (eval loss 0.01997),
+stop на шаге 180 (эпоха 3.08).
+
+`evaluate_tuned.py` на eval-30 (temperature=0, seed=42):
+
+| Режим | parse_ok | format_ok | full_match | text | recurring | dow | interval | latency |
+|---|---|---|---|---|---|---|---|---|
+| tuned v9 | 30/30 | 30/30 | **18/30** | 19/30 | 28/30 | 27/30 | 30/30 | 3152 мс |
+| base-prompt | 27/30 | 30/30 | 10/30 | 12/30 | 17/30 | 24/30 | 25/30 | 1737 мс |
+| base-none | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 0/30 | 5865 мс |
+
+По классам tuned: None 7/11, daily 5/6, hourly 3/5, weekly 3/8.
+v8 → v9: **14/30 → 18/30** (+4, в основном punt 4/11 → 7/11 и daily 2/6 → 5/6).
+Порог **21/30 не достигнут**: остаются weekly 3/8 и hourly 3/5. Gate не
+занижаем; issue #179 остаётся открытым. Сырьё — `docs/advanced-day-07/eval-v9/`.
 
 ## Baseline без тюна (реальный прогон 2026-10-30, Ollama локально)
 

@@ -1,0 +1,47 @@
+# Day-07 v9 (#179): QLoRA на RX 7600 (ROCm) по датасету v9.
+# Отличия от qlora.yaml: batch 2 × grad-accum 8 (8 ГБ VRAM), артефакты в
+# artifacts-v9, чтобы не перезаписать v8-прогон. Датасет — v9 (933/63).
+
+model:
+  base: "Qwen/Qwen2.5-1.5B-Instruct"
+  max_seq_length: 384
+  attn_implementation: "sdpa"
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: "nf4"
+  bnb_4bit_use_double_quant: true
+  bnb_4bit_compute_dtype: "float16"
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+training:
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 8
+  learning_rate: 0.0002
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  num_train_epochs: 6
+  optim: "paged_adamw_8bit"
+  max_grad_norm: 0.3
+  gradient_checkpointing: true
+  fp16: true
+  bf16: false
+  logging_steps: 5
+  eval_steps: 30
+  save_steps: 30
+  save_total_limit: 5
+  early_stopping_patience: 3
+  seed: 42
+  report_to: []
+
+data:
+  train_file: "data/train.jsonl"
+  val_file: "data/valid.jsonl"
+
+output:
+  artifacts_dir: "artifacts-v9"
