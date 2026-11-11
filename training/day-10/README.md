@@ -45,7 +45,9 @@
    blob-upload (`ApiStartBlobUpload` → PUT → `create_dataset`), имя
    `tema13002/dayNN-<name>-adapter`. Дождаться `get_dataset_status = READY`
    (иначе kernel стартует без mount — ловушка v2/v3 дня-10).
-3. **Смержить и заквантовать** — kernel по образцу `day10-merge-gguf`:
+3. **Смержить и заквантовать** — GPU-first: локальный merge на RX 7600
+   через `merge_gguf_v2.py` (раздел distill-v2 выше); Kaggle/Linux — fallback.
+   Для Kaggle: kernel по образцу `day10-merge-gguf`:
    attach dataset → `merge_gguf.sh` (merge_and_unload FP16 →
    convert_hf_to_gguf → llama-quantize Q4_K_M → Modelfile + merge_report с
    sha256). Зависимости pip: `torch==2.6.0 torchvision==0.21.0` (парно!),

@@ -5,6 +5,38 @@
 
 ---
 
+## ADVANCED Day 10 — distill-v2: ученик без регресса (2026-11-11)
+
+**Повод:** v1-ученик day-09 дал регресс на eval-30: **18/30** против **24/30**
+у base. Рычаги day-09 (hard-mining, семплирование учителя, r=8, остановка по
+pass@1) применены на локальной RX 7600, без Kaggle.
+
+**Что сделано:**
+- **s1 (#188):** 12 шаблонов уровня eval × 10 = 120 задач; учитель
+  `qwen2.5-coder:7b`, t=0.7, 3 сэмпла, rule-фильтр + дедуп. Принято
+  **108/120 задач (90%)** и **197/360 сэмплов (54.7%)**; сложные:
+  `merge_intervals` 2/10, `top_two` 6/10.
+- **s2 (#189):** QLoRA r=8/alpha=16/dropout=0.1, 176/21, **642.9 с** на
+  RX 7600. Downstream pass@1: 6/10 → **7/10 (шаг 4, best)** → 6/10 → 7/10
+  (stop); выбран шаг 4, а не последний.
+- **s3 (#190):** eval-30 — base 24/30, v1 18/30, **v2 26/30**, учитель 27/30.
+  Gate `v2 ≥ base` пройден.
+- **s4 (#191):** `merge_gguf_v2.py` (Windows): F16 3.09 ГБ → Q4_K_M **986 МБ**
+  (sha256 `0cefa4d0…`), Ollama `qwen2.5-coder-1.5b-distilled-v2`. Bench:
+  1.2 ГБ, cold 4.8 с, warm 2.2 с, 145.4 tok/s. Смоук реального dev-сервера:
+  switch → tuned-v2 → agent → откат base → agent.
+- **s5 (#192):** этот раздел, README day-10, runbook GPU-пути и video-script.
+
+**Где смотреть:** `docs/advanced-day-09/eval/compare-v2.md`,
+`docs/advanced-day-10/{README,smoke-v2}.md`, `bench/`, `gguf-v2/`,
+`training/day-09/README.md`, `training/day-10/merge_gguf_v2.py`.
+
+**Риски:** eval-30 — маленький набор; один prompt в смоуке — не статистика;
+v2 всё ещё на одну задачу позади учителя. Регресс v1 закрыт, но выкат — под
+наблюдением.
+
+---
+
 ## ADVANCED Day 15 — Red Team Challenge (2026-11-06)
 **Ветка:** `feat/day-15-red-team` (loop run-2026-11-06-2, эпик #219)
 
