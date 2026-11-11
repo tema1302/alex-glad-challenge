@@ -1,0 +1,9 @@
+{
+  "model": "transformers+training/day-09/artifacts-v2/adapter",
+  "generated_at": "2026-11-11T16:03:53.494626+00:00",
+  "seed": 42,
+  "n": 30,
+  "pass1": 26,
+  "pass1_acc": 0.8667,
+  "latency_avg_ms": 4426
+}

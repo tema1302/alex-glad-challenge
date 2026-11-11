@@ -87,6 +87,21 @@ Kaggle T4: обучение **56.5 с**, best checkpoint-15, **final train loss
 0.0**, eval loss 4.3e-05 — ученик зазубрил пул целиком. Артефакты в
 `training/day-09/artifacts/` (gitignored).
 
+## s4 v2 — eval v2 на eval-30 и quality gate (distill-v2 s3, #190)
+
+`eval_code.py --backend transformers --config configs/qlora_v2_rx7600.yaml
+--adapter artifacts-v2/adapter` на eval-30 (seed=42):
+
+| Вариант | pass@1 |
+|---|---|
+| base (Ollama) | 24/30 |
+| v1 (T4, r=16) | 18/30 |
+| **v2 (RX 7600, r=8)** | **26/30** |
+| учитель coder:7b | 27/30 |
+
+Gate `v2 ≥ base` пройден (26 ≥ 24). Подробная таблица и провалы —
+`docs/advanced-day-09/eval/compare-v2.md`, сырьё — `docs/advanced-day-09/eval/student-v2/`.
+
 ## s4 — сравнение трёх вариантов (#177)
 
 | Вариант | pass@1 | latency avg | вес | VRAM (оценка) |
