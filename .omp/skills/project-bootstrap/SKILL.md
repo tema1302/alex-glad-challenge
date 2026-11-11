@@ -29,7 +29,9 @@ and **profile process** unchanged.
 
 ### 1. Inspect the target
 
-- Find an existing `AGENTS.md`, `.omp/`, `CLAUDE.md`, `GEMINI.md`, `opencode.json`.
+- Find an existing `AGENTS.md`, `.omp/`, legacy `CLAUDE.md`, `GEMINI.md`,
+  `opencode.json`. If `CLAUDE.md` exists, migrate its content into `AGENTS.md` and
+  delete it; never create a new `CLAUDE.md`.
 - If any exists, read it before writing. Never overwrite project rules, skills, or
   uncommitted work without explicit approval.
 - Identify the stack from `package.json`, `pyproject.toml`, `go.mod`,
@@ -63,8 +65,9 @@ Use the templates in `assets/templates/`:
 
 - `opencode.json` — `instructions: [".omp/RULES.md"]`, `skills: [".omp/skills"]`,
   `permission.skill: "allow"`.
-- `CLAUDE.md` — pointer; Claude Code reads `AGENTS.md` when no `CLAUDE.md` exists,
-  so a pointer or an explicit project setting is required.
+- Do not generate `CLAUDE.md`. Claude Code reads `AGENTS.md` when no `CLAUDE.md`
+  exists, so the canonical adapter is enough. Migrate any existing `CLAUDE.md`
+  into `AGENTS.md` and delete it.
 - `GEMINI.md` — pointer, or set Gemini `context.fileName` to include `AGENTS.md`.
 - `AGENTS.md` — native for OpenCode, Codex, omp, and other AGENTS-aware harnesses.
 - `.cursor/rules/000-canonical.mdc` — copy `cursor-rules.mdc`; pointer for Cursor.

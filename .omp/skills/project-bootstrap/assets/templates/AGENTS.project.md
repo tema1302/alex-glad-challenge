@@ -10,9 +10,10 @@
 - Precedence: this file > `.omp/RULES.md` > harness global config > harness
   defaults. Project rules win; do not ask the user to arbitrate a
   harness-vs-project conflict.
-- Harness adapters (`opencode.json`, `CLAUDE.md`, `GEMINI.md`, `.cursor/*`,
+- Harness adapters (`opencode.json`, `GEMINI.md`, `.cursor/*`,
   `.github/copilot-instructions.md`) are pointers/config only. They contain no
-  rules.
+  rules. `CLAUDE.md` is legacy: keep `AGENTS.md` as the only canonical adapter and
+  do not create `CLAUDE.md`.
 
 ## 1. Project facts
 
@@ -85,7 +86,7 @@ Project notes per profile:
 | Harness | Entrypoint | Skills |
 |---|---|---|
 | OpenCode | `AGENTS.md` + `opencode.json` | `.omp/skills` via config |
-| Claude Code | `CLAUDE.md` pointer | `.claude/skills` links if needed |
+| Claude Code | `AGENTS.md` (no `CLAUDE.md`) | `.claude/skills` links if needed |
 | Codex | `AGENTS.md` | `.agents/skills` links if needed |
 | Gemini CLI | `GEMINI.md` or `context.fileName` | `.agents/skills` links if needed |
 | omp | `AGENTS.md` + `.omp/RULES.md` | `.omp/skills` |

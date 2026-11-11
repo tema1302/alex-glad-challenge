@@ -5,9 +5,9 @@ harness version before relying on precedence details.
 
 | Harness | Project entrypoint | Skill discovery | Notes |
 |---|---|---|---|
-| OpenCode 1.x | `AGENTS.md` (falls back to `CLAUDE.md`) | `.opencode/skills`, `.claude/skills`, `.agents/skills`, plus `skills` config paths | `instructions` loads extra rule files; project skills win over global; `permission.skill` gates loading. Start at the repo root: `skills` paths resolve against the start directory. Personas are not skills: `.omp/agents` must be loaded as an agent/system prompt or linked into `.opencode/agents`. |
+| OpenCode 1.x | `AGENTS.md` | `.opencode/skills`, `.claude/skills`, `.agents/skills`, plus `skills` config paths | `instructions` loads extra rule files; project skills win over global; `permission.skill` gates loading. Start at the repo root: `skills` paths resolve against the start directory. Personas are not skills: `.omp/agents` must be loaded as an agent/system prompt or linked into `.opencode/agents`. |
 | OpenCode 2.x | `AGENTS.md` only | same discovery locations: `.opencode/skills`, `.claude/skills`, `.agents/skills`, plus `skills` config paths | Combines global + ancestor + nested instructions without resolving conflicts; pin the major version. Verified behavior in this pack: 1.19.4. |
-| Claude Code | `CLAUDE.md`; reads `AGENTS.md` only when no `CLAUDE.md` exists | `.claude/skills` (personal > project on name collision) | Supports `@path` imports (max 4 hops). Do not keep a stale personal copy of a project skill. |
+| Claude Code | `AGENTS.md` (reads it when no `CLAUDE.md` exists); legacy `CLAUDE.md` must be migrated and deleted | `.claude/skills` (personal > project on name collision) | Supports `@path` imports (max 4 hops). Do not keep a stale personal copy of a project skill. |
 | Codex | `AGENTS.md`, root → cwd, plus global | `.agents/skills` and `~/.agents/skills` | Duplicate names are not merged; keep one canonical copy. |
 | Gemini CLI | `GEMINI.md` or `context.fileName` including `AGENTS.md` | `.agents/skills` per skills CLI table | Point `context.fileName` at `AGENTS.md` to reuse the same adapter. |
 | Cursor | `.cursor/rules/000-canonical.mdc` | native via skills CLI / `.agents/skills` | Keep the rule file a pointer; `alwaysApply: true`. |
@@ -27,8 +27,9 @@ harness-vs-project conflict.
 
 1. **Duplicate skills.** Claude personal skills can shadow project skills; Codex
    keeps duplicates. Install project skills project-locally.
-2. **Different entrypoints.** A `CLAUDE.md` can disable Claude's `AGENTS.md` read;
-   Gemini defaults to `GEMINI.md`; OpenCode v2 ignores `CLAUDE.md`.
+2. **Different entrypoints.** A stale `CLAUDE.md` disables Claude's `AGENTS.md`
+   read, so migrate and delete it; Gemini defaults to `GEMINI.md`; OpenCode v2
+   ignores `CLAUDE.md`.
 3. **Root-only paths.** OpenCode resolves `skills` paths from the start directory;
    start at the repo root or add a harness-native mirror.
 4. **Context budget.** Keep `AGENTS.md` short (Claude recommends under 200 lines)

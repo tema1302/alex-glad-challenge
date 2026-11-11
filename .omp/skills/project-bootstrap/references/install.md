@@ -19,8 +19,9 @@ profiles, or personas. Do not treat it as the pack manager.
 
 1. Copy `.omp/` into the target, excluding caches and target artifacts.
 2. Rename `assets/templates/AGENTS.project.md` to `AGENTS.md` (or merge it into an
-   existing adapter), copy `opencode.json`/`CLAUDE.md`/`GEMINI.md` to the root, and
-   put `cursor-rules.mdc`/`copilot-instructions.md` at their harness paths.
+   existing adapter), copy `opencode.json`/`GEMINI.md` to the root, and put
+   `cursor-rules.mdc`/`copilot-instructions.md` at their harness paths. Do not
+   copy `CLAUDE.md`; migrate any existing one into `AGENTS.md` and delete it.
 3. Fill `AGENTS.md` using the adapter checklist.
 4. Generate/verify harness adapters.
 5. Record the pack version (`pack.json`) and the source commit in the project's
@@ -65,5 +66,5 @@ paths, not by the first count.
 - Commit symlinks if Windows contributors are expected.
 - Put project commands, package names, tracker labels, or harness agent IDs into
   the pack's portable skills.
-- Let `CLAUDE.local.md` silently disable `AGENTS.md` loading in a project that
-  relies on the pack.
+- Keep or create `CLAUDE.md`/`CLAUDE.local.md`; they disable Claude's `AGENTS.md`
+  loading. Migrate them into `AGENTS.md` and delete them.
