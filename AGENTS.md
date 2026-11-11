@@ -775,6 +775,14 @@ Project values:
   В `loop-run` ветка по умолчанию — текущая `feat/*`, иначе `feat/<slug>` от
   `main` (§13.1.1); вопрос о ветке не задаётся.
 - Коммит: `<scope>: <imperative>` (`day-11: add ...`, `web: fix ...`).
+- **Пуш в `main` = отправка APK в Telegram.** После пуша в `main` соберите
+  свежий debug-APK (`android\gradlew.bat :app:assembleDebug`) и отправьте его
+  владельцу: `pnpm apk:send` (`scripts/send-apk-telegram.mts`, Bot API
+  `sendDocument`). Повторная отправка того же SHA-256 (маркер
+  `.git/tg-delivered-sha`) пропускается; `--force` — отправить заново. В
+  ответе/Report указывайте `message_id`. Креденшалы — только из `.env` или
+  окружения; токен/chat_id не попадают в логи, diff и коммиты. Пропуск
+  доставки — только по явной команде владельца (`TG_DELIVER_SKIP=1`).
 - Не коммитьте `.env`, `.data/`, `web/.next/`, `swarm-report/`, `.shots/`.
 - Не делайте commit/push, если пользователь явно не попросил. Вход в loop
   (`loop-run`/синоним или существующий milestone) — явная просьба о commit в
