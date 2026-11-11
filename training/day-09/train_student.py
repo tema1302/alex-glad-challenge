@@ -18,6 +18,7 @@ import importlib.metadata
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import time
@@ -37,6 +38,8 @@ from transformers import (
     TrainingArguments,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+from eval_code import extract_function, run_tests
 
 ROOT = Path(__file__).resolve().parent
 PACKAGES = ["torch", "transformers", "peft", "bitsandbytes", "accelerate"]
@@ -142,6 +145,78 @@ class MetricsCallback(TrainerCallback):
                 w.writeheader()
                 self._header_written = True
             w.writerow(row)
+
+
+class DownstreamCallback(TrainerCallback):
+    """Считает pass@1 на holdout-задачах eval-дистрибуции и выбирает чекпоинт.
+
+    Останавливает обучение, если pass@1 не улучшается `patience` eval-шагов.
+    Лучший по pass@1 адаптер сохраняется в `best_dir`; в конце он идёт в
+    `artifacts/adapter` вместо последнего состояния.
+    """
+
+    def __init__(self, tasks: list[dict], tokenizer, out_csv: Path,
+                 best_dir: Path, patience: int, max_new_tokens: int = 256):
+        self.tasks = tasks
+        self.tokenizer = tokenizer
+        self.out_csv = out_csv
+        self.best_dir = best_dir
+        self.max_patience = patience
+        self.max_new_tokens = max_new_tokens
+        self.best_acc = -1.0
+        self.best_step = None
+        self.patience = 0
+        self._header = not out_csv.exists()
+
+    def _generate(self, model, task: dict) -> str:
+        messages = [
+            {"role": "system", "content": "Ты генерируешь код. Ответ — только код: одна функция по "
+                                           "спецификации, без пояснений и примеров вызова."},
+            {"role": "user", "content": task["spec"] + "\nОтвет: код."},
+        ]
+        ids = self.tokenizer.apply_chat_template(
+            messages, tokenize=True, add_generation_prompt=True,
+            return_tensors="pt").to(model.device)
+        out = model.generate(ids, max_new_tokens=self.max_new_tokens,
+                             do_sample=False, pad_token_id=self.tokenizer.pad_token_id)
+        return self.tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+
+    def on_evaluate(self, args, state, control, model=None, **kw):
+        if model is None or not self.tasks:
+            return
+        was_training = model.training
+        model.eval()
+        solved = 0
+        with torch.no_grad():
+            for task in self.tasks:
+                raw = self._generate(model, task)
+                code = extract_function(raw, task["name"])
+                if code is None:
+                    continue
+                _, _, err = run_tests(code, task)
+                if err is None:
+                    solved += 1
+        model.train(was_training)
+        acc = solved / len(self.tasks)
+        with open(self.out_csv, "a", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=["step", "pass1", "n"])
+            if self._header:
+                w.writeheader()
+                self._header = False
+            w.writerow({"step": state.global_step, "pass1": solved, "n": len(self.tasks)})
+        print(f"downstream pass@1 step {state.global_step}: {solved}/{len(self.tasks)} = {acc:.3f}")
+        if acc > self.best_acc:
+            self.best_acc = acc
+            self.best_step = state.global_step
+            self.patience = 0
+            self.best_dir.mkdir(parents=True, exist_ok=True)
+            model.save_pretrained(self.best_dir)
+            self.tokenizer.save_pretrained(self.best_dir)
+        else:
+            self.patience += 1
+            if self.patience >= self.max_patience:
+                print(f"downstream pass@1: нет улучшения {self.patience} шагов — stop")
+                control.should_training_stop = True
 
 
 def print_mask_check(dataset: TodoDataset, tokenizer) -> None:
@@ -252,6 +327,23 @@ def main() -> int:
     if len(train_ds) < len(train_rows):
         print(f"note: {len(train_rows) - len(train_ds)} rows dropped by max_seq_length")
 
+    downstream_cfg = cfg.get("downstream") or {}
+    downstream_enabled = bool(downstream_cfg.get("enabled"))
+    downstream_cb = None
+    if downstream_enabled:
+        tasks_path = ROOT / downstream_cfg.get("tasks_file", "data/tasks.jsonl")
+        holdout = int(downstream_cfg.get("holdout", 10))
+        downstream_tasks = load_jsonl(tasks_path)[-holdout:]
+        downstream_cb = DownstreamCallback(
+            tasks=downstream_tasks,
+            tokenizer=tokenizer,
+            out_csv=artifacts / "downstream_pass1.csv",
+            best_dir=artifacts / "downstream-best",
+            patience=int(downstream_cfg.get("patience", 2)),
+            max_new_tokens=int(downstream_cfg.get("max_new_tokens", 256)),
+        )
+        print(f"downstream eval: {len(downstream_tasks)} holdout tasks")
+
     t = cfg["training"]
     tokens_per_step = t["per_device_train_batch_size"] * t["gradient_accumulation_steps"] * cfg["model"]["max_seq_length"]
 
@@ -275,7 +367,7 @@ def main() -> int:
         save_strategy="steps",
         save_steps=t["save_steps"],
         save_total_limit=t["save_total_limit"],
-        load_best_model_at_end=True,
+        load_best_model_at_end=not downstream_enabled,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
         seed=t["seed"],
@@ -284,22 +376,30 @@ def main() -> int:
         dataloader_num_workers=2,
     )
 
+    callbacks = [MetricsCallback(artifacts / "loss.csv", tokens_per_step)]
+    if downstream_enabled:
+        callbacks.append(downstream_cb)
+    else:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=t["early_stopping_patience"]))
+
     trainer = Trainer(
         model=model,
         args=targs,
         train_dataset=train_ds,
         eval_dataset=val_ds,
         data_collator=MaskedCollator(tokenizer.pad_token_id),
-        callbacks=[
-            MetricsCallback(artifacts / "loss.csv", tokens_per_step),
-            EarlyStoppingCallback(early_stopping_patience=t["early_stopping_patience"]),
-        ],
+        callbacks=callbacks,
     )
 
     train_result = trainer.train()
 
     adapter_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(adapter_dir)
+    if downstream_enabled and downstream_cb.best_dir.exists():
+        shutil.copytree(downstream_cb.best_dir, adapter_dir, dirs_exist_ok=True)
+        print(f"adapter: best downstream checkpoint (step {downstream_cb.best_step}, "
+              f"pass@1 {downstream_cb.best_acc:.3f})")
+    else:
+        model.save_pretrained(adapter_dir)
     tokenizer.save_pretrained(adapter_dir)
 
     final_eval = trainer.evaluate()
@@ -328,6 +428,12 @@ def main() -> int:
         "final_eval_loss": final_eval.get("eval_loss"),
         "best_eval_loss": trainer.state.best_metric,
         "best_checkpoint": trainer.state.best_model_checkpoint,
+        "downstream": {
+            "enabled": downstream_enabled,
+            "best_pass1": downstream_cb.best_acc if downstream_cb else None,
+            "best_step": downstream_cb.best_step if downstream_cb else None,
+            "curve": str(artifacts / "downstream_pass1.csv") if downstream_enabled else None,
+        },
         "adapter_dir": str(adapter_dir),
     }
     with open(artifacts / "run.json", "w", encoding="utf-8") as f:

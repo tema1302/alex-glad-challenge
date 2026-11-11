@@ -120,7 +120,11 @@ def make_transformers_gen(args):
         cfg["model"]["base"], quantization_config=quant, device_map="auto",
         attn_implementation=cfg["model"]["attn_implementation"])
     model = PeftModel.from_pretrained(model, args.adapter)
-    tok = AutoTokenizer.from_pretrained(args.adapter)
+    try:
+        tok = AutoTokenizer.from_pretrained(args.adapter)
+    except (OSError, ValueError):
+        # чекпоинты Trainer содержат только адаптер; токенизатор берём у базы
+        tok = AutoTokenizer.from_pretrained(cfg["model"]["base"])
     torch.manual_seed(args.seed)
     model.eval()
 

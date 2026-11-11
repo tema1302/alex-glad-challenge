@@ -56,6 +56,29 @@ seed=42, пересечений с eval-30 нет (assert по именам и s
 rejected — `data/distill_rejected_v2.jsonl`.
 Запуск: `python training\day-09\gen_train_tasks_v2.py`; `python training\day-09\gen_teacher.py --tasks training/day-09/data/train_tasks_v2.jsonl --temperature 0.7 --samples 3 --out training/day-09/data/distill_train_v2.jsonl --rejected training/day-09/data/distill_rejected_v2.jsonl --stats training/day-09/data/distill_v2_stats.json`
 
+## s3 v2 — обучение ученика на RX 7600 (distill-v2 s2, #189)
+
+`train_student.py` + `configs/qlora_v2_rx7600.yaml`: QLoRA NF4 r=8 / alpha=16 /
+dropout=0.1, данные v2 (176 train / 21 valid), 3 эпохи, eval каждые 2 шага.
+`DownstreamCallback` считает pass@1 на 10 holdout-задачах eval-30 после каждого
+eval-шага, останавливает обучение при отсутствии улучшения и сохраняет лучший
+по pass@1 адаптер.
+
+Прогон на RX 7600 (`.venv-rocm`, torch 2.14.0+rocm10.1.0): 642.9 с, 8 шагов,
+train loss 0.0518, eval loss 0.0399. Кривая downstream pass@1:
+
+| Шаг | pass@1 |
+|---|---|
+| 2 | 6/10 |
+| 4 | **7/10** (best) |
+| 6 | 6/10 |
+| 8 | 7/10 (без улучшения → stop) |
+
+Лучший чекпоинт — шаг 4; он скопирован в `artifacts-v2/adapter` (gitignored).
+Пост-хок `downstream_eval.py` на `checkpoint-4` воспроизводит 7/10. `run.json`
+фиксирует GPU `AMD Radeon RX 7600`, версии стека и sha датасетов.
+Запуск: `training\.venv-rocm\Scripts\python.exe training\day-09\train_student.py --config configs/qlora_v2_rx7600.yaml`
+
 ## s3 — обучение ученика (#176)
 
 `train_student.py` (стек day-07: QLoRA NF4 r=16, fp16, маска assistant,
