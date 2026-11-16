@@ -28,6 +28,7 @@ interface DonePost {
   content: string;
 }
 interface TopNewsItem {
+  id: number;
   title: string;
   score: number;
   why: string;
@@ -47,6 +48,7 @@ export default function BlogNewsPage() {
   const [verdict, setVerdict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [creatingId, setCreatingId] = useState<number | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -150,6 +152,38 @@ export default function BlogNewsPage() {
     abortRef.current?.abort();
   };
 
+  const createFromNews = useCallback(
+    async (newsId: number): Promise<void> => {
+      if (running || creatingId !== null) return;
+      setCreatingId(newsId);
+      setError(null);
+      setNotice(null);
+      try {
+        const resp = await fetch('/api/blog/news/from-item', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ newsId, llm, ...(blog ? { blog } : {}) }),
+        });
+        const data = (await resp.json().catch(() => ({}))) as {
+          ok?: boolean;
+          post?: DonePost;
+          verdict?: string | null;
+          error?: string;
+        };
+        if (!resp.ok || !data.ok || !data.post) {
+          throw new Error(data.error ?? `HTTP ${resp.status}`);
+        }
+        setPost(data.post);
+        setVerdict(data.verdict ?? null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Не удалось создать пост');
+      } finally {
+        setCreatingId(null);
+      }
+    },
+    [running, creatingId, llm, blog],
+  );
+
   return (
     <div className="space-y-6">
       {/* Описание (RSS → агенты → пост) — дубль /blog/pipeline, не дублируем. */}
@@ -233,7 +267,7 @@ export default function BlogNewsPage() {
             <Button
               variant="primary"
               onClick={run}
-              disabled={running || profileMissing}
+              disabled={running || profileMissing || creatingId !== null}
               title={profileMissing ? 'Сначала настройте профиль голоса блога' : undefined}
               className="w-full sm:w-auto"
             >
@@ -285,21 +319,6 @@ export default function BlogNewsPage() {
         </Card>
       )}
 
-      {topNews.length > 0 && (
-        <Card label={`Топ-новости (${topNews.length})`}>
-          <ul className="space-y-1.5 text-sm">
-            {topNews.map((n, i) => (
-              <li key={i}>
-                <span className="text-dim">[{i}]</span>{' '}
-                <span className="text-xs text-accent">{n.score}</span>{' '}
-                <span className="text-ink">{n.title}</span>
-                <span className="block text-xs text-dim">{n.why}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
       {post && (
         <Card>
           <div className="mb-3 flex items-center justify-between">
@@ -307,13 +326,48 @@ export default function BlogNewsPage() {
               Пост #{post.id}
             </span>
             <Link href={`/blog/posts/${post.id}`} className="text-xs text-accent hover:underline">
-              открыть →
+              открыть и править →
             </Link>
           </div>
           {verdict && (
             <p className="text-xs text-dim">вердикт фактчекинга: {verdict}</p>
           )}
           <p className="mt-2 whitespace-pre-wrap text-sm text-ink">{post.content}</p>
+        </Card>
+      )}
+
+      {topNews.length > 0 && (
+        <Card label={`Топ-новости (${topNews.length})`}>
+          <p className="mb-2 text-xs text-dim">
+            Нажмите на новость — напишу отдельный пост по ней. Потом его можно открыть и править.
+          </p>
+          <ul className="space-y-1.5 text-sm">
+            {topNews.map((n, i) => {
+              const busy = creatingId === n.id;
+              const disabled = running || creatingId !== null;
+              return (
+                <li key={n.id}>
+                  <button
+                    type="button"
+                    onClick={() => void createFromNews(n.id)}
+                    disabled={disabled}
+                    aria-label={`Создать пост по новости: ${n.title}`}
+                    className="group flex w-full items-start gap-2 rounded-md border border-transparent px-2 py-1.5 text-left transition-colors duration-fast hover:border-line-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="text-dim">[{i}]</span>{' '}
+                      <span className="text-xs text-accent">{n.score}</span>{' '}
+                      <span className="text-ink">{n.title}</span>
+                      <span className="block text-xs text-dim">{n.why}</span>
+                    </span>
+                    <span className="shrink-0 pt-0.5 text-xs text-accent opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 max-sm:opacity-100">
+                      {busy ? 'пишу…' : 'создать пост →'}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </Card>
       )}
 

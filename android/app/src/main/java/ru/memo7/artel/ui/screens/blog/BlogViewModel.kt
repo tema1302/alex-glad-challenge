@@ -36,6 +36,7 @@ import ru.memo7.artel.data.api.DigestGenerateRequest
 import ru.memo7.artel.data.api.DigestResponse
 import ru.memo7.artel.data.api.GeneratePostsRequest
 import ru.memo7.artel.data.api.GeneratePostsResponse
+import ru.memo7.artel.data.api.NewsPostCreateRequest
 import ru.memo7.artel.data.api.NewsPostDto
 import ru.memo7.artel.data.api.PostListItemDto
 import ru.memo7.artel.data.api.PutBlogScheduleRequest
@@ -156,6 +157,13 @@ class BlogViewModel(
 
     private val _news = MutableStateFlow<StreamState<NewsResult>>(StreamState.Idle)
     val news: StateFlow<StreamState<NewsResult>> = _news.asStateFlow()
+
+    /** Пост по конкретной новости: кнопка в топ-списке, не полный news-пайплайн. */
+    private val _createNewsPost = MutableStateFlow<ActionState<NewsPostDto>>(ActionState.Idle)
+    val createNewsPost: StateFlow<ActionState<NewsPostDto>> = _createNewsPost.asStateFlow()
+
+    private val _creatingNewsId = MutableStateFlow<Long?>(null)
+    val creatingNewsId: StateFlow<Long?> = _creatingNewsId.asStateFlow()
 
     private val _scout = MutableStateFlow<StreamState<ScoutResult>>(StreamState.Idle)
     val scout: StateFlow<StreamState<ScoutResult>> = _scout.asStateFlow()
@@ -459,6 +467,8 @@ class BlogViewModel(
 
     fun runNews(hours: Int?, top: Int?, forIndex: Int?, llm: String?) {
         if (_news.value is StreamState.Running) return
+        _createNewsPost.value = ActionState.Idle
+        _creatingNewsId.value = null
         _news.value = StreamState.Running(streamStageLabel("start"))
         viewModelScope.launch {
             var done: NewsResult? = null
@@ -482,6 +492,25 @@ class BlogViewModel(
                 result != null -> StreamState.Done(result)
                 else -> StreamState.Failed("Соединение закрыто без результата")
             }
+        }
+    }
+
+    /** Пост по выбранной новости: как news-пайплайн, но без RSS/ранжирования. */
+    fun createPostFromNews(newsId: Long, llm: String?) {
+        if (_createNewsPost.value is ActionState.Busy) return
+        _creatingNewsId.value = newsId
+        _createNewsPost.value = ActionState.Busy
+        viewModelScope.launch {
+            _createNewsPost.value = when (
+                val result = repository.createPostFromNews(
+                    NewsPostCreateRequest(newsId = newsId, llm = llm, blog = blogSlug),
+                )
+            ) {
+                is ApiResult.Success -> ActionState.Done(result.data.post)
+                is ApiResult.Failure ->
+                    ActionState.Failed(result.error.message ?: "Не удалось создать пост по новости")
+            }
+            _creatingNewsId.value = null
         }
     }
 

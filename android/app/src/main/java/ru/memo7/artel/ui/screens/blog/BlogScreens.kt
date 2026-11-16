@@ -7,6 +7,7 @@
 package ru.memo7.artel.ui.screens.blog
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -68,6 +69,7 @@ import ru.memo7.artel.data.api.BlogScheduleEntryDto
 import ru.memo7.artel.data.api.BlogScheduleResponse
 import ru.memo7.artel.data.api.DigestResponse
 import ru.memo7.artel.data.api.GeneratePostsResponse
+import ru.memo7.artel.data.api.NewsPostDto
 import ru.memo7.artel.data.api.PostListItemDto
 import ru.memo7.artel.data.api.PostTgDto
 import ru.memo7.artel.data.api.PublishedOutcomeDto
@@ -919,10 +921,19 @@ private fun PublishedOutcomeText(published: PublishedOutcomeDto, modifier: Modif
 private fun BlogNewsScreen(container: AppContainer, blog: BlogDto, onBack: () -> Unit) {
     val vm = blogViewModel(container, "news", blog.slug)
     val news by vm.news.collectAsStateWithLifecycle()
+    val createNewsPost by vm.createNewsPost.collectAsStateWithLifecycle()
+    val creatingNewsId by vm.creatingNewsId.collectAsStateWithLifecycle()
     var hours by remember { mutableStateOf("24") }
     var top by remember { mutableStateOf("10") }
     var forIndex by remember { mutableStateOf("") }
     var llm by remember { mutableStateOf("cloud") }
+    var openPostId by remember { mutableStateOf<Long?>(null) }
+
+    val postId = openPostId
+    if (postId != null) {
+        BlogPostDetailScreen(container, postId, onBack = { openPostId = null })
+        return
+    }
 
     Column(Modifier.fillMaxSize()) {
         BlogHeader("Новости", blog.name, onBack)
@@ -1000,7 +1011,15 @@ private fun BlogNewsScreen(container: AppContainer, blog: BlogDto, onBack: () ->
                         Text(state.stage, style = MaterialTheme.typography.labelMedium)
                     }
                 }
-                is StreamState.Done -> item(key = "result") { NewsResultCard(state.result) }
+                is StreamState.Done -> item(key = "result") {
+                    NewsResultCard(
+                        result = state.result,
+                        createState = createNewsPost,
+                        creatingNewsId = creatingNewsId,
+                        onCreatePost = { newsId -> vm.createPostFromNews(newsId, llm) },
+                        onOpenPost = { openPostId = it },
+                    )
+                }
                 is StreamState.Failed -> item(key = "error") {
                     Text(
                         state.message,
@@ -1015,7 +1034,14 @@ private fun BlogNewsScreen(container: AppContainer, blog: BlogDto, onBack: () ->
 }
 
 @Composable
-private fun NewsResultCard(result: NewsResult, modifier: Modifier = Modifier) {
+private fun NewsResultCard(
+    result: NewsResult,
+    createState: ActionState<NewsPostDto>,
+    creatingNewsId: Long?,
+    onCreatePost: (Long) -> Unit,
+    onOpenPost: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         result.notice?.let { notice ->
             BentoCard(modifier = Modifier.fillMaxWidth()) {
@@ -1042,6 +1068,43 @@ private fun NewsResultCard(result: NewsResult, modifier: Modifier = Modifier) {
                     Text("Пост сохранён (№${post.id})", style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(6.dp))
                     Text(post.content, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { onOpenPost(post.id) },
+                        shape = ArtelShapes.pill,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Открыть и править")
+                    }
+                }
+            }
+        }
+        if (createState is ActionState.Failed) {
+            Text(
+                createState.message,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        if (createState is ActionState.Done) {
+            val created = createState.result
+            BentoCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(18.dp)) {
+                    Text("Пост по новости создан (№${created.id})", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(created.content, style = MaterialTheme.typography.bodyMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = { onOpenPost(created.id) },
+                        shape = ArtelShapes.pill,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Открыть и править")
+                    }
                 }
             }
         }
@@ -1049,8 +1112,21 @@ private fun NewsResultCard(result: NewsResult, modifier: Modifier = Modifier) {
             BentoCard(modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Топ новостей", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Нажмите на новость — создам отдельный пост по ней.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val busy = createState is ActionState.Busy
                     result.topNews.forEach { item ->
-                        Column {
+                        val newsId = item.id
+                        val enabled = newsId != null && !busy
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = enabled) { newsId?.let(onCreatePost) }
+                                .padding(vertical = 4.dp),
+                        ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     item.title,
@@ -1064,6 +1140,17 @@ private fun NewsResultCard(result: NewsResult, modifier: Modifier = Modifier) {
                                     item.why,
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            if (newsId != null) {
+                                Text(
+                                    if (creatingNewsId == newsId) "Пишу пост…" else "создать пост →",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (enabled) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                 )
                             }
                         }

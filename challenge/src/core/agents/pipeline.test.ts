@@ -12,7 +12,7 @@ import { BlogDb, DEFAULT_BLOG_SLUG } from '../db.js';
 import { LlmClient } from '../client.js';
 import type { ChatMessage } from '../types.js';
 import { ANTONOV_SYSTEM_PROMPT } from '../stylePreset.js';
-import { runNewsPipeline } from './pipeline.js';
+import { runNewsPipeline, runPostFromNews } from './pipeline.js';
 
 // Windows: WAL-дескрипторы могут пережить close() до GC — EPERM на rmSync
 // не является провалом теста (паттерн db.test.ts / postWriter.test.ts).
@@ -112,6 +112,51 @@ test('pipeline: default-блог — ANTONOV-маркера в writer-промп
     const system = writerSystemPrompt(captured);
     assert.match(system, /Ты — автор Telegram-канала/);
     assert.ok(!system.includes(ANTONOV_SYSTEM_PROMPT), 'пресет Антонова не должен применяться');
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('postFromNews: пишет пост по выбранной новости и помечает её used', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-from-news-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const stored = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    db.insertNews(NEWS_ROW, stored.id);
+    const news = db.unusedNewsSince(new Date(Date.now() - 3600_000).toISOString(), stored.id)[0];
+    assert.ok(news, 'новость должна быть в БД');
+
+    const result = await runPostFromNews(db, fakeClient([]), {
+      newsId: news.id,
+      blog: stored,
+    });
+
+    assert.ok(result.postId > 0, 'postId должен быть реальным id вставленного поста');
+    assert.equal(db.getPost(result.postId)?.news_id, news.id);
+    assert.equal(db.getNews(news.id)?.used, 1);
+    assert.equal(result.factCheck.verdict, 'ok');
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
+test('postFromNews: чужая новость не пишется в другой блог', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-from-news-blog-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const owner = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    const other = db.getBlogBySlug('nevsky-hram')!;
+    db.insertNews(NEWS_ROW, owner.id);
+    const news = db.unusedNewsSince(new Date(Date.now() - 3600_000).toISOString(), owner.id)[0];
+    assert.ok(news);
+
+    await assert.rejects(
+      () => runPostFromNews(db, fakeClient([]), { newsId: news.id, blog: other }),
+      /другому блогу/,
+    );
+    assert.equal(db.getNews(news.id)?.used, 0);
   } finally {
     db.close();
     safeRm(dir);

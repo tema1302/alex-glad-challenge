@@ -64,8 +64,8 @@ export type { SerializedTaskState } from '@challenge/core/dialogDb';
 export type { ChatSourceFilter, ChunkingStrategy } from '@challenge/core/rag/types';
 // P4a: Блог-pipeline (RSS→3 агента→пост) + публикация в TG-канал.
 // publishPost — реальный внешний эффект; route вызывает только при isTelegramConfigured().
-export { runNewsPipeline } from '@challenge/core/agents/pipeline';
-export type { PipelineResult } from '@challenge/core/agents/pipeline';
+export { runNewsPipeline, runPostFromNews } from '@challenge/core/agents/pipeline';
+export type { PipelineResult, PostFromNewsResult } from '@challenge/core/agents/pipeline';
 export { publishPost, isTelegramConfigured } from '@challenge/core/agents/telegram';
 export type { PublishResult } from '@challenge/core/agents/telegram';
 // P4b: FSM pipeline-state (stateMachine) + scout (3 source-агента → оркестратор).

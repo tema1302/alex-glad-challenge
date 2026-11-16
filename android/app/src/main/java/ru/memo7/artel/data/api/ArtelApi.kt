@@ -189,6 +189,9 @@ interface ArtelApi {
         @Query("blog") blog: String? = null,
     ): BlogPostsResponse
 
+    @POST("api/blog/news/from-item")
+    suspend fun createPostFromNews(@Body body: NewsPostCreateRequest): NewsPostCreateResponse
+
     @GET("api/blog/posts/{id}")
     suspend fun blogPost(@Path("id") id: Long): BlogPostResponse
 

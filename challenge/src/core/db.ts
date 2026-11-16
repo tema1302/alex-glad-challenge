@@ -451,6 +451,11 @@ export class BlogDb {
       .all(...(blogId != null ? [iso, blogId] : [iso])) as unknown as NewsRow[];
   }
 
+  getNews(id: number): NewsRow | null {
+    const row = this.db.prepare('SELECT * FROM news WHERE id = ?').get(id);
+    return (row ?? null) as NewsRow | null;
+  }
+
   markUsed(id: number): void {
     this.db.prepare('UPDATE news SET used = 1 WHERE id = ?').run(id);
   }

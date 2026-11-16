@@ -30,6 +30,8 @@ import ru.memo7.artel.data.api.BlogCreateRequest
 import ru.memo7.artel.data.api.BlogCreateResponse
 import ru.memo7.artel.data.api.BlogDetailResponse
 import ru.memo7.artel.data.api.BlogNewsRequest
+import ru.memo7.artel.data.api.NewsPostCreateRequest
+import ru.memo7.artel.data.api.NewsPostCreateResponse
 import ru.memo7.artel.data.api.BlogPipelineDto
 import ru.memo7.artel.data.api.BlogPipelineResetRequest
 import ru.memo7.artel.data.api.BlogPipelineTransitionRequest
@@ -700,6 +702,10 @@ class ArtelRepository(private val store: CredentialsStore) {
         return sseStream("api/blog/news", body) { raw ->
             BlogSseParser.parseNews(raw, onEvent)
         }
+    }
+
+    suspend fun createPostFromNews(request: NewsPostCreateRequest): ApiResult<NewsPostCreateResponse> = call { api ->
+        api.createPostFromNews(request)
     }
 
     suspend fun blogScout(request: BlogScoutRequest, onEvent: (BlogStreamEvent.ScoutEvent) -> Unit): ApiResult<Unit> {

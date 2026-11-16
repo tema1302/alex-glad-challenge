@@ -5,6 +5,35 @@
 
 ---
 
+## News → пост по клику + правка (2026-11-16)
+
+**Ветка:** `feat/news-to-posts`
+
+**Что сделано:**
+- **Core:** `BlogDb.getNews(id)`; `runPostFromNews` — пост по уже выбранной
+  новости без повторного RSS/ранжирования; общий `writePostForNews` для полного
+  pipeline и точечной новости (PostWriter → FactChecker → insertPost → markUsed).
+- **Web:** topNews SSE теперь отдаёт `id`; новый `POST /api/blog/news/from-item`
+  (200/400/404/502/503), который наследует блог новости, если slug не передан.
+  В `/blog/news` каждая новость кликабельна («создать пост →»), созданный пост
+  показывается выше списка со ссылкой «открыть и править».
+- **Android:** `NewsPostCreateRequest/Response`, endpoint, repository, VM-state
+  (`createNewsPost`/`creatingNewsId`); топ-новости кликабельны, после создания
+  кнопка «Открыть и править» ведёт в существующий редактор поста.
+- Правка постов уже была в вебе (`/blog/posts/[id]`) и Android
+  (`BlogPostDetailScreen`); теперь она доступна сразу из результата создания.
+
+**Коды:** `POST /api/blog/news/from-item` — 200/400/404/502/503; контракт
+`/api/blog/news` расширен полем `topNews[].id` (обратная совместимость: Android
+DTO с nullable id).
+
+**Риски:** повторный клик по той же новости создаёт ещё один пост (осознанно:
+можно переписать); фактчекинг может вернуть `needs_revision` — пост сохраняется
+черновиком и правится в редакторе. Точечная генерация занимает те же ~10–30 с,
+что и news-пайплайн.
+
+---
+
 ## Web mobile + соцсети вместо Reddit (2026-11-16)
 
 **Ветка:** `feat/mobile-responsive-news-sources`

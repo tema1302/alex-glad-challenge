@@ -128,6 +128,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           type: 'done',
           post: result.post ? { id: postId ?? 0, content: result.post.content } : null,
           topNews: result.news.ranked.map((r) => ({
+            id: r.news.id,
             title: r.news.title,
             score: r.score,
             why: r.why,

@@ -172,6 +172,14 @@ export const newsOptsSchema = z.object({
 });
 export type NewsOptsInput = z.infer<typeof newsOptsSchema>;
 
+// POST /api/blog/news/from-item — пост по уже выбранной новости из топ-списка.
+export const newsFromItemSchema = z.object({
+  newsId: z.coerce.number().int().positive('newsId обязателен'),
+  llm: z.enum(['local', 'cloud']).optional(),
+  blog: z.string().trim().min(1).max(100).optional(),
+});
+export type NewsFromItemInput = z.infer<typeof newsFromItemSchema>;
+
 // PATCH /api/blog/posts/[id] — обновить контент поста.
 export const postUpdateSchema = z.object({
   content: z.string().trim().min(1, 'Контент обязателен').max(8000, 'Слишком длинный пост'),

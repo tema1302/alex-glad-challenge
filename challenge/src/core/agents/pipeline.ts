@@ -5,7 +5,7 @@
 // постах и few-shot образцах. Без opts.blog — легаси-режим (дефолтные фиды,
 // без штампа) для REPL/CLI-демо.
 
-import { BlogDb, type BlogRow } from '../db.js';
+import { BlogDb, type BlogRow, type NewsRow } from '../db.js';
 import type { LlmClient } from '../client.js';
 import type { ProfileManager } from '../profile.js';
 import { resolveBlogAgentPrompt } from '../blogAgentPrompts.js';
@@ -99,30 +99,84 @@ export async function runNewsPipeline(
   const chosen = news.ranked[idx].news;
   log(`[pipeline] Готовим пост про: "${chosen.title}"`);
 
-  // 2. Агент 2 — написать пост (с профилем, если есть).
+  const written = await writePostForNews(db, client, chosen, {
+    profile: opts.profile,
+    blog,
+    signal: opts.signal,
+  });
+  log(`[pipeline] Агент 2: пост написан (${written.post.content.length} символов)`);
+  log(`[pipeline] Агент 3: verdict=${written.factCheck.verdict}, issues=${written.factCheck.issues.length}`);
+
+  return { news, post: written.post, factCheck: written.factCheck, rssErrors };
+}
+
+export interface PostFromNewsResult {
+  post: WrittenPost;
+  factCheck: FactCheckResult;
+  postId: number;
+}
+
+/**
+ * Написать пост по уже выбранной новости (без повторного RSS/ранжирования).
+ * Используется веб/Android-кнопкой «создать пост» в списке топ-новостей.
+ */
+export async function runPostFromNews(
+  db: BlogDb,
+  client: LlmClient,
+  opts: {
+    newsId: number;
+    profile?: ProfileManager;
+    blog?: BlogRow;
+    signal?: AbortSignal;
+  },
+): Promise<PostFromNewsResult> {
+  const blog = opts.blog ?? null;
+  if (blog?.archived_at) {
+    throw new Error(`Блог «${blog.name}» в архиве — генерация остановлена`);
+  }
+  const news = db.getNews(opts.newsId);
+  if (!news) throw new Error('Новость не найдена');
+  if (blog && news.blog_id !== null && news.blog_id !== blog.id) {
+    throw new Error('Новость принадлежит другому блогу');
+  }
+  opts.signal?.throwIfAborted();
+  return writePostForNews(db, client, news, {
+    profile: opts.profile,
+    blog,
+    signal: opts.signal,
+  });
+}
+
+/** Агенты 2–3 + запись поста: общий путь для полного pipeline и точечной новости. */
+async function writePostForNews(
+  db: BlogDb,
+  client: LlmClient,
+  chosen: NewsRow,
+  opts: {
+    profile?: ProfileManager;
+    blog: BlogRow | null;
+    signal?: AbortSignal;
+  },
+): Promise<PostFromNewsResult> {
+  const profileActive = opts.profile?.active ?? null;
   opts.signal?.throwIfAborted();
   const writer = new PostWriter(client, opts.profile);
-  const post = await writer.write(db, chosen, { blogId: blog?.id });
-  log(`[pipeline] Агент 2: пост написан (${post.content.length} символов)`);
+  const post = await writer.write(db, chosen, { blogId: opts.blog?.id });
 
-  // 3. Агент 3 — фактчекинг.
   opts.signal?.throwIfAborted();
   const checker = new FactChecker(client, {
     channel: profileActive?.канал,
     topic: profileActive?.тематика,
-    reasoningPrompt: blog
-      ? resolveBlogAgentPrompt(db, blog, 'factcheck.reasoning').prompt
+    reasoningPrompt: opts.blog
+      ? resolveBlogAgentPrompt(db, opts.blog, 'factcheck.reasoning').prompt
       : null,
-    verdictPrompt: blog
-      ? resolveBlogAgentPrompt(db, blog, 'factcheck.verdict').prompt
+    verdictPrompt: opts.blog
+      ? resolveBlogAgentPrompt(db, opts.blog, 'factcheck.verdict').prompt
       : null,
   });
   const factCheck = await checker.check(post.content, chosen);
-  log(`[pipeline] Агент 3: verdict=${factCheck.verdict}, issues=${factCheck.issues.length}`);
 
-  // Сохранить пост + вердикт, пометить новость использованной.
-  db.insertPost(post.content, chosen.id, JSON.stringify(factCheck), blog?.id);
+  const postId = db.insertPost(post.content, chosen.id, JSON.stringify(factCheck), opts.blog?.id);
   db.markUsed(chosen.id);
-
-  return { news, post, factCheck, rssErrors };
+  return { post, factCheck, postId };
 }

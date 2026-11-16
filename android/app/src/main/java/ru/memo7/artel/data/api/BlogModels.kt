@@ -361,8 +361,24 @@ data class NewsPostDto(
     val content: String,
 )
 
+/** POST /api/blog/news/from-item — пост по выбранной новости. */
+@Serializable
+data class NewsPostCreateRequest(
+    val newsId: Long,
+    val llm: String? = null,
+    val blog: String? = null,
+)
+
+@Serializable
+data class NewsPostCreateResponse(
+    val ok: Boolean = false,
+    val post: NewsPostDto,
+    val verdict: String? = null,
+)
+
 @Serializable
 data class TopNewsDto(
+    val id: Long? = null,
     val title: String,
     val score: Double = 0.0,
     val why: String = "",
