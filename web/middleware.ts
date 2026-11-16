@@ -71,6 +71,9 @@ export function middleware(request: NextRequest) {
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
+  // Pathname для server-layout: layout в App Router не получает pathname, а лендингу
+  // нужен full-bleed (без admin-контейнера) даже когда его смотрит админ.
+  requestHeaders.set('x-pathname', request.nextUrl.pathname);
   requestHeaders.set('Content-Security-Policy', csp);
 
   const response = NextResponse.next({

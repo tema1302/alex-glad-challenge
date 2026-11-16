@@ -77,7 +77,7 @@ export function NotificationBell() {
         ) : null}
       </button>
       {open ? (
-        <div className="absolute right-0 top-10 z-dropdown w-80 rounded-xl border border-line bg-surface p-2 shadow-pop">
+        <div className="absolute right-[-5rem] top-10 z-dropdown w-[calc(100vw-1.5rem)] rounded-xl border border-line bg-surface p-2 shadow-pop sm:right-0 sm:w-80">
           <div className="flex items-center justify-between px-2 py-1">
             <span className="font-sans text-xs font-semibold uppercase tracking-wider text-dim">Уведомления</span>
             {unread > 0 ? (

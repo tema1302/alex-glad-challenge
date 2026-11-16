@@ -1484,7 +1484,7 @@ async function handleScoutCommand(arg: string, state: SessionState): Promise<voi
   try {
     console.log(c.bold + c.cyan + '\n▶ Scout: 3 агента параллельно → оркестратор\n' + c.reset);
     console.log(c.gray + `  запрос: ${query}` + c.reset);
-    console.log(c.gray + `  источники: RSS${noForum ? '' : ' + Reddit + Sports.ru'}${noTelegram ? '' : ' + Telegram'}\n` + c.reset);
+    console.log(c.gray + `  источники: RSS${noForum ? '' : ' + Mastodon + Lemmy + Sports.ru'}${noTelegram ? '' : ' + Telegram'}\n` + c.reset);
 
     const result = await runSourceAgents(db, state.client, {
       maxAgeHours: hours,

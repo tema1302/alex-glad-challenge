@@ -91,16 +91,16 @@ export default function RagChatsPage() {
 
       {/* Add alias */}
       <Card label="add alias">
-        <div className="flex flex-wrap items-end gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">Имя</span>
             <input
-              className={`mt-1 ${INPUT_CLASS} w-40`}
+              className={`mt-1 w-full sm:w-40 ${INPUT_CLASS}`}
               value={name} onChange={(e) => setName(e.target.value)} disabled={busy}
               placeholder="news_ru"
             />
           </label>
-          <label className="flex-1 text-sm">
+          <label className="text-sm sm:flex-1">
             <span className="block text-xs font-medium text-dim">chatKey</span>
             <input
               className={`mt-1 ${INPUT_CLASS} w-full font-mono text-xs`}
@@ -115,12 +115,13 @@ export default function RagChatsPage() {
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">topicId (опц.)</span>
             <input
-              className={`mt-1 ${INPUT_CLASS} w-24`}
+              className={`mt-1 w-full sm:w-24 ${INPUT_CLASS}`}
               value={topicId} onChange={(e) => setTopicId(e.target.value)} disabled={busy}
             />
           </label>
           <Button
             variant="primary"
+            className="w-full sm:w-auto"
             onClick={() => void submit('add', { name: name.trim(), chatKey: chatKey.trim(), topicId: topicId ? Number(topicId) : undefined })}
             disabled={busy || !name.trim() || !chatKey.trim()}
           >

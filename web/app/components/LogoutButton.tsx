@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { Button } from './ui/Button';
+import { IconLogout } from './ui/icons';
 
 export function LogoutButton() {
   const [loading, setLoading] = useState(false);
@@ -20,8 +21,16 @@ export function LogoutButton() {
   };
 
   return (
-    <Button variant="ghost" onClick={() => void logout()} disabled={loading}>
-      {loading ? '…' : 'Выйти'}
+    <Button
+      variant="ghost"
+      onClick={() => void logout()}
+      disabled={loading}
+      aria-label="Выйти"
+      title="Выйти"
+      className="max-sm:aspect-square max-sm:!px-0"
+    >
+      <IconLogout className="h-4 w-4 sm:hidden" />
+      <span className="max-sm:sr-only">{loading ? '…' : 'Выйти'}</span>
     </Button>
   );
 }

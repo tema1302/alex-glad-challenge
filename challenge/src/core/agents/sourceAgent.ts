@@ -5,7 +5,7 @@
 export interface TrendingTopic {
   title: string;           // заголовок темы/новости
   description: string;     // краткое описание (1-2 предложения)
-  source: string;          // откуда (rss, reddit, sportsru, telegram)
+  source: string;          // откуда (rss, mastodon, lemmy, sports.ru, telegram)
   url?: string;            // ссылка если есть
   hypeScore: number;       // оценка "накала" (0-100)
   hypeReason: string;      // почему эта тема горячая

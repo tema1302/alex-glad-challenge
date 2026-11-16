@@ -89,15 +89,15 @@ export default function AutomationPage() {
           <ul className="space-y-3">
             {rules.map((r) => (
               <li key={r.blogId} className="rounded-xl border border-line bg-surface p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                  <div className="min-w-0">
                     <p className="font-medium text-ink">{r.blogName}</p>
                     <p className="text-xs text-dim">
                       {r.enabled ? `каждые ${r.intervalMinutes} мин` : 'выключено'}
                       {r.nextRunAt && r.enabled ? ` · следующий запуск ${r.nextRunAt.slice(0, 16).replace('T', ' ')}` : ''}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <label className="flex items-center gap-1 text-xs text-dim">
                       <input type="checkbox" checked={r.enabled} onChange={(e) => configure(r.blogId, { enabled: e.target.checked })} className="accent-accent" />
                       вкл
@@ -109,7 +109,7 @@ export default function AutomationPage() {
                     <Button variant="primary" onClick={() => runNow(r.blogId)}>Запустить</Button>
                   </div>
                 </div>
-                <div className="mt-2 flex items-center gap-2 text-xs text-dim">
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-dim">
                   интервал:
                   <select
                     value={r.intervalMinutes}

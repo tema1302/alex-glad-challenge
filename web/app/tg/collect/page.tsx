@@ -151,8 +151,8 @@ export default function TgCollectPage() {
       />
 
       <Card label="Параметры сбора">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 text-sm">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
+          <label className="text-sm sm:flex-1">
             <span className="block text-xs font-medium text-dim">chatRef</span>
             <input
               className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
@@ -165,7 +165,7 @@ export default function TgCollectPage() {
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">topicId</span>
             <input
-              className={`mt-1 w-24 ${INPUT_CLASS}`}
+              className={`mt-1 w-full sm:w-24 ${INPUT_CLASS}`}
               value={topicId}
               onChange={(e) => setTopicId(e.target.value)}
               disabled={running}
@@ -175,7 +175,7 @@ export default function TgCollectPage() {
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">лимит</span>
             <input
-              className={`mt-1 w-24 ${INPUT_CLASS}`}
+              className={`mt-1 w-full sm:w-24 ${INPUT_CLASS}`}
               type="number" min={1} max={5000}
               value={limit}
               onChange={(e) => setLimit(e.target.value)}
@@ -192,10 +192,10 @@ export default function TgCollectPage() {
             />
             <span>--reset (полный re-fetch)</span>
           </label>
-          <Button variant="primary" onClick={() => void run()} disabled={running || !chatRef.trim()}>
+          <Button variant="primary" onClick={() => void run()} disabled={running || !chatRef.trim()} className="w-full sm:w-auto">
             {running ? '…' : 'Собрать'}
           </Button>
-          <Button variant="ghost" onClick={cancel} disabled={!running}>
+          <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
             Отмена
           </Button>
         </div>

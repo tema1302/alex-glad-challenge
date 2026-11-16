@@ -57,15 +57,15 @@ export default function AssistantPage() {
             ))
           )}
         </div>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void send()}
             placeholder="Вопрос к ассистенту…"
-            className={`flex-1 ${INPUT_CLASS}`}
+            className={`min-w-0 flex-1 ${INPUT_CLASS}`}
           />
-          <Button variant="primary" loading={busy} onClick={send}>Отправить</Button>
+          <Button variant="primary" loading={busy} onClick={send} className="w-full sm:w-auto">Отправить</Button>
         </div>
       </Card>
     </div>

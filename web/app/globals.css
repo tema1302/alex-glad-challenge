@@ -226,6 +226,9 @@
   --lp-line: 230 226 216;
   --lp-panel: 12 17 22; /* тёмные вставки (proof/CTA) — тёмные в обеих темах */
 
+  /* Декоративные aurora-блобы выходят за края секций; clip не создаёт
+     scroll-контейнер и не добавляет горизонтальный скролл на мобиле. */
+  overflow-x: clip;
   color-scheme: light;
   background-color: rgb(var(--lp-bg));
   color: rgb(var(--lp-ink));

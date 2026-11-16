@@ -8,6 +8,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { navGroups } from '../../data/nav';
+import { IconSearch } from './ui/icons';
+import { PALETTE_OPEN_EVENT } from './palette/CommandPalette';
 
 export function MobileNav() {
   const [open, setOpen] = useState(false);
@@ -34,13 +36,26 @@ export function MobileNav() {
         </svg>
       </button>
       {open && (
-        <div className="fixed inset-0 z-40">
+        // absolute (не fixed): header имеет backdrop-blur и создаёт containing block,
+        // из-за чего fixed-drawer схлопывался до высоты шапки.
+        <div className="absolute inset-x-0 top-full z-40 h-[calc(100dvh-3.5rem)]">
           <div
             className="absolute inset-0 bg-bg/80"
             onClick={() => setOpen(false)}
             aria-hidden="true"
           />
-          <aside className="absolute left-0 top-0 h-full w-64 overflow-y-auto border-r border-line bg-bg p-3">
+          <aside className="absolute left-0 top-0 h-full w-[min(18rem,calc(100vw-3rem))] overflow-y-auto border-r border-line bg-bg p-3">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                window.dispatchEvent(new CustomEvent(PALETTE_OPEN_EVENT));
+              }}
+              className="mb-3 flex w-full items-center gap-2 rounded-md border border-line-strong px-2 py-2 text-sm text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+            >
+              <IconSearch className="h-4 w-4 shrink-0" />
+              Поиск по разделам
+            </button>
             {navGroups.map((g) => {
               const hasActive = g.items.some(
                 (it) => pathname === it.href || pathname.startsWith(it.href + '/'),

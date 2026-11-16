@@ -5,6 +5,54 @@
 
 ---
 
+## Web mobile + соцсети вместо Reddit (2026-11-16)
+
+**Ветка:** `feat/mobile-responsive-news-sources`
+
+**Loop:** `run-2026-11-16` (локальный milestone: `gh` CLI/токен в окружении
+отсутствуют, GitHub-эпик/стори не создавались; Evidence — `swarm-report/`).
+
+**Что сделано:**
+- **Мобильный каркас:** admin `<main>` получил `min-w-0` — длинные `<pre>`,
+  таблицы и строки больше не распирают flex-layout на 39–800px. Шапка сжата:
+  бренд не переносится, «Выйти» — иконка, палитра тем скрыта до `sm`, поиск
+  переехал в drawer; drawer больше не схлопывается до высоты шапки
+  (`position:absolute` + `100dvh`), dropdown уведомлений вписан в 320px.
+- **Лендинг:** `/` у админа рендерится full-bleed (pathname через
+  `x-pathname`), широкие bento-карточки складываются в колонку на мобиле,
+  aurora-блобы обрезаются `overflow-x: clip` — горизонтального скролла нет
+  на 320/390/768px.
+- **Фooter:** 6 ключевых ссылок + «все разделы» в details вместо стены из
+  ~55 ссылок; desktop-вид не изменился.
+- **Формы:** `/tg/collect`, `/tg/top`, `/rag/chats`, `/automation`, `/joker`,
+  `/assistant`, `/blog/news`, `/blog/scout`, чаты — поля и кнопки складываются
+  в колонку на мобиле; кнопки не вылезают за viewport.
+- **Источники Scout:** Reddit r/soccer удалён. Forum-агент теперь собирает:
+  **Mastodon** (хештеги по запросу: `chelsea`, `premierleague`, `footballstats`
+  и т. п.), **Lemmy** (`football@lemmy.world`, meta/NSFW отфильтрованы) и
+  **Sports.ru** (RSS `topnews.xml`, только `/football/`). Запрос прокинут из
+  `/api/blog/scout` в `ForumScannerAgent` и влияет на выбор хештегов;
+  оркестратор по-прежнему ранжирует темы под запрос.
+- **UI Scout:** кликабельные примеры автоподстановки: «Футбольные новости
+  мужского футбола АПЛ и Челси», «Продвинутая статистика по Челси», трансферы
+  АПЛ и xG/форма; подпись источников Mastodon + Lemmy + Sports.ru. На
+  `/blog/news` добавлена ссылка на Scout.
+
+**Коды:** контракт `POST /api/blog/scout` не менялся (SSE `start → done/error`,
+`enableForum` сохранён для совместимости). Новых API нет.
+
+**Проверки:** `challenge` typecheck/test, `web` typecheck/test/build, focused
+`forumScanner`/`blog-scout` тесты, Playwright-аудит 320×568, 390×844, 768×1024
+(overflow/clipped text = 0, кроме декоративных blob-контейнеров), живой прогон
+Forum-агента (Mastodon + Lemmy + Sports.ru).
+
+**Риски:** Mastodon/Lemmy — публичные инстансы, возможны rate-limit/5xx;
+Sports.ru RSS может изменить формат; социальные посты шумные — финальную
+релевантность решает LLM-оркестратор. Reddit удалён осознанно, несмотря на
+потерю англоязычного r/soccer.
+
+---
+
 ## ADVANCED Day 10 — distill-v2: ученик без регресса (2026-11-11)
 
 **Повод:** v1-ученик day-09 дал регресс на eval-30: **18/30** против **24/30**

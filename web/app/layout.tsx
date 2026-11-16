@@ -56,7 +56,12 @@ export const viewport: Viewport = { width: 'device-width', initialScale: 1 };
 export default async function RootLayout({ children }: { children: ReactNode }) {
   // nonce из middleware.ts — пробрасывается в next-themes prop `nonce`, чтобы anti-FOUC
   // inline-скрипт тоже покрывался CSP (иначе 1 residual violation под nonce-based политикой).
-  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  const h = await headers();
+  const nonce = h.get('x-nonce') ?? undefined;
+  // Лендинг — full-bleed: его секции сами владеют max-w-6xl/px-5. В admin-ветке
+  // обёртка layout иначе сжимает .lp в колонку и обрезает hero на мобиле.
+  const pathname = h.get('x-pathname') ?? '';
+  const isFullBleed = pathname === '/';
   const isAdmin = await isAdminAuthed();
   return (
     <html lang="ru" suppressHydrationWarning className={`${manrope.variable} ${plexMono.variable} ${unbounded.variable}`}>
@@ -68,16 +73,22 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <CommandPalette isAdmin={isAdmin} />
               {isAdmin ? (
                 <>
-                  <div className="flex flex-1">
+                  <div className="flex min-w-0 flex-1">
                     <Sidebar />
-                    <main className="flex-1 px-5 py-6">
-                      <div className="mx-auto max-w-6xl">{children}</div>
+                    {/* min-w-0 обязателен: иначе flex-item растягивается по min-content
+                        длинного <pre>/таблицы и весь сайт получает горизонтальный скролл. */}
+                    <main className="min-w-0 flex-1 px-3 py-4 sm:px-5 sm:py-6">
+                      {isFullBleed ? (
+                        children
+                      ) : (
+                        <div className="mx-auto min-w-0 max-w-6xl">{children}</div>
+                      )}
                     </main>
                   </div>
                   <Footer />
                 </>
               ) : (
-                <main className="flex-1">{children}</main>
+                <main className="min-w-0 flex-1">{children}</main>
               )}
             </div>
           </ToastProvider>

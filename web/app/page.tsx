@@ -294,13 +294,13 @@ export default async function HomePage() {
               const wide = i === 0 || i === 3; // RAG и TG — широкие, композиция «текст + арт»
               const inner = (
                 <>
-                  <div className={`flex gap-6 ${wide ? 'flex-row items-center' : 'flex-col'}`}>
+                  <div className={`flex gap-6 ${wide ? 'flex-col sm:flex-row sm:items-center' : 'flex-col'}`}>
                     <div className={wide ? 'min-w-0 flex-1' : ''}>
                       <span className="lp-chip !text-brand-600">{a.tag}</span>
-                      <h3 className="mt-4 font-display text-xl font-semibold text-p-ink">{a.title}</h3>
-                      <p className="mt-2 text-sm leading-relaxed text-p-dim">{a.desc}</p>
+                      <h3 className="mt-4 break-words font-display text-xl font-semibold text-p-ink">{a.title}</h3>
+                      <p className="mt-2 break-words text-sm leading-relaxed text-p-dim">{a.desc}</p>
                     </div>
-                    <div className={wide ? 'w-44 shrink-0 md:w-52' : 'mt-2'}>
+                    <div className={wide ? 'w-full shrink-0 sm:w-44 md:w-52' : 'mt-2'}>
                       <Art />
                     </div>
                   </div>
@@ -315,7 +315,7 @@ export default async function HomePage() {
                   </div>
                 </>
               );
-              const cls = `lp-card flex flex-col p-6 ${wide ? 'md:col-span-2' : ''} ${FOCUS}`;
+              const cls = `lp-card flex min-w-0 flex-col p-6 ${wide ? 'md:col-span-2' : ''} ${FOCUS}`;
               return a.href && isAdmin ? (
                 <Link key={a.tag} href={a.href} aria-label={`Открыть ${a.title}`} className={`${cls} group`}>
                   {inner}

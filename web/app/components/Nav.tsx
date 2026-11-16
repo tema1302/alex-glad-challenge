@@ -20,20 +20,29 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
       : null;
   return (
     <header className="sticky top-0 z-nav border-b border-line bg-surface/80 backdrop-blur">
-      <div className="flex h-14 items-center justify-between px-5">
-        <div className="flex items-center gap-1">
+      <div className="flex h-14 min-w-0 items-center justify-between gap-2 px-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-1">
           {isAdmin && <MobileNav />}
-          <Link href="/" className="font-sans text-sm font-semibold tracking-tight text-ink">
-            Артемия Артель
-            <span className="text-accent">·</span>
-            <span className="text-dim">AI</span>
+          <Link
+            href="/"
+            className="min-w-0 truncate whitespace-nowrap font-sans text-sm font-semibold tracking-tight text-ink"
+          >
+            <span className="sm:hidden">Артемия</span>
+            <span className="hidden sm:inline">
+              Артемия Артель
+              <span className="text-accent">·</span>
+              <span className="text-dim">AI</span>
+            </span>
           </Link>
         </div>
         {isAdmin ? (
           <>
             <NavCoreLinks />
-            <div className="flex items-center gap-3">
-              <PaletteButton />
+            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+              {/* На мобиле поиск живёт в drawer MobileNav: в шапке не хватает ширины. */}
+              <div className="hidden sm:block">
+                <PaletteButton />
+              </div>
               {/* 640–1023px: блок статуса — главный виновник overflow строки h-14 →
                   скрыт до lg, на lg+ сжат с обрезкой (модель — не критичная инфа).
                   truncate стоит на внутреннем текстовом span: на блоке с inline-flex
@@ -57,7 +66,7 @@ export default function Nav({ isAdmin = false }: { isAdmin?: boolean }) {
             </div>
           </>
         ) : (
-          <nav className="flex items-center gap-1">
+          <nav className="flex shrink-0 items-center gap-1">
             <PaletteButton />
             <ThemeToggle />
             <Link

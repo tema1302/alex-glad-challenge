@@ -1,4 +1,4 @@
-// /blog/scout — 3 source-агента (RSS/Forum/TG) → оркестратор (день 28, web P4b).
+// /blog/scout — 3 source-агента (RSS/соцсети-форумы/TG) → оркестратор (день 28, web P4b).
 // 'use client': форма (query/hours/topK/Forum/TG/llm) → SSE (start → done/error).
 // runSourceAgents без onProgress → прогресс = индикатор «работаю». В done — финальный топ
 // оркестратора + сводка по агентам. НИКАКИХ импортов core/.
@@ -32,6 +32,14 @@ interface BlogOption {
   slug: string;
   name: string;
 }
+
+// Кликабельные примеры: подставляют запрос в поле, чтобы не набирать вручную.
+const QUERY_EXAMPLES = [
+  'Футбольные новости мужского футбола АПЛ и Челси',
+  'Продвинутая статистика по Челси',
+  'Трансферы АПЛ: Челси, Арсенал, Ливерпуль',
+  'xG и форма команд в АПЛ',
+] as const;
 
 export default function BlogScoutPage() {
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
@@ -152,111 +160,131 @@ export default function BlogScoutPage() {
     <div className="space-y-6">
       <SectionHead
         code="blog · scout"
-        title="Scout (3 source-агенты)"
-        description="Этап 1 пайплайна: источники собирают темы параллельно, оркестратор выбирает финальный топ — без написания поста."
+        title="Scout: темы из RSS и соцсетей"
+        description="Этап 1 пайплайна: RSS, Mastodon, Lemmy и Sports.ru собирают темы параллельно, оркестратор выбирает финальный топ под запрос — без написания поста."
       />
 
       <Card label="Параметры сбора">
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Блог</span>
-            <select
-              className={`mt-1 ${INPUT_CLASS}`}
-              value={blog}
-              onChange={(e) => setBlog(e.target.value)}
-              disabled={running}
-            >
-              <option value="">— без блога —</option>
-              {blogs.map((b) => (
-                <option key={b.slug} value={b.slug}>{b.name}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex-1 min-w-[200px] text-sm">
-            <span className="block text-xs font-medium text-dim">Запрос</span>
-            <input
-              className={`mt-1 w-full ${INPUT_CLASS}`}
-              type="text"
-              placeholder="самые горячие футбольные новости"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              disabled={running}
-            />
-          </label>
-
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Часов</span>
-            <input
-              className={`mt-1 w-20 ${INPUT_CLASS}`}
-              type="number"
-              min={1}
-              max={168}
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value) || 24)}
-              disabled={running}
-            />
-          </label>
-
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Топ (topK)</span>
-            <input
-              className={`mt-1 w-16 ${INPUT_CLASS}`}
-              type="number"
-              min={1}
-              max={10}
-              value={topK}
-              onChange={(e) => setTopK(Number(e.target.value) || 3)}
-              disabled={running}
-            />
-          </label>
-
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">LLM</span>
-            <select
-              className={`mt-1 ${INPUT_CLASS}`}
-              value={llm}
-              onChange={(e) => setLlm(e.target.value as Llm)}
-              disabled={running}
-            >
-              <option value="cloud">cloud</option>
-              <option value="local">local (Ollama)</option>
-            </select>
-          </label>
-
-          <div className="flex items-center gap-4 text-sm text-ink">
-            <label className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={enableForum}
-                onChange={(e) => setEnableForum(e.target.checked)}
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <label className="col-span-2 text-sm">
+              <span className="block text-xs font-medium text-dim">Блог</span>
+              <select
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                value={blog}
+                onChange={(e) => setBlog(e.target.value)}
                 disabled={running}
-              />
-              Forum
+              >
+                <option value="">— без блога —</option>
+                {blogs.map((b) => (
+                  <option key={b.slug} value={b.slug}>{b.name}</option>
+                ))}
+              </select>
             </label>
-            <label className="flex items-center gap-1">
+
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-dim">Часов</span>
               <input
-                type="checkbox"
-                checked={enableTelegram}
-                onChange={(e) => setEnableTelegram(e.target.checked)}
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="number"
+                min={1}
+                max={168}
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value) || 24)}
                 disabled={running}
               />
-              TG
+            </label>
+
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-dim">Топ (topK)</span>
+              <input
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="number"
+                min={1}
+                max={10}
+                value={topK}
+                onChange={(e) => setTopK(Number(e.target.value) || 3)}
+                disabled={running}
+              />
+            </label>
+
+            <label className="col-span-2 text-sm sm:col-span-1">
+              <span className="block text-xs font-medium text-dim">LLM</span>
+              <select
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                value={llm}
+                onChange={(e) => setLlm(e.target.value as Llm)}
+                disabled={running}
+              >
+                <option value="cloud">cloud</option>
+                <option value="local">local (Ollama)</option>
+              </select>
             </label>
           </div>
 
-          <div className="ml-auto flex gap-2">
-            <Button variant="primary" onClick={run} disabled={running}>
-              Запустить
-            </Button>
-            <Button variant="ghost" onClick={cancel} disabled={!running}>
-              Отмена
-            </Button>
+          <div>
+            <label className="block text-sm">
+              <span className="block text-xs font-medium text-dim">Запрос</span>
+              <input
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="text"
+                placeholder="Например: футбольные новости АПЛ и Челси"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                disabled={running}
+              />
+            </label>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <span className="text-xs text-dim">Примеры:</span>
+              {QUERY_EXAMPLES.map((example) => (
+                <button
+                  key={example}
+                  type="button"
+                  onClick={() => setQuery(example)}
+                  disabled={running}
+                  className="rounded-full border border-line-strong px-2.5 py-1 text-left text-xs text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {example}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={enableForum}
+                  onChange={(e) => setEnableForum(e.target.checked)}
+                  disabled={running}
+                />
+                Соцсети/форумы
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={enableTelegram}
+                  onChange={(e) => setEnableTelegram(e.target.checked)}
+                  disabled={running}
+                />
+                TG
+              </label>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="primary" onClick={run} disabled={running} className="w-full sm:w-auto">
+                Запустить
+              </Button>
+              <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
+                Отмена
+              </Button>
+            </div>
           </div>
         </div>
-        <p className="mt-2 text-xs text-dim">
-          Источник TG требует настроенной MTProto-сессии и по умолчанию выключен; прогон ходит в
-          RSS/Forum + LLM.
+        <p className="mt-3 text-xs leading-relaxed text-dim">
+          Соцсети/форумы: Mastodon + Lemmy + Sports.ru. TG требует настроенной MTProto-сессии и по
+          умолчанию выключен; прогон ходит в RSS/соцсети + LLM.
         </p>
       </Card>
 
@@ -267,7 +295,7 @@ export default function BlogScoutPage() {
               className="spin inline-block h-3 w-3 rounded-full border border-line-strong border-t-accent"
               aria-hidden
             />
-            Scout работает… (RSS/Forum/+TG параллельно → оркестратор)
+            Scout работает… (RSS/соцсети/+TG параллельно → оркестратор)
           </div>
         </Card>
       )}
@@ -328,6 +356,7 @@ export default function BlogScoutPage() {
       {!running && ranked.length === 0 && !error && (
         <p className="text-sm text-dim">
           Настройте источники и нажмите «Запустить». Оркестратор вернёт топ тем — без записи поста.
+          Запрос можно не набирать: выберите пример выше.
         </p>
       )}
     </div>

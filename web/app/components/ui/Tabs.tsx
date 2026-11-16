@@ -23,7 +23,7 @@ export function Tabs({
     <div
       role="tablist"
       aria-label={label}
-      className="inline-flex gap-1 rounded-md border border-line bg-surface p-1"
+      className="flex max-w-full flex-wrap gap-1 rounded-md border border-line bg-surface p-1 sm:inline-flex sm:flex-nowrap"
     >
       {tabs.map((t) => {
         const selected = t.id === active;
@@ -34,7 +34,7 @@ export function Tabs({
             role="tab"
             aria-selected={selected}
             onClick={() => onChange(t.id)}
-            className={`rounded-sm px-3 py-1 font-sans text-xs font-medium transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
+            className={`shrink-0 whitespace-nowrap rounded-sm px-3 py-1 font-sans text-xs font-medium transition-colors duration-fast ease-system focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim ${
               selected ? 'bg-surface-2 text-accent' : 'text-dim hover:text-ink'
             }`}
           >

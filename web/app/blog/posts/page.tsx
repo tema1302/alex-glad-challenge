@@ -125,10 +125,10 @@ export default function BlogPostsPage() {
         title="Посты блога"
         description="Правка и публикация в Telegram — из карточки поста."
         actions={
-          <span className="flex items-center gap-2">
+          <span className="grid w-full grid-cols-1 gap-2 sm:flex sm:w-auto sm:items-center">
             <select
               aria-label="Фильтр по блогу"
-              className={`${INPUT_CLASS} h-9 max-w-56 text-sm`}
+              className={`${INPUT_CLASS} h-9 w-full max-w-56 text-sm sm:w-auto`}
               value={blogFilter}
               onChange={(e) => setBlogFilter(e.target.value)}
             >
@@ -139,7 +139,7 @@ export default function BlogPostsPage() {
                 </option>
               ))}
             </select>
-            <Button variant="ghost" size="sm" onClick={load} disabled={loading}>
+            <Button variant="ghost" size="sm" onClick={load} disabled={loading} className="w-full sm:w-auto">
               {loading ? 'загрузка…' : 'обновить'}
             </Button>
           </span>

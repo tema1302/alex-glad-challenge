@@ -116,7 +116,7 @@ export function ThemeToggle({ className = '' }: { className?: string }) {
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-md text-dim transition-colors duration-fast hover:text-ink ${FOCUS}`}
+        className={`hidden h-8 w-8 items-center justify-center rounded-md text-dim transition-colors duration-fast hover:text-ink sm:inline-flex ${FOCUS}`}
       >
         <IconSwatches className="h-4 w-4" />
       </button>

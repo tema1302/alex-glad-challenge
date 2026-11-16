@@ -75,7 +75,7 @@ export default function EvolutePage() {
                     <span className="ml-auto">msg {item.msgId} ↗</span>
                   </div>
                   {item.text && (
-                    <p className="mt-2 whitespace-pre-line text-sm text-ink">{item.text}</p>
+                    <p className="mt-2 whitespace-pre-line break-words text-sm text-ink">{item.text}</p>
                   )}
                 </a>
               </li>

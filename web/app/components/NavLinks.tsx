@@ -12,7 +12,7 @@ const core = navGroups.find((g) => g.tag === 'core') ?? navGroups[0];
 export function NavCoreLinks() {
   const pathname = usePathname();
   return (
-    <nav aria-label="Основные разделы" className="hidden items-center gap-1 sm:flex">
+    <nav aria-label="Основные разделы" className="hidden items-center gap-1 lg:flex">
       {core.items.map((it) => {
         const active = pathname === it.href;
         return (

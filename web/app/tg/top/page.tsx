@@ -73,8 +73,8 @@ export default function TgTopPage() {
       />
 
       <Card label="параметры">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 text-sm">
+        <div className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
+          <label className="text-sm sm:flex-1">
             <span className="block text-xs font-medium text-dim">chatKey</span>
             <input
               className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
@@ -85,14 +85,14 @@ export default function TgTopPage() {
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">topicId</span>
             <input
-              className={`mt-1 w-24 ${INPUT_CLASS}`}
+              className={`mt-1 w-full sm:w-24 ${INPUT_CLASS}`}
               value={topicId} onChange={(e) => setTopicId(e.target.value)} disabled={loading}
             />
           </label>
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">лимит</span>
             <input
-              className={`mt-1 w-20 ${INPUT_CLASS}`}
+              className={`mt-1 w-full sm:w-20 ${INPUT_CLASS}`}
               type="number" min={1} max={100}
               value={limit} onChange={(e) => setLimit(e.target.value)} disabled={loading}
             />
@@ -100,14 +100,14 @@ export default function TgTopPage() {
           <label className="text-sm">
             <span className="block text-xs font-medium text-dim">сортировка</span>
             <select
-              className={`mt-1 ${INPUT_CLASS}`}
+              className={`mt-1 w-full sm:w-auto ${INPUT_CLASS}`}
               value={by} onChange={(e) => setBy(e.target.value as 'reactions' | 'date')} disabled={loading}
             >
               <option value="reactions">по реакциям</option>
               <option value="date">по дате</option>
             </select>
           </label>
-          <Button variant="primary" onClick={() => void run()} disabled={loading || !chatKey.trim()}>
+          <Button variant="primary" onClick={() => void run()} disabled={loading || !chatKey.trim()} className="w-full sm:w-auto">
             {loading ? '…' : 'Показать'}
           </Button>
         </div>

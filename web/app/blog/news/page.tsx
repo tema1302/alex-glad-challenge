@@ -156,87 +156,90 @@ export default function BlogNewsPage() {
       <SectionHead code="blog · news" title="Блог-pipeline" />
 
       <Card label="Параметры запуска">
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Блог</span>
-            <select
-              className={`mt-1 min-w-48 ${INPUT_CLASS}`}
-              value={blog}
-              onChange={(e) => {
-                setBlog(e.target.value);
-                reset();
-              }}
-              disabled={running}
-            >
-              {blogs.map((b) => (
-                <option key={b.slug} value={b.slug}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+            <label className="col-span-2 text-sm">
+              <span className="block text-xs font-medium text-dim">Блог</span>
+              <select
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                value={blog}
+                onChange={(e) => {
+                  setBlog(e.target.value);
+                  reset();
+                }}
+                disabled={running}
+              >
+                {blogs.map((b) => (
+                  <option key={b.slug} value={b.slug}>
+                    {b.name}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Часов (hours)</span>
-            <input
-              className={`mt-1 w-20 ${INPUT_CLASS}`}
-              type="number"
-              min={1}
-              max={168}
-              value={hours}
-              onChange={(e) => setHours(Number(e.target.value) || 24)}
-              disabled={running}
-            />
-          </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-dim">Часов</span>
+              <input
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="number"
+                min={1}
+                max={168}
+                value={hours}
+                onChange={(e) => setHours(Number(e.target.value) || 24)}
+                disabled={running}
+              />
+            </label>
 
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Топ (top)</span>
-            <input
-              className={`mt-1 w-16 ${INPUT_CLASS}`}
-              type="number"
-              min={1}
-              max={50}
-              value={top}
-              onChange={(e) => setTop(Number(e.target.value) || 5)}
-              disabled={running}
-            />
-          </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-dim">Топ</span>
+              <input
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="number"
+                min={1}
+                max={50}
+                value={top}
+                onChange={(e) => setTop(Number(e.target.value) || 5)}
+                disabled={running}
+              />
+            </label>
 
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Пост про (index)</span>
-            <input
-              className={`mt-1 w-16 ${INPUT_CLASS}`}
-              type="number"
-              min={0}
-              value={forIndex}
-              onChange={(e) => setForIndex(Number(e.target.value) || 0)}
-              disabled={running}
-            />
-          </label>
+            <label className="text-sm">
+              <span className="block text-xs font-medium text-dim">Пост про</span>
+              <input
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                type="number"
+                min={0}
+                value={forIndex}
+                onChange={(e) => setForIndex(Number(e.target.value) || 0)}
+                disabled={running}
+              />
+            </label>
 
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">LLM</span>
-            <select
-              className={`mt-1 ${INPUT_CLASS}`}
-              value={llm}
-              onChange={(e) => setLlm(e.target.value as Llm)}
-              disabled={running}
-            >
-              <option value="cloud">cloud</option>
-              <option value="local">local (Ollama)</option>
-            </select>
-          </label>
+            <label className="col-span-2 text-sm sm:col-span-1">
+              <span className="block text-xs font-medium text-dim">LLM</span>
+              <select
+                className={`mt-1 w-full ${INPUT_CLASS}`}
+                value={llm}
+                onChange={(e) => setLlm(e.target.value as Llm)}
+                disabled={running}
+              >
+                <option value="cloud">cloud</option>
+                <option value="local">local (Ollama)</option>
+              </select>
+            </label>
+          </div>
 
-          <div className="ml-auto flex gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="primary"
               onClick={run}
               disabled={running || profileMissing}
               title={profileMissing ? 'Сначала настройте профиль голоса блога' : undefined}
+              className="w-full sm:w-auto"
             >
               Запустить
             </Button>
-            <Button variant="ghost" onClick={cancel} disabled={!running}>
+            <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
               Отмена
             </Button>
           </div>
@@ -251,6 +254,10 @@ export default function BlogNewsPage() {
         )}
         <p className="mt-2 text-xs text-dim">
           Реальный прогон: пишет в blog.sqlite, ходит в RSS/LLM — может занять до минуты.
+        </p>
+        <p className="mt-1 text-xs text-dim">
+          Нужен поиск по соцсетям и форумам с примерами запросов (АПЛ, Челси, статистика) —{' '}
+          <Link href="/blog/scout" className="text-accent hover:underline">откройте Scout</Link>.
         </p>
       </Card>
 

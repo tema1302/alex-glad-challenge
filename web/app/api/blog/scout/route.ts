@@ -1,4 +1,4 @@
-// SSE Route Handler: блог-scout — 3 source-агента (RSS/Forum/TG) → оркестратор (день 28, P4b).
+// SSE Route Handler: блог-scout — 3 source-агента (RSS/соцсети-форумы/TG) → оркестратор (день 28, P4b).
 // runtime=nodejs, force-dynamic, server-only. Все импорты core/ — через web/lib/server/*
 // chokepoint (client bundle физически не получает core/).
 //
@@ -7,7 +7,8 @@
 // + сводка по каждому source-агенту (rawResults: имя/кол-во тем/ошибка).
 //
 // enableTelegram по умолчанию ВЫКЛЮЧЕН: MTProto-путь (TG_SESSION) credential-тяжёлый и
-// требует настроенной сессии. Forum по умолчанию ВКЛ (HTTP, без credentials). Пользователь
+// требует настроенной сессии. Соцсети/форумы (Mastodon + Lemmy + Sports.ru) по умолчанию ВКЛ
+// (HTTP, без credentials). Пользователь
 // может явно включить TG чекбоксом.
 //
 // Контракт событий (web/lib/shared/sse.ts):
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
   const { hours, topK, query, llm = 'cloud', blog: blogRef } = parsed.data;
-  // TG по умолчанию выкл (MTProto), Forum по умолчанию вкл — см. шапку.
+  // TG по умолчанию выкл (MTProto), соцсети/форумы по умолчанию вкл — см. шапку.
   const enableTelegram = parsed.data.enableTelegram ?? false;
   const enableForum = parsed.data.enableForum ?? true;
 
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest): Promise<Response> {
         send({ type: 'stage', step: 'start' });
 
         // withDb сериализует DatabaseSync-вызовы (RssSourceAgent дедуплит новости через BlogDb).
-        // runSourceAgents: RSS + Forum (+ TG если вкл) параллельно, затем LLM-оркестратор.
+        // runSourceAgents: RSS + соцсети/форумы (+ TG если вкл) параллельно, затем LLM-оркестратор.
         const result = await withDb(() =>
           runSourceAgents(getBlogDb(), client, {
             maxAgeHours: hours,

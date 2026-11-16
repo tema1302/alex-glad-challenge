@@ -356,9 +356,9 @@ export default function ChatSessionPage() {
       )}
 
       {/* Ввод */}
-      <section className="flex gap-2">
+      <section className="flex flex-col gap-2 sm:flex-row">
         <textarea
-          className={`flex-1 resize-none ${INPUT_CLASS}`}
+          className={`w-full flex-1 resize-none ${INPUT_CLASS}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           value={input}
@@ -368,11 +368,11 @@ export default function ChatSessionPage() {
           }}
           disabled={running}
         />
-        <div className="flex flex-col gap-1">
-          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()}>
+        <div className="flex flex-row gap-1 sm:flex-col">
+          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()} className="flex-1 sm:flex-none">
             {running ? '…' : 'Отправить'}
           </Button>
-          <Button variant="ghost" onClick={cancel} disabled={!running}>
+          <Button variant="ghost" onClick={cancel} disabled={!running} className="flex-1 sm:flex-none">
             Отмена
           </Button>
         </div>

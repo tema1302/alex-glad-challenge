@@ -271,11 +271,11 @@ export function StyleExampleCards({
                 : 'border-line bg-surface hover:border-accent-dim'
             }`}
           >
-            <span className="flex items-start justify-between gap-3">
+            <span className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
               <span className={`font-mono text-[11px] uppercase tracking-[0.16em] ${TAGLINE[variant]}`}>
                 {`история ${String(index + 1).padStart(2, '0')}`}
               </span>
-              <span className={`shrink-0 text-right font-mono text-[11px] ${DESC[variant]}`}>
+              <span className={`shrink-0 text-left font-mono text-[11px] sm:text-right ${DESC[variant]}`}>
                 {example.outcome}
               </span>
             </span>

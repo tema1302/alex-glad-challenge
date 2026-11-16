@@ -441,9 +441,9 @@ export default function RagChatSessionPage() {
       )}
 
       {/* Ввод */}
-      <section className="flex gap-2">
+      <section className="flex flex-col gap-2 sm:flex-row">
         <textarea
-          className={`flex-1 resize-none ${INPUT_CLASS}`}
+          className={`w-full flex-1 resize-none ${INPUT_CLASS}`}
           rows={2}
           placeholder="Вопрос по базе… (/task, /task-clear — память задачи; /norag — без RAG; Enter — отправить)"
           value={input}
@@ -451,11 +451,11 @@ export default function RagChatSessionPage() {
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }}
           disabled={running}
         />
-        <div className="flex flex-col gap-1">
-          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()}>
+        <div className="flex flex-row gap-1 sm:flex-col">
+          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()} className="flex-1 sm:flex-none">
             {running ? '…' : 'Спросить'}
           </Button>
-          <Button variant="ghost" onClick={cancel} disabled={!running}>
+          <Button variant="ghost" onClick={cancel} disabled={!running} className="flex-1 sm:flex-none">
             Отмена
           </Button>
         </div>

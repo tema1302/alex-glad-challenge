@@ -80,7 +80,7 @@ export default function RagChatPickerPage() {
               disabled={creating}
             />
           </Field>
-          <Button variant="primary" onClick={() => void create()} disabled={creating}>
+          <Button variant="primary" onClick={() => void create()} disabled={creating} className="w-full sm:w-auto">
             {creating ? 'создаю…' : 'Создать и открыть'}
           </Button>
         </div>

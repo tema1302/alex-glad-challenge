@@ -43,7 +43,9 @@ export async function runSourceAgents(
   ];
 
   if (opts.enableForum !== false) {
-    agents.push(new ForumScannerAgent(10));
+    // Запрос влияет на выбор Mastodon-хештегов; Sports.ru/Lemmy отдают общий топ,
+    // финальную релевантность решает оркестратор.
+    agents.push(new ForumScannerAgent({ limit: 10, userQuery }));
   }
 
   if (opts.enableTelegram !== false) {

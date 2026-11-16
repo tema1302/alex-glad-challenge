@@ -216,7 +216,7 @@ export const pipelineActionSchema = z
 export type PipelineActionInput = z.infer<typeof pipelineActionSchema>;
 
 // POST /api/blog/scout (SSE) — opts для runSourceAgents. enableTelegram по умолчанию
-// выключен на уровне route (MTProto/TG_SESSION — credential-тяжёлый путь); Forum — вкл.
+// выключен на уровне route (MTProto/TG_SESSION — credential-тяжёлый путь); соцсети/форумы — вкл.
 export const scoutOptsSchema = z.object({
   hours: z.coerce.number().int().min(1, 'hours: 1..168').max(168).optional(),
   topK: z.coerce.number().int().min(1, 'topK: 1..10').max(10).optional(),

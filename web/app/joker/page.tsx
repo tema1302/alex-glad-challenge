@@ -327,12 +327,12 @@ export default function JokerPage() {
 
       {/* Ввод */}
       <form
-        className="flex gap-2"
+        className="flex flex-col gap-2 sm:flex-row"
         onSubmit={(e) => { e.preventDefault(); void send(); }}
       >
         <textarea
           ref={inputRef}
-          className={`flex-1 resize-none ${INPUT_CLASS}`}
+          className={`w-full resize-none sm:flex-1 ${INPUT_CLASS}`}
           rows={2}
           placeholder="Сообщение… (Enter — отправить, Shift+Enter — перенос)"
           aria-label="Сообщение кино-шутнику"
@@ -343,11 +343,11 @@ export default function JokerPage() {
           }}
           disabled={running}
         />
-        <div className="flex flex-col gap-1">
-          <Button variant="primary" type="submit" disabled={running || !input.trim()}>
+        <div className="flex flex-row gap-1 sm:flex-col">
+          <Button variant="primary" type="submit" disabled={running || !input.trim()} className="flex-1 sm:flex-none">
             {running ? '…' : 'Отправить'}
           </Button>
-          <Button variant="ghost" type="button" onClick={cancel} disabled={!running}>
+          <Button variant="ghost" type="button" onClick={cancel} disabled={!running} className="flex-1 sm:flex-none">
             Стоп
           </Button>
         </div>
