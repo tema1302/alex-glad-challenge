@@ -1,11 +1,12 @@
-// scripts/send-apk-telegram.mts — доставка собранного APK владельцу в Telegram.
+// scripts/send-apk-telegram.mts — доставка собранного APK в Telegram.
 //
 // Правило проекта (AGENTS.md §14): пуш в `main` завершается отправкой свежего
-// debug-APK. Скрипт — только доставка готового файла: сборка отдельным шагом,
-// ошибки доставки не смешиваются с ошибками сборки.
+// debug-APK в чат «ЧЕЛСИ черновик». Скрипт — только доставка готового файла:
+// сборка отдельным шагом, ошибки доставки не смешиваются с ошибками сборки.
 //
-// Секреты (STRICT): TG_BOT_TOKEN / TG_CHAT_ID читаются только из окружения или
-// gitignored `.env` через core/env; в код, логи и коммиты не попадают.
+// Секреты (STRICT): TG_BOT_TOKEN / TG_APK_CHAT_ID (fallback TG_CHAT_ID) читаются
+// только из окружения или gitignored `.env` через core/env; в код, логи и
+// коммиты не попадают.
 //
 // Использование:
 //   pnpm apk:send                     — отправить текущий APK
@@ -22,7 +23,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getTgBotConfig, loadEnvUpward } from '../challenge/src/core/env.js';
+import { getTgApkDeliveryConfig, loadEnvUpward } from '../challenge/src/core/env.js';
 import { netFetch } from '../challenge/src/core/net.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -52,8 +53,10 @@ function fail(code: number, message: string): never {
   process.exit(code);
 }
 
-const cfg = getTgBotConfig();
-if (!cfg) fail(1, 'Нет TG_BOT_TOKEN / TG_CHAT_ID: заполните .env или окружение');
+const cfg = getTgApkDeliveryConfig();
+if (!cfg) {
+  fail(1, 'Нет TG_BOT_TOKEN / TG_APK_CHAT_ID (или TG_CHAT_ID): заполните .env или окружение');
+}
 
 async function api<T>(method: string, payload: Record<string, unknown>): Promise<T> {
   const res = await netFetch(`https://api.telegram.org/bot${cfg.botToken}/${method}`, {
@@ -144,10 +147,20 @@ function gitSummary(): string {
 
 function apkVersion(): string {
   try {
-    const gradle = readFileSync(path.join(repoRoot, 'android/app/build.gradle.kts'), 'utf8');
-    const name = /versionName\s*=\s*"([^"]+)"/.exec(gradle)?.[1];
-    const code = /versionCode\s*=\s*(\d+)/.exec(gradle)?.[1];
-    return [name, code ? `(${code})` : undefined].filter(Boolean).join(' ') || 'unknown';
+    // AGP кладёт фактические versionCode/versionName рядом с APK; в build.gradle
+    // они теперь вычисляются из git, поэтому парсить исходник бессмысленно.
+    const meta = JSON.parse(
+      readFileSync(
+        path.join(repoRoot, 'android/app/build/outputs/apk/debug/output-metadata.json'),
+        'utf8',
+      ),
+    ) as { elements?: Array<{ versionCode?: number; versionName?: string }> };
+    const element = meta.elements?.[0];
+    return (
+      [element?.versionName, element?.versionCode ? `(${element.versionCode})` : undefined]
+        .filter(Boolean)
+        .join(' ') || 'unknown'
+    );
   } catch {
     return 'unknown';
   }

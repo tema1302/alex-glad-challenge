@@ -195,6 +195,15 @@ export function getTgBotConfig(): { botToken: string; chatId: string } | null {
   return { botToken, chatId };
 }
 
+/** Доставка debug-APK: отдельный чат «ЧЕЛСИ черновик» (TG_APK_CHAT_ID),
+ * fallback — TG_CHAT_ID. null, если нет токена или chat_id. */
+export function getTgApkDeliveryConfig(): { botToken: string; chatId: string } | null {
+  const botToken = process.env.TG_BOT_TOKEN?.trim();
+  const chatId = process.env.TG_APK_CHAT_ID?.trim() || process.env.TG_CHAT_ID?.trim();
+  if (!botToken || !chatId) return null;
+  return { botToken, chatId };
+}
+
 /** Токен Telegram Bot API без привязки к chatId (chat может приходить параметром — мульти-блог). */
 export function getTgBotToken(): string | null {
   return process.env.TG_BOT_TOKEN?.trim() || null;

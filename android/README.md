@@ -105,6 +105,12 @@ The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk` (~17 МБ). I
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
+`versionCode`/`versionName` вычисляются из git (`rev-list --count HEAD`), поэтому
+каждый новый коммит даёт новую версию. Debug-сборки подписываются единым
+`keystore/debug.jks` (см. `keystore/README.md`): APK с сервера и Windows
+обновляют друг друга. Если на телефоне осталась сборка со старой debug-подписью,
+её нужно один раз удалить перед установкой.
+
 In the app, enter the workspace server address — just as you would type a site URL in a browser — and the workspace password, then tap «Войти» (see below).
 
 ## Сервер и вход
