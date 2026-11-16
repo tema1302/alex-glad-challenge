@@ -11,15 +11,28 @@ class BlogSseParserTest {
     private fun drainNews(text: String): Pair<List<BlogStreamEvent.NewsEvent>, String> {
         val buffer = StringBuilder(text)
         val events = mutableListOf<BlogStreamEvent.NewsEvent>()
-        BlogSseParser.drainNews(buffer) { events += it }
+        SseParser.drain(buffer) { payload -> BlogSseParser.parseNews(payload) { events += it } }
         return events to buffer.toString()
     }
 
     private fun drainScout(text: String): Pair<List<BlogStreamEvent.ScoutEvent>, String> {
         val buffer = StringBuilder(text)
         val events = mutableListOf<BlogStreamEvent.ScoutEvent>()
-        BlogSseParser.drainScout(buffer) { events += it }
+        SseParser.drain(buffer) { payload -> BlogSseParser.parseScout(payload) { events += it } }
         return events to buffer.toString()
+    }
+
+    @Test
+    fun `payload от generic sseStream без data-префикса декодируется`() {
+        val events = mutableListOf<BlogStreamEvent.ScoutEvent>()
+        val ok = BlogSseParser.parseScout(
+            "{\"type\":\"done\",\"ranked\":[],\"agents\":[{\"agent\":\"rss\",\"count\":1,\"error\":null}]}",
+        ) { events += it }
+        assertTrue(ok)
+        assertEquals(
+            listOf(BlogStreamEvent.ScoutEvent.Done(emptyList(), listOf(ScoutAgentDto("rss", 1, null)))),
+            events,
+        )
     }
 
     @Test

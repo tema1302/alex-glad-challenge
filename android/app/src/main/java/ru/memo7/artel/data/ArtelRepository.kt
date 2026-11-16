@@ -696,19 +696,16 @@ class ArtelRepository(private val store: CredentialsStore) {
 
     suspend fun blogNews(request: BlogNewsRequest, onEvent: (BlogStreamEvent.NewsEvent) -> Unit): ApiResult<Unit> {
         val body = ApiFactory.json.encodeToString(BlogNewsRequest.serializer(), request)
-        val buffer = StringBuilder()
+        // sseStream отдаёт уже распакованный JSON-payload (SseParser снял `data:`).
         return sseStream("api/blog/news", body) { raw ->
-            buffer.append(raw).append("\n\n")
-            BlogSseParser.drainNews(buffer, onEvent)
+            BlogSseParser.parseNews(raw, onEvent)
         }
     }
 
     suspend fun blogScout(request: BlogScoutRequest, onEvent: (BlogStreamEvent.ScoutEvent) -> Unit): ApiResult<Unit> {
         val body = ApiFactory.json.encodeToString(BlogScoutRequest.serializer(), request)
-        val buffer = StringBuilder()
         return sseStream("api/blog/scout", body) { raw ->
-            buffer.append(raw).append("\n\n")
-            BlogSseParser.drainScout(buffer, onEvent)
+            BlogSseParser.parseScout(raw, onEvent)
         }
     }
 

@@ -1,10 +1,9 @@
-// Feed-based парсеры SSE-стримов POST /api/blog/news и POST /api/blog/scout:
-// безымянные события `data: <JSON>` через `\n\n`, конец потока = закрытие
-// соединения сервером (сентинела [DONE] нет). Структура зеркалит ChatSseParser:
-// [drain] вырезает из буфера все ПОЛНЫЕ блоки, хвост недописанного события
-// остаётся; буфер ожидается в `\n`-нормализованном виде (OkHttp readUtf8Line
-// срезает \r). Битый/чужой payload пропускается молча: стрим не должен ронять
-// экран. Контракт событий — web/app/api/blog/{news,scout}/route.ts.
+// Парсеры SSE-стримов POST /api/blog/news и POST /api/blog/scout.
+// Generic sseStream (ArtelRepository) уже разбирает транспортный SSE через
+// SseParser и отдаёт сюда распакованный JSON-payload (без `data:`); конец
+// потока = закрытие соединения сервером (сентинела [DONE] нет).
+// Битый/чужой payload пропускается молча: стрим не должен ронять экран.
+// Контракт событий — web/app/api/blog/{news,scout}/route.ts.
 package ru.memo7.artel.data.api
 
 import ru.memo7.artel.core.network.ApiFactory
@@ -41,38 +40,26 @@ sealed interface BlogStreamEvent {
     }
 }
 
-/** Парсер буфера SSE для news/scout; вызывается после каждого прочитанного чанка. */
+/**
+ * Парсер payload'ов SSE для news/scout. В отличие от [ChatSseParser], сюда
+ * приходит не сырой блок с `data:`, а уже распакованный JSON из [SseParser]
+ * (generic sseStream отдаёт payload без префикса). Поэтому parser работает
+ * с одной строкой JSON, а не с буфером SSE-блока.
+ */
 object BlogSseParser {
 
-    fun drainNews(buffer: StringBuilder, onEvent: (BlogStreamEvent.NewsEvent) -> Unit) {
-        drainBlocks(buffer) { payload ->
-            decodeNews(payload)?.let(onEvent)
-        }
+    /** true — JSON оказался событием news и был передан в [onEvent]. */
+    fun parseNews(payload: String, onEvent: (BlogStreamEvent.NewsEvent) -> Unit): Boolean {
+        val event = decodeNews(payload) ?: return false
+        onEvent(event)
+        return true
     }
 
-    fun drainScout(buffer: StringBuilder, onEvent: (BlogStreamEvent.ScoutEvent) -> Unit) {
-        drainBlocks(buffer) { payload ->
-            decodeScout(payload)?.let(onEvent)
-        }
-    }
-
-    private fun drainBlocks(buffer: StringBuilder, onPayload: (String) -> Unit) {
-        var index = buffer.indexOf(BLOCK_SEPARATOR)
-        while (index >= 0) {
-            val block = buffer.substring(0, index)
-            buffer.delete(0, index + BLOCK_SEPARATOR.length)
-            eventPayload(block)?.let(onPayload)
-            index = buffer.indexOf(BLOCK_SEPARATOR)
-        }
-    }
-
-    /** `data:`-строки блока, склеенные через `\n` (многострочный JSON валиден). */
-    private fun eventPayload(block: String): String? {
-        val data = block
-            .lineSequence()
-            .filter { it.startsWith("data:") }
-            .joinToString("\n") { it.removePrefix("data:").trim() }
-        return data.ifEmpty { null }
+    /** true — JSON оказался событием scout и был передан в [onEvent]. */
+    fun parseScout(payload: String, onEvent: (BlogStreamEvent.ScoutEvent) -> Unit): Boolean {
+        val event = decodeScout(payload) ?: return false
+        onEvent(event)
+        return true
     }
 
     /** Битый/чужой payload молча пропускается: стрим не должен ронять экран. */
@@ -95,6 +82,4 @@ object BlogSseParser {
             else -> null
         }
     }.getOrNull()
-
-    private const val BLOCK_SEPARATOR = "\n\n"
 }
