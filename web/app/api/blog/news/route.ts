@@ -20,6 +20,7 @@ import {
   runNewsPipeline,
   ProfileManager,
   dataPath,
+  DEFAULT_BLOG_SLUG,
   type BlogRow,
 } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
@@ -70,7 +71,9 @@ export async function POST(req: NextRequest): Promise<Response> {
     });
   }
   // Блог без своих источников не должен молча получить дефолтные футбольные фиды.
-  if (blog && blogSources(blog).length === 0) {
+  // Исключение — блог по умолчанию: blogs.sources=null для него и в core-пайплайне
+  // означает «легаси-дефолтные футбольные фиды» (см. challenge/src/core/agents/pipeline.ts).
+  if (blog && blog.slug !== DEFAULT_BLOG_SLUG && blogSources(blog).length === 0) {
     return new Response(
       JSON.stringify({ error: `У блога «${blog.name}» не настроены RSS-источники — задайте их через PATCH /api/blogs/${blog.slug}` }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
