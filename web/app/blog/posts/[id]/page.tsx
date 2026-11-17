@@ -99,31 +99,54 @@ export default function BlogPostDetailPage() {
       .catch(() => setChannelLabel(null));
   }, []);
 
+  // Актуальный dirty для колбэков ниже (save/publish читают его в deps) и для
+  // асинхронных load()-замыканий: поздняя загрузка не должна затирать правки.
+  const dirty = post !== null && draft !== post.content;
+  dirtyRef.current = dirty;
+
+  // PATCH черновика без guard'ов — общий путь кнопки «Сохранить» и публикации:
+  // publish при несохранённых правках сначала сохраняет текст, чтобы в канал
+  // ушло ровно то, что показано в превью диалога.
+  const saveInternal = useCallback(async () => {
+    const resp = await fetch(`/api/blog/posts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: draft }),
+    });
+    if (!resp.ok) {
+      const j = (await resp.json().catch(() => ({}))) as { error?: string };
+      throw new Error(j.error ?? `HTTP ${resp.status}`);
+    }
+    const data = (await resp.json()) as { post: PostData };
+    setPost(data.post);
+    setDraft(data.post.content);
+    toast('ok', 'Пост сохранён');
+  }, [draft, id, toast]);
+
   const save = useCallback(async () => {
-    if (!post || saving) return;
+    if (!post || saving || !dirty) return;
     setSaving(true);
     try {
-      const resp = await fetch(`/api/blog/posts/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: draft }),
-      });
-      if (!resp.ok) {
-        const j = (await resp.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error ?? `HTTP ${resp.status}`);
-      }
-      const data = (await resp.json()) as { post: PostData };
-      setPost(data.post);
-      setDraft(data.post.content);
-      toast('ok', 'Пост сохранён');
+      await saveInternal();
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось сохранить');
     } finally {
       setSaving(false);
     }
-  }, [post, saving, draft, id, toast]);
+  }, [post, saving, dirty, saveInternal, toast]);
 
   const publish = useCallback(async () => {
+    // Publish-целостность: POST /publish уходит с СОХРАНЁННОЙ версией поста,
+    // а превью диалога показывает текущий draft. При dirty сначала сохраняем —
+    // подтверждение и отправка совпадают слово в слово.
+    if (dirty) {
+      try {
+        await saveInternal();
+      } catch (e) {
+        toast('err', e instanceof Error ? e.message : 'Не удалось сохранить черновик перед публикацией');
+        throw e;
+      }
+    }
     try {
       const resp = await fetch(`/api/blog/posts/${id}/publish`, { method: 'POST' });
       const j = (await resp.json().catch(() => ({}))) as {
@@ -138,7 +161,7 @@ export default function BlogPostDetailPage() {
       toast('err', e instanceof Error ? e.message : 'Ошибка публикации');
       throw e;
     }
-  }, [id, toast, load]);
+  }, [dirty, saveInternal, id, toast, load]);
 
   const del = useCallback(async () => {
     try {
@@ -155,8 +178,6 @@ export default function BlogPostDetailPage() {
     }
   }, [id, router, toast]);
 
-  const dirty = post !== null && draft !== post.content;
-  dirtyRef.current = dirty;
   const overLimit = draft.length > 4096;
 
   return (
@@ -280,6 +301,14 @@ export default function BlogPostDetailPage() {
             <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
               Реальная отправка — сообщение уйдёт подписчикам канала.
             </p>
+            {dirty ? (
+              <p className="text-xs text-warn">
+                Есть несохранённые правки: перед отправкой черновик будет сохранён —
+                в канал уйдёт отредактированный текст (превью выше).
+              </p>
+            ) : (
+              <p className="text-xs text-dim">Уйдёт последняя сохранённая версия.</p>
+            )}
             <pre className="max-h-32 overflow-hidden whitespace-pre-wrap break-words rounded-md border border-line bg-bg p-2 font-mono text-xs leading-relaxed text-dim">
               {tgVisibleText(draft).split('\n').slice(0, 6).join('\n')}
               {tgVisibleText(draft).split('\n').length > 6 ? '\n…' : ''}
