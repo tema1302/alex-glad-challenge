@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { BlogDb, DEFAULT_BLOG_SLUG } from '../db.js';
+import { BlogDb, DEFAULT_BLOG_SLUG, type BlogRow } from '../db.js';
 import { LlmClient } from '../client.js';
 import type { ChatMessage } from '../types.js';
 import { ANTONOV_SYSTEM_PROMPT } from '../stylePreset.js';
@@ -121,7 +121,7 @@ test('pipeline: default-блог — ANTONOV-маркера в writer-промп
 test('pipeline: focus (тема разведки) попадает в ранжирующий промпт NewsFetcher', async () => {
   // Регрессия полного конвейера: фаза news игнорировала тему из scout.
   // 6 кандидатов > topK(5) → NewsFetcher вызывает LLM-ранжирование.
-  const mkNewsDb = (): { dir: string; db: BlogDb; blog: ReturnType<BlogDb['getBlogBySlug']> } => {
+  const mkNewsDb = (): { dir: string; db: BlogDb; blog: BlogRow } => {
     const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-focus-'));
     const db = new BlogDb(path.join(dir, 'blog.sqlite'));
     const stored = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
