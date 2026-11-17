@@ -10,6 +10,7 @@ import path from 'node:path';
 
 import { BlogDb, DEFAULT_BLOG_SLUG, type BlogRow } from '../db.js';
 import { LlmClient } from '../client.js';
+import { ProfileManager } from '../profile.js';
 import type { ChatMessage } from '../types.js';
 import { ANTONOV_SYSTEM_PROMPT } from '../stylePreset.js';
 import { runNewsPipeline, runPostFromNews } from './pipeline.js';
@@ -200,6 +201,67 @@ test('pipeline: focus (тема разведки) попадает в ранжи
   } finally {
     withoutFocus.db.close();
     safeRm(withoutFocus.dir);
+  }
+});
+
+test('pipeline: focus перекрывает тематику профиля (владелец управляет прогоном)', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-focus-override-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const stored = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    for (let i = 0; i < 6; i++) {
+      db.insertNews(
+        {
+          url: `https://example.com/override-${i}`,
+          title: `Кандидат ${i}`,
+          summary: 'Свежая новость.',
+          published_at: new Date().toISOString(),
+          source: 'test',
+        },
+        stored.id,
+      );
+    }
+
+    // Профиль канала — про киберспорт; focus владельца — про футбол.
+    const mgr = new ProfileManager(path.join(dir, 'profiles'));
+    mgr.create('default', { тематика: 'киберспорт: CS2 и мейджоры' });
+    assert.ok(mgr.load('default'), 'профиль должен загрузиться');
+
+    const captured: ChatMessage[][] = [];
+    const client = new LlmClient({ baseUrl: 'http://127.0.0.1:1', apiKey: 'test', defaultModel: 'test' });
+    client.chat = async (messages: ChatMessage[]) => {
+      captured.push(messages);
+      const text = messages.map((m) => m.content).join('\n');
+      if (text.includes('ОТВЕТ: строго JSON-массив')) {
+        return '[{"i":0,"score":9,"why":"важно"}]';
+      }
+      if (text.includes('=== НОВОСТЬ ДЛЯ ПОСТА ===')) {
+        return 'Челси: Готовый пост.\n\n@lookatfacts';
+      }
+      if (text.includes('"verdict"')) {
+        return '{"verdict":"ok","issues":[],"recommendation":"ок"}';
+      }
+      return 'Проверил имена, счёт, даты — расхождений нет.';
+    };
+
+    const topic = 'Палмер забил хет-трик';
+    const result = await runNewsPipeline(db, client, {
+      blog: { ...stored, sources: OFFLINE_SOURCES },
+      profile: mgr,
+      focus: topic,
+    });
+    assert.ok(result.post, 'пост должен быть написан');
+
+    const ranking = captured.find((messages) =>
+      messages.some((m) => m.content.includes('ОТВЕТ: строго JSON-массив')),
+    );
+    assert.ok(ranking, 'вызов ранжирования не найден');
+    const prompt = ranking.map((m) => m.content).join('\n');
+    assert.ok(prompt.includes(topic), 'focus владельца должен победить в промпте');
+    assert.ok(!prompt.includes('киберспорт'), 'тематика профиля не должна утаскивать ранжирование');
+  } finally {
+    db.close();
+    safeRm(dir);
   }
 });
 
