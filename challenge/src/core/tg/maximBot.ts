@@ -9,6 +9,12 @@
 // В остальное время молчит, но отвечает на обращения: реплай на его
 // сообщение, @упоминание, «максим, …» или любое сообщение в личке.
 //
+// Режим письма: `maxim-letter [дни]` (CLI, при остановленном сервисе) шлёт в чат
+// одно длинное мотивационное письмо и уходит в явную тишину на N дней
+// (state.silenceUntil). Явная тишина сильнее релизного календаря: пока она не
+// истекла, scheduler не шлёт напутствий и не капсит, а пересчёт nextNudgeAt
+// откладывается до её конца.
+//
 // Сеть — Bot API через BotApiClient/netFetch (chokepoint), LLM — LlmClient
 // (DeepSeek приоритетно, env DEEPSEEK_API_KEY). Состояние (offset, температура,
 // pending-напутствие, участники) — JSON в .data/maxim-bot.json, атомарная
@@ -271,7 +277,73 @@ async function generateNudge(
   return FALLBACK_NUDGES[Math.floor(rng() * FALLBACK_NUDGES.length)];
 }
 
-// --- Диалог: заботливый QA Lead, который временами вспыхивает ---
+// --- Письмо и явная тишина ---
+
+/** Тишина после письма по умолчанию: три недели. */
+export const DEFAULT_SILENCE_DAYS = 21;
+export const MAX_SILENCE_DAYS = 365;
+
+/**
+ * Дни тишины из аргумента: пусто → DEFAULT_SILENCE_DAYS, целое 1..365,
+ * всё остальное — null (команда не выполняется).
+ */
+export function parseSilenceDays(arg: string): number | null {
+  const raw = arg.trim();
+  if (!raw) return DEFAULT_SILENCE_DAYS;
+  if (!/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_SILENCE_DAYS) return null;
+  return n;
+}
+
+/** Момент, до которого бот молчит: now + days. */
+export function silenceUntil(nowMs: number, days: number): number {
+  return nowMs + days * DAY_MS;
+}
+
+/** true, если явная тишина ещё не истекла. 0 — тишины нет. */
+export function isSilenced(nowMs: number, silenceUntilMs: number): boolean {
+  return silenceUntilMs > 0 && nowMs < silenceUntilMs;
+}
+
+const WEEK_WORDS: readonly string[] = ['неделю', 'две недели', 'три недели', 'четыре недели'];
+
+/** Срок тишины словами: кратные недели — «три недели», иначе «21 день». */
+export function silencePhrase(days: number): string {
+  if (days % 7 === 0 && days / 7 <= WEEK_WORDS.length) return WEEK_WORDS[days / 7 - 1];
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  const unit =
+    mod10 === 1 && mod100 !== 11
+      ? 'день'
+      : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)
+        ? 'дня'
+        : 'дней';
+  return `${days} ${unit}`;
+}
+
+/**
+ * Письмо-напутствие: развёрнутый текст в голосе Максима (без LLM — письмо
+ * одноразовое, факты и просьбы в нём важнее вариативности). Срок тишины
+ * подставляется из аргумента.
+ */
+export function buildLetter(days: number): string {
+  return [
+    'ребята, коротко и по делу.',
+    '',
+    'сегодня регресс. это день, когда вылезает всё, что мы месяц откладывали: те самые херовы краевые случаи, кривые миграции и «у меня на локалке работало». поэтому, пожалуйста, внимательнее. прогоняйте по чек-листу, а не по памяти, и на чистом стенде, а не на своём. если что-то кажется странным — сразу говорите: лучше поймать у себя, чем объясняться с пользователями.',
+    '',
+    'вы не первый день в этом, я в вас верю. но сегодня вера не заменяет внимательность.',
+    '',
+    `всё, ухожу в тишину на ${silencePhrase(days)}. сам писать не буду, разберётесь без меня. если совсем припечёт — тегните, отвечу.`,
+    '',
+    'не подведите.',
+    '',
+    'максим артемьевич',
+  ].join('\n');
+}
+
+
 
 const DIALOG_SYSTEM = [
   'Ты — Максим Артемьевич, QA Lead команды front-back. Тебе пишут в рабочем чате —',
@@ -344,6 +416,8 @@ interface MaximState {
   offset: number;
   temperature: number;
   nextNudgeAt: number;
+  /** Явная тишина после письма (0 — нет); сильнее релизного календаря. */
+  silenceUntil: number;
   pending: PendingNudge | null;
   participants: Participant[];
 }
@@ -358,6 +432,7 @@ function defaultState(cfg: MaximBotConfig): MaximState {
     offset: 0,
     temperature: cfg.temperature,
     nextNudgeAt: 0,
+    silenceUntil: 0,
     pending: null,
     participants: [],
   };
@@ -379,6 +454,7 @@ class MaximStateStore {
         offset: raw.offset,
         temperature: typeof raw.temperature === 'number' ? raw.temperature : 1.0,
         nextNudgeAt: typeof raw.nextNudgeAt === 'number' ? raw.nextNudgeAt : 0,
+        silenceUntil: typeof raw.silenceUntil === 'number' ? raw.silenceUntil : 0,
         pending: raw.pending ?? null,
         participants: Array.isArray(raw.participants)
           ? raw.participants.map((p) => ({
@@ -435,6 +511,34 @@ class MaximStateStore {
 
 // --- Рантайм ---
 
+/** Результат одного письма: id сообщения и момент конца тишины. */
+export interface MaximLetterResult {
+  readonly messageId: number | null;
+  readonly silenceUntil: number;
+}
+
+/**
+ * Однократное письмо в рабочий чат + явная тишина на `days` дней.
+ * Запускать при ОСТАНОВЛЕННОМ сервисе: живой процесс держит state в памяти и
+ * перезапишет silenceUntil на следующем апдейте.
+ */
+export async function sendMaximLetterOnce(days: number): Promise<MaximLetterResult> {
+  const cfg = getMaximBotConfig();
+  if (!cfg) throw new Error('MAXIM_BOT_TOKEN не задан (см. .env.example).');
+  if (!cfg.chatId) {
+    throw new Error('MAXIM_CHAT_ID пуст — письму некуда идти (fail-closed).');
+  }
+  const api = new BotApiClient(cfg.botToken);
+  const store = new MaximStateStore(cfg);
+  const st = store.state;
+  const until = silenceUntil(Date.now(), days);
+  const messageId = await api.sendMessage(cfg.chatId, buildLetter(days));
+  st.pending = null;
+  st.silenceUntil = until;
+  store.save();
+  return { messageId, silenceUntil: until };
+}
+
 function sleepMs(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -482,13 +586,20 @@ export async function runMaximBot(): Promise<void> {
   const store = new MaximStateStore(cfg);
   const st = store.state;
 
-  // Миграция расписания: сохранённый nextNudgeAt, не попадающий на релизный
-  // день (остаток старой схемы «раз в N дней»), пересчитываем по календарю.
-  if (
-    st.nextNudgeAt <= 0 ||
-    !isReleaseDay(new Date(st.nextNudgeAt), cfg.releaseEpoch, cfg.releasePeriodDays)
-  ) {
-    st.nextNudgeAt = computeNextNudgeAt(new Date(), cfg);
+  // Явная тишина после письма: пока она идёт, календарь не трогаем — иначе
+  // миграция вернула бы ближайший релизный день и бот заговорил бы раньше срока.
+  if (isSilenced(Date.now(), st.silenceUntil)) {
+    // nextNudgeAt пересчитается, когда тишина закончится (scheduler).
+  } else {
+    st.silenceUntil = 0;
+    // Миграция расписания: сохранённый nextNudgeAt, не попадающий на релизный
+    // день (остаток старой схемы «раз в N дней»), пересчитываем по календарю.
+    if (
+      st.nextNudgeAt <= 0 ||
+      !isReleaseDay(new Date(st.nextNudgeAt), cfg.releaseEpoch, cfg.releasePeriodDays)
+    ) {
+      st.nextNudgeAt = computeNextNudgeAt(new Date(), cfg);
+    }
   }
   // Рестарт: протухший pending (старше 10 мин) не эскалируем — непонятно,
   // отвечали ли, пока бот лежал. Свежий — доживает до тика планировщика.
@@ -498,7 +609,9 @@ export async function runMaximBot(): Promise<void> {
   store.save();
   console.error(
     `[maxim-bot] температура ${st.temperature}, капс через ${cfg.capsDelaySec} с, ` +
-      `следующее напутствие ${new Date(st.nextNudgeAt).toISOString()}`,
+      (isSilenced(Date.now(), st.silenceUntil)
+        ? `тишина до ${new Date(st.silenceUntil).toISOString()}`
+        : `следующее напутствие ${new Date(st.nextNudgeAt).toISOString()}`),
   );
 
   let lastSayAt = 0;
@@ -541,6 +654,17 @@ export async function runMaximBot(): Promise<void> {
     void (async () => {
       try {
         const now = Date.now();
+        if (isSilenced(now, st.silenceUntil)) return;
+        if (st.silenceUntil > 0) {
+          // Тишина закончилась — дальше живём по релизному календарю от сейчас.
+          st.silenceUntil = 0;
+          st.nextNudgeAt = computeNextNudgeAt(new Date(now), cfg);
+          store.save();
+          console.error(
+            `[maxim-bot] тишина закончилась, следующее напутствие ` +
+              new Date(st.nextNudgeAt).toISOString(),
+          );
+        }
         if (st.pending && now - st.pending.sentAt >= cfg.capsDelaySec * 1000) {
           await sendCaps();
         } else if (!st.pending && now >= st.nextNudgeAt) {
@@ -591,16 +715,19 @@ export async function runMaximBot(): Promise<void> {
         }
       } else {
         const release = isReleaseDay(new Date(), cfg.releaseEpoch, cfg.releasePeriodDays);
-        await api.sendMessage(
-          chatKey,
-          [
-            `день: ${release ? 'релизный, сегодня скажу своё слово' : 'обычный, молчу до релиза'}`,
-            `температура: ${st.temperature}`,
-            st.pending
-              ? 'жду реакции на своё сообщение'
-              : `следующее напутствие: ${new Date(st.nextNudgeAt).toLocaleString('ru-RU')}`,
-          ].join('\n'),
+        const lines = [
+          `день: ${release ? 'релизный, сегодня скажу своё слово' : 'обычный, молчу до релиза'}`,
+          `температура: ${st.temperature}`,
+        ];
+        if (isSilenced(Date.now(), st.silenceUntil)) {
+          lines.push(`тишина до: ${new Date(st.silenceUntil).toLocaleString('ru-RU')}`);
+        }
+        lines.push(
+          st.pending
+            ? 'жду реакции на своё сообщение'
+            : `следующее напутствие: ${new Date(st.nextNudgeAt).toLocaleString('ru-RU')}`,
         );
+        await api.sendMessage(chatKey, lines.join('\n'));
       }
       store.save();
       return;

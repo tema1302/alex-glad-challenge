@@ -11,6 +11,12 @@ import {
   stripAddress,
   pickMood,
   pickPingCandidates,
+  parseSilenceDays,
+  silenceUntil,
+  isSilenced,
+  silencePhrase,
+  buildLetter,
+  DEFAULT_SILENCE_DAYS,
 } from './maximBot.js';
 
 const EPOCH = '2026-10-06'; // релиз 41
@@ -196,4 +202,49 @@ test('pickPingCandidates: никогда не пингованные (lastPinged
     pickPingCandidates(list, 999, 2).map((p) => p.username),
     ['b', 'c'],
   );
+});
+
+test('parseSilenceDays: пусто → три недели, целое 1–365, мусор — null', () => {
+  assert.equal(parseSilenceDays(''), DEFAULT_SILENCE_DAYS);
+  assert.equal(parseSilenceDays('   '), DEFAULT_SILENCE_DAYS);
+  assert.equal(parseSilenceDays('21'), 21);
+  assert.equal(parseSilenceDays(' 7 '), 7);
+  assert.equal(parseSilenceDays('1'), 1);
+  assert.equal(parseSilenceDays('365'), 365);
+  assert.equal(parseSilenceDays('0'), null);
+  assert.equal(parseSilenceDays('366'), null);
+  assert.equal(parseSilenceDays('-1'), null);
+  assert.equal(parseSilenceDays('1.5'), null);
+  assert.equal(parseSilenceDays('три'), null);
+});
+
+test('silenceUntil/isSilenced: границы тишины', () => {
+  const now = 1_000_000;
+  const until = silenceUntil(now, 21);
+  assert.equal(until, now + 21 * 24 * 60 * 60 * 1000);
+  assert.equal(isSilenced(now, until), true);
+  assert.equal(isSilenced(until - 1, until), true);
+  assert.equal(isSilenced(until, until), false); // ровно в срок — уже не молчим
+  assert.equal(isSilenced(until + 1, until), false);
+  assert.equal(isSilenced(now, 0), false); // тишины нет
+});
+
+test('silencePhrase: недели словами, остальное — днями', () => {
+  assert.equal(silencePhrase(7), 'неделю');
+  assert.equal(silencePhrase(14), 'две недели');
+  assert.equal(silencePhrase(21), 'три недели');
+  assert.equal(silencePhrase(28), 'четыре недели');
+  assert.equal(silencePhrase(1), '1 день');
+  assert.equal(silencePhrase(10), '10 дней');
+  assert.equal(silencePhrase(11), '11 дней');
+  assert.equal(silencePhrase(22), '22 дня');
+});
+
+test('buildLetter: регресс, просьба быть внимательнее и срок тишины', () => {
+  const letter = buildLetter(21);
+  assert.match(letter, /сегодня регресс/);
+  assert.match(letter, /внимательнее/);
+  assert.match(letter, /ухожу в тишину на три недели/);
+  assert.match(letter, /максим артемьевич$/);
+  assert.equal(buildLetter(10).includes('тишину на 10 дней'), true);
 });
