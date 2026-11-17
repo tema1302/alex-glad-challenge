@@ -652,7 +652,10 @@ export function BlogDetail({ slug }: { slug: string }) {
               <ul className="space-y-2 text-xs">
                 {runs.slice(0, 5).map((r) => (
                   <li key={r.id} className="flex flex-wrap items-center gap-2">
-                    <Badge tone={r.status === 'success' ? 'ok' : 'err'}>{r.status}</Badge>
+                    {/* running ≠ ошибка: «выполняется» — нейтрально, как в /automation. */}
+                    <Badge tone={r.status === 'success' ? 'ok' : r.status === 'error' ? 'err' : 'dim'}>
+                      {r.status}
+                    </Badge>
                     <span className="text-dim">{r.startedAt}</span>
                     <span>попыток: {r.attempts}</span>
                     <span className="text-dim">{r.message}</span>
