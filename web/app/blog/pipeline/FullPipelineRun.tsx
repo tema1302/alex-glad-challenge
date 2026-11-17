@@ -133,10 +133,11 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
 
       // Фаза 2 — news: сбор+ранжирование → агент-автор → фактчекер.
       // Тема из фазы 1 направляет ранжирование: топ-тема scout (урезана до
-      // лимита схемы 200), fallback — сам запрос владелька. Без темы news
-      // ранжирует свежие RSS по хайпу (легаси-режим формы /blog/news).
+      // лимита схемы 200), fallback — сам запрос владельца (урезан до 200: scout
+      // допускает 500, news — 200, длинный запрос ронял бы фазу 400).
+      // Без темы news ранжирует свежие RSS по хайпу (легаси-режим формы /blog/news).
       const newsTopic =
-        scDone.ranked[0]?.title.slice(0, 200)?.trim() || (query.trim() || undefined);
+        scDone.ranked[0]?.title.slice(0, 200).trim() || (query.trim().slice(0, 200) || undefined);
       setTopic(newsTopic ?? null);
       setPhase('news');
       const newsEvents: SseBlogNewsEvent[] = [];

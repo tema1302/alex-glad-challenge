@@ -109,4 +109,31 @@ describe('FullPipelineRun: тема разведки → новостная фа
     expect(newsBodies).toHaveLength(1);
     expect(newsBodies[0]).toMatchObject({ topic: 'самые горячие футбольные новости' });
   });
+
+  it('длинный запрос обрезается до лимита схемы topic (200), конвейер не падает 400', async () => {
+    const newsBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/blog/scout') return scoutDone([]);
+      if (url === '/api/blog/news') {
+        newsBodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return newsDone();
+      }
+      return new Response('{}', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const longQuery = 'ф'.repeat(250);
+    render(<FullPipelineRun sandbox={false} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Запрос для разведки/), longQuery);
+    await user.click(screen.getByRole('button', { name: 'Запустить весь конвейер' }));
+
+    await screen.findByText(/готово/);
+
+    expect(newsBodies).toHaveLength(1);
+    const topic = (newsBodies[0] as { topic?: string }).topic;
+    expect(topic).toHaveLength(200);
+    expect(topic).toBe('ф'.repeat(200));
+  });
 });
