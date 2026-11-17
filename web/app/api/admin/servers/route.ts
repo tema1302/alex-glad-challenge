@@ -31,6 +31,8 @@ export async function GET(): Promise<Response> {
     embed: keys.embed,
     mtproto: keys.mtproto,
     botApi: keys.botApi,
+    apkChat: keys.apkChat,
+    mediumBot: keys.mediumBot,
     activeModel: keys.activeModel,
     activeProvider: keys.activeProvider,
   });

@@ -14,6 +14,8 @@ import {
   getEmbedConfig,
   getTgScanConfig,
   getTgBotConfig,
+  getTgApkDeliveryConfig,
+  getTgBotRuntimeConfig,
   getGoogleCalendarConfig,
 } from '@challenge/core/env';
 
@@ -44,6 +46,12 @@ export interface KeysStatus {
   /** Bot API (публикация/уведомления): configured + маскированная метка канала
    *  для confirm-диалогов (-100…7890). Полные значения NEVER. */
   botApi: { configured: boolean; channelLabel: string | null };
+  /** Чат «ЧЕЛСИ черновик» (TG_APK_CHAT_ID, fallback TG_CHAT_ID): только флаг
+   *  и маскированная метка — полный chat_id наружу не отдаётся. */
+  apkChat: { configured: boolean; channelLabel: string | null };
+  /** Рантайм-бот «Медиум» (TG_BOT_*): только флаги и счётчики, без токена.
+   *  configured = токен + непустой allow-list (fail-closed, как в tg-bot). */
+  mediumBot: { configured: boolean; allowChats: number; ownerConfigured: boolean };
   /** Активная модель для dashboard: cloud приоритет, иначе local. null если ничего. */
   activeModel: string | null;
   activeProvider: string | null;
@@ -92,6 +100,17 @@ export function getKeysStatus(): KeysStatus {
     configured: botCfg !== null,
     channelLabel: botCfg ? maskChannelId(botCfg.chatId) : null,
   };
+  const apkCfg = getTgApkDeliveryConfig();
+  const apkChat = {
+    configured: apkCfg !== null,
+    channelLabel: apkCfg ? maskChannelId(apkCfg.chatId) : null,
+  };
+  const mediumCfg = getTgBotRuntimeConfig();
+  const mediumBot = {
+    configured: mediumCfg !== null && mediumCfg.allowChats.size > 0,
+    allowChats: mediumCfg?.allowChats.size ?? 0,
+    ownerConfigured: Boolean(mediumCfg?.ownerChatId),
+  };
 
   return {
     cloud,
@@ -99,6 +118,8 @@ export function getKeysStatus(): KeysStatus {
     embed,
     mtproto,
     botApi,
+    apkChat,
+    mediumBot,
     activeModel: cloud.model ?? local.model ?? null,
     activeProvider: cloud.provider ?? (local.configured ? 'Local LLM' : null),
   };

@@ -16,6 +16,8 @@ interface SettingsView {
   mcpUrl: { configured: boolean; host: string | null };
   cloud: { configured: boolean; provider?: string; model?: string };
   localLlm: { configured: boolean; model?: string };
+  apkChat: { configured: boolean; channelLabel: string | null };
+  mediumBot: { configured: boolean; allowChats: number; ownerConfigured: boolean };
   modelPref: 'local' | 'cloud' | null;
 }
 
@@ -116,6 +118,26 @@ export default function SettingsPage() {
                     {data.mcpUrl.host}
                   </span>
                 )}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-dim">Чат «ЧЕЛСИ черновик»</dt>
+              <dd className="flex items-center gap-2">
+                <StatusDot status={data.apkChat.configured ? 'ok' : 'warn'} label="" />
+                <span className="font-mono text-xs text-dim">
+                  {data.apkChat.channelLabel ?? 'TG_APK_CHAT_ID / TG_CHAT_ID'}
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-dim">Бот «Медиум»</dt>
+              <dd className="flex items-center gap-2">
+                <StatusDot status={data.mediumBot.configured ? 'ok' : 'warn'} label="" />
+                <span className="text-ink">
+                  {data.mediumBot.configured
+                    ? `allow-list: ${data.mediumBot.allowChats} · owner: ${data.mediumBot.ownerConfigured ? 'да' : 'нет'}`
+                    : 'не настроен'}
+                </span>
               </dd>
             </div>
           </dl>

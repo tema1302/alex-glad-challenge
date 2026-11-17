@@ -261,6 +261,8 @@ describe('POST /api/demo/rag', () => {
       embed: { configured: true, model: 'test-embed' },
       mtproto: { configured: false },
       botApi: { configured: false, channelLabel: null },
+      apkChat: { configured: false, channelLabel: null },
+      mediumBot: { configured: false, allowChats: 0, ownerConfigured: false },
       activeModel: null,
       activeProvider: null,
     });

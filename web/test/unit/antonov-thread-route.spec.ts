@@ -191,6 +191,8 @@ describe('POST /api/antonov/thread', () => {
       embed: { configured: true, model: 'test-embed' },
       mtproto: { configured: false },
       botApi: { configured: false, channelLabel: null },
+      apkChat: { configured: false, channelLabel: null },
+      mediumBot: { configured: false, allowChats: 0, ownerConfigured: false },
       activeModel: 'test-model',
       activeProvider: 'DeepSeek',
     });
@@ -231,6 +233,8 @@ describe('POST /api/antonov/thread', () => {
       embed: { configured: true, model: 'test-embed' },
       mtproto: { configured: false },
       botApi: { configured: false, channelLabel: null },
+      apkChat: { configured: false, channelLabel: null },
+      mediumBot: { configured: false, allowChats: 0, ownerConfigured: false },
       activeModel: null,
       activeProvider: null,
     });

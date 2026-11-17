@@ -16,7 +16,9 @@ interface ServerStatuses {
   local: { configured: boolean; model?: string };
   embed: { configured: boolean; model?: string };
   mtproto: { configured: boolean };
-  botApi: { configured: boolean };
+  botApi: { configured: boolean; channelLabel?: string | null };
+  apkChat: { configured: boolean; channelLabel: string | null };
+  mediumBot: { configured: boolean; allowChats: number; ownerConfigured: boolean };
   activeModel: string | null;
   activeProvider: string | null;
 }
@@ -91,6 +93,22 @@ export default function ServersPage() {
             <Card label="Bot API (публикация)">
               <StatusDot status={data.botApi.configured ? 'ok' : 'off'} />
               <div className="font-mono text-xs text-dim">Отправка в канал</div>
+            </Card>
+
+            <Card label="Чат «ЧЕЛСИ черновик»">
+              <StatusDot status={data.apkChat.configured ? 'ok' : 'off'} />
+              <div className="font-mono text-xs text-dim">
+                {data.apkChat.channelLabel ?? 'TG_APK_CHAT_ID / TG_CHAT_ID'}
+              </div>
+              <div className="font-mono text-xs text-dim">доставка debug-APK</div>
+            </Card>
+
+            <Card label="Бот «Медиум»">
+              <StatusDot status={data.mediumBot.configured ? 'ok' : 'off'} />
+              <div className="font-mono text-xs text-dim">
+                allow-list: {data.mediumBot.allowChats} · owner: {data.mediumBot.ownerConfigured ? 'да' : 'нет'}
+              </div>
+              <div className="font-mono text-xs text-dim">TG_BOT_* (tg-bot)</div>
             </Card>
 
             <Card label="Активная модель">
