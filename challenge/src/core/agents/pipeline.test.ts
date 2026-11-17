@@ -118,6 +118,91 @@ test('pipeline: default-блог — ANTONOV-маркера в writer-промп
   }
 });
 
+test('pipeline: focus (тема разведки) попадает в ранжирующий промпт NewsFetcher', async () => {
+  // Регрессия полного конвейера: фаза news игнорировала тему из scout.
+  // 6 кандидатов > topK(5) → NewsFetcher вызывает LLM-ранжирование.
+  const mkNewsDb = (): { dir: string; db: BlogDb; blog: ReturnType<BlogDb['getBlogBySlug']> } => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-focus-'));
+    const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+    const stored = db.getBlogBySlug(DEFAULT_BLOG_SLUG)!;
+    for (let i = 0; i < 6; i++) {
+      db.insertNews(
+        {
+          url: `https://example.com/focus-${i}`,
+          title: `Кандидат ${i}`,
+          summary: 'Свежая новость.',
+          published_at: new Date().toISOString(),
+          source: 'test',
+        },
+        stored.id,
+      );
+    }
+    return { dir, db, blog: { ...stored, sources: OFFLINE_SOURCES } };
+  };
+
+  // Fake как fakeClient + ветка ранжирования: валидный JSON-picks.
+  const rankingClient = (captured: ChatMessage[][]): LlmClient => {
+    const client = new LlmClient({ baseUrl: 'http://127.0.0.1:1', apiKey: 'test', defaultModel: 'test' });
+    client.chat = async (messages: ChatMessage[]) => {
+      captured.push(messages);
+      const text = messages.map((m) => m.content).join('\n');
+      if (text.includes('ОТВЕТ: строго JSON-массив')) {
+        return '[{"i":0,"score":9,"why":"важно"}]';
+      }
+      if (text.includes('=== НОВОСТЬ ДЛЯ ПОСТА ===')) {
+        return 'Челси: Готовый пост.\n\n@lookatfacts';
+      }
+      if (text.includes('"verdict"')) {
+        return '{"verdict":"ok","issues":[],"recommendation":"ок"}';
+      }
+      return 'Проверил имена, счёт, даты — расхождений нет.';
+    };
+    return client;
+  };
+
+  const rankingPrompt = (captured: ChatMessage[][]): string => {
+    const call = captured.find((messages) =>
+      messages.some((m) => m.content.includes('ОТВЕТ: строго JSON-массив')),
+    );
+    assert.ok(call, 'вызов ранжирования не найден среди LLM-вызовов');
+    return call.map((m) => m.content).join('\n');
+  };
+
+  const topic = 'Палмер забил хет-трик';
+
+  const withFocus = mkNewsDb();
+  try {
+    const captured: ChatMessage[][] = [];
+    const result = await runNewsPipeline(withFocus.db, rankingClient(captured), {
+      blog: withFocus.blog,
+      focus: topic,
+    });
+    assert.ok(result.post, 'пост должен быть написан');
+    assert.ok(
+      rankingPrompt(captured).includes(topic),
+      'тема из focus должна направлять ранжирование',
+    );
+  } finally {
+    withFocus.db.close();
+    safeRm(withFocus.dir);
+  }
+
+  const withoutFocus = mkNewsDb();
+  try {
+    const captured: ChatMessage[][] = [];
+    const result = await runNewsPipeline(withoutFocus.db, rankingClient(captured), {
+      blog: withoutFocus.blog,
+    });
+    assert.ok(result.post, 'пост должен быть написан');
+    const prompt = rankingPrompt(captured);
+    assert.ok(!prompt.includes(topic), 'без focus тема не должна попадать в промпт');
+    assert.ok(prompt.includes('Челси'), 'без focus действует дефолтный приоритет');
+  } finally {
+    withoutFocus.db.close();
+    safeRm(withoutFocus.dir);
+  }
+});
+
 test('postFromNews: пишет пост по выбранной новости и помечает её used', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'pipeline-from-news-'));
   const db = new BlogDb(path.join(dir, 'blog.sqlite'));

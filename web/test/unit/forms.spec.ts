@@ -41,6 +41,15 @@ describe('newsOptsSchema / scoutOptsSchema', () => {
     expect(scoutOptsSchema.safeParse({ topK: 3, llm: 'cloud' }).success).toBe(true);
     expect(scoutOptsSchema.safeParse({ llm: 'gpt5' }).success).toBe(false);
   });
+
+  it('topic: опционален, тримится, пустой/длинный отклоняются', () => {
+    expect(newsOptsSchema.safeParse({ topic: '  Палмер и хет-трик ' }).success).toBe(true);
+    expect(newsOptsSchema.parse({ topic: '  Палмер и хет-трик ' }).topic).toBe('Палмер и хет-трик');
+    expect(newsOptsSchema.safeParse({ topic: '   ' }).success).toBe(false);
+    expect(newsOptsSchema.safeParse({ topic: 'а'.repeat(201) }).success).toBe(false);
+    expect(newsOptsSchema.safeParse({ topic: 'а'.repeat(200) }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({}).success).toBe(true);
+  });
 });
 
 describe('ragQuerySchema', () => {

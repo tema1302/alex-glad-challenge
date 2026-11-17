@@ -23,6 +23,8 @@ vi.mock('../../lib/server/challenge', () => ({
   DEFAULT_BLOG_SLUG: 'lookatfacts',
   dataPath: vi.fn((p: string) => p),
   runNewsPipeline: mocks.runNewsPipeline,
+  // Pass-through: трим уже сделан zod-схемой; поведение clean() покрыто core-тестами.
+  clean: vi.fn((s: string) => s),
   ProfileManager: class {
     load = vi.fn(() => true);
     list = vi.fn(() => ['default']);
@@ -99,5 +101,18 @@ describe('POST /api/blog/news', () => {
       error: expect.stringContaining('не настроены RSS-источники'),
     });
     expect(mocks.runNewsPipeline).not.toHaveBeenCalled();
+  });
+
+  it('topic уходит в pipeline как focus (полный конвейер: тема разведки → news)', async () => {
+    mocks.getBlogBySlug.mockReturnValue(blog());
+
+    const res = await POST(req({ hours: 24, top: 5, blog: 'lookatfacts', topic: '  Трансфер Палмера  ' }));
+
+    expect(res.status).toBe(200);
+    expect(mocks.runNewsPipeline).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ focus: 'Трансфер Палмера' }),
+    );
   });
 });

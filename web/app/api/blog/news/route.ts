@@ -21,6 +21,7 @@ import {
   ProfileManager,
   dataPath,
   DEFAULT_BLOG_SLUG,
+  clean,
   type BlogRow,
 } from '../../../../lib/server/challenge';
 import { safeMessage } from '../../../../lib/server/safe-message';
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }
-  const { hours, top, forIndex, llm = 'cloud', blog: blogRef } = parsed.data;
+  const { hours, top, forIndex, llm = 'cloud', blog: blogRef, topic } = parsed.data;
 
   // Мульти-блог: blog задан → источники/профиль/штамп этого блога; не задан →
   // легаси-режим (дефолтные фиды, профиль default|первый) для старых вызовов.
@@ -107,12 +108,15 @@ export async function POST(req: NextRequest): Promise<Response> {
         // withDb удерживает mutex на весь pipeline (sync DatabaseSync-вызовы + LLM).
         // Для 1-юзер локально приемлемо (R4, план §6) — то же, что в /api/rag/query.
         // id вставленного поста — через recentPosts(1) внутри той же блокировки (гонки нет).
+        // topic (тема разведки из полного конвейера) — пользовательский ввод →
+        // промпт: санитизация clean() на границе (§5.3), до core-пайплайна.
         const { result, postId } = await withDb(async () => {
           const r = await runNewsPipeline(getBlogDb(), client, {
             maxAgeHours: hours,
             topK: top,
             writeForIndex: forIndex,
             profile,
+            ...(topic ? { focus: clean(topic, 200) } : {}),
             ...(blog ? { blog } : {}),
             signal: req.signal,
           });

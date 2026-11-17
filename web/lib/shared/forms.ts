@@ -169,6 +169,9 @@ export const newsOptsSchema = z.object({
   forIndex: z.coerce.number().int().min(0).optional(),
   llm: z.enum(['local', 'cloud']).optional(),
   blog: z.string().trim().min(1).max(100).optional(),
+  // Тема для ранжирования (полный конвейер: тема разведки scout → news).
+  // Пользовательский ввод → промпт: роут санитизирует clean() до передачи в core.
+  topic: z.string().trim().min(1).max(200).optional(),
 });
 export type NewsOptsInput = z.infer<typeof newsOptsSchema>;
 

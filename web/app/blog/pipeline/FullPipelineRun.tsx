@@ -93,12 +93,15 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
   const [llm, setLlm] = useState<Llm>('cloud');
   const [scout, setScout] = useState<SseBlogScoutDone | null>(null);
   const [news, setNews] = useState<SseBlogNewsDone | null>(null);
+  /** Тема, переданная в фазу news (топ scout либо запрос); null — легаси-ранжирование. */
+  const [topic, setTopic] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const run = useCallback(async () => {
     setScout(null);
     setNews(null);
+    setTopic(null);
     setError(null);
     setRunning(true);
     const ac = new AbortController();
@@ -129,8 +132,12 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
       setScout(scDone);
 
       // Фаза 2 — news: сбор+ранжирование → агент-автор → фактчекер.
-      // Тема из фазы 1 сюда НЕ передаётся: newsOptsSchema её не принимает (shared/forms),
-      // поэтому news сам ранжирует свежие RSS и пишет про самый хайповый пункт (forIndex=0).
+      // Тема из фазы 1 направляет ранжирование: топ-тема scout (урезана до
+      // лимита схемы 200), fallback — сам запрос владелька. Без темы news
+      // ранжирует свежие RSS по хайпу (легаси-режим формы /blog/news).
+      const newsTopic =
+        scDone.ranked[0]?.title.slice(0, 200)?.trim() || (query.trim() || undefined);
+      setTopic(newsTopic ?? null);
       setPhase('news');
       const newsEvents: SseBlogNewsEvent[] = [];
       await postSse<SseBlogNewsEvent>(
@@ -140,6 +147,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
           top: RUN_DEFAULTS.newsTop,
           forIndex: 0,
           llm,
+          ...(newsTopic ? { topic: newsTopic } : {}),
         },
         ac.signal,
         (ev) => {
@@ -284,6 +292,11 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
               <div className="min-w-[200px] flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
                   <strong className="text-ink">Новостной конвейер (fetch → write → factcheck)</strong>
+                  {topic && (
+                    <span className="text-xs text-dim">
+                      пишем про: <span className="text-ink">{topic}</span>
+                    </span>
+                  )}
                   {running && phase === 'news' && (
                     <span className="flex items-center gap-1 font-mono text-xs text-dim">
                       <span

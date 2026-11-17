@@ -44,6 +44,10 @@ export async function runNewsPipeline(
     writeForIndex?: number;
     profile?: ProfileManager;
     blog?: BlogRow;
+    /** Приоритет ранжирования NewsFetcher. Задаётся владельцем (полный
+     *  конвейер: тема из scout) — перекрывает тематику профиля. Tainted-текст
+     *  санитизируется на границе вызова (web route: clean), тут — как есть. */
+    focus?: string;
     signal?: AbortSignal;
     /** Прогресс в sink вызова (CLI/REPL = console.log). Default — тишина:
      * пайплайн гоняется и из web/automationRun, шуметь в их stdout нельзя (§8.2). */
@@ -87,7 +91,7 @@ export async function runNewsPipeline(
     maxAgeHours,
     topK,
     blogId: blog?.id,
-    focus: profileActive?.тематика,
+    focus: opts.focus ?? profileActive?.тематика,
   });
   log(`[pipeline] Агент 1: кандидатов ${news.rawCount}, выбрано ${news.ranked.length}`);
   if (news.ranked.length === 0) {

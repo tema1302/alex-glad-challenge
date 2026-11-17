@@ -1,0 +1,112 @@
+// @vitest-environment jsdom
+// UI-сценарий связности полного конвейера (blog-блок, аудит 2026-11-17):
+// «Полный конвейер — один прогон» обещает связный прогон, но фаза news
+// игнорировала результат scout. Контракт после фикса: топ-тема разведки
+// передаётся в POST /api/blog/news как topic (fallback — сам запрос), и фаза 2
+// честно показывает, про что пишет агент.
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import { FullPipelineRun } from '../../app/blog/pipeline/FullPipelineRun';
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+function sse(events: unknown[]): Response {
+  return new Response(events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join(''), {
+    status: 200,
+    headers: { 'content-type': 'text/event-stream' },
+  });
+}
+
+const SCOUT_TOPIC = 'Трансфер Палмера в Челси подтверждён';
+
+function scoutDone(ranked: unknown[]): Response {
+  return sse([
+    { type: 'stage', step: 'start' },
+    {
+      type: 'done',
+      ranked,
+      agents: [{ agent: 'forum', count: ranked.length, error: null }],
+    },
+  ]);
+}
+
+function newsDone(): Response {
+  return sse([
+    { type: 'stage', step: 'start' },
+    {
+      type: 'done',
+      post: { id: 11, content: 'Готовый пост по теме.' },
+      topNews: [],
+      verdict: 'ok',
+    },
+  ]);
+}
+
+describe('FullPipelineRun: тема разведки → новостная фаза', () => {
+  it('топ-тема scout уходит в /api/blog/news как topic и видна в фазе 2', async () => {
+    const newsBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/blog/scout') {
+        return scoutDone([
+          {
+            title: SCOUT_TOPIC,
+            source: 'forum',
+            hypeScore: 9,
+            hypeReason: 'горячо',
+            orchestratorScore: 9,
+            orchestratorReason: 'важно',
+            url: null,
+          },
+        ]);
+      }
+      if (url === '/api/blog/news') {
+        newsBodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return newsDone();
+      }
+      return new Response('{}', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FullPipelineRun sandbox={false} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Запустить весь конвейер' }));
+
+    await screen.findByText(/готово/);
+
+    // Тема разведки передана в новостную фазу (раньше уходил только forIndex=0).
+    expect(newsBodies).toHaveLength(1);
+    expect(newsBodies[0]).toMatchObject({ topic: SCOUT_TOPIC });
+    // Фаза 2 честно показывает, про что пишет агент.
+    expect(screen.getByText(/пишем про/).textContent).toContain(SCOUT_TOPIC);
+  });
+
+  it('без тем scout topic = сам запрос владельца', async () => {
+    const newsBodies: unknown[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/blog/scout') return scoutDone([]);
+      if (url === '/api/blog/news') {
+        newsBodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return newsDone();
+      }
+      return new Response('{}', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(<FullPipelineRun sandbox={false} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/Запрос для разведки/), 'самые горячие футбольные новости');
+    await user.click(screen.getByRole('button', { name: 'Запустить весь конвейер' }));
+
+    await screen.findByText(/готово/);
+
+    expect(newsBodies).toHaveLength(1);
+    expect(newsBodies[0]).toMatchObject({ topic: 'самые горячие футбольные новости' });
+  });
+});
