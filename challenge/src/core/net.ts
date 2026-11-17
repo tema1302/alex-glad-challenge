@@ -35,10 +35,23 @@ export interface NetFetchInit extends Omit<RequestInit, 'signal'> {
   timeoutMs?: number | null;
   /** Внешний сигнал отмены (клиентский SSE-disconnect) — не ретраится. */
   signal?: AbortSignal;
+  /**
+   * false — при сетевом фейле НЕ повторять запрос на другой канал (прокси → напрямую).
+   * Для неидемпотентных POST (sendDocument и т. п.): Telegram может принять первый
+   * запрос, но ответ потерять — повтор создаст второе сообщение. По умолчанию true
+   * (RSS/LLM-вызовы повторять безопасно).
+   */
+  retryOnNetworkError?: boolean;
 }
 
 export async function netFetch(url: string, init: NetFetchInit = {}): Promise<Response> {
-  const { label, timeoutMs = DEFAULT_TIMEOUT_MS, signal, ...rest } = init;
+  const {
+    label,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    signal,
+    retryOnNetworkError = true,
+    ...rest
+  } = init;
   const proxy = getHttpsProxy();
 
   // Loopback (локальные Ollama/embeddings/MCP) — ВСЕГДА напрямую, даже при заданном
@@ -57,8 +70,13 @@ export async function netFetch(url: string, init: NetFetchInit = {}): Promise<Re
     target.hostname === '[::1]';
 
   const strategies: Array<Record<string, unknown>> = [];
-  if (proxy && !isLoopback) strategies.push({ dispatcher: agentFor(proxy) });
-  strategies.push({});
+  if (proxy && !isLoopback) {
+    strategies.push({ dispatcher: agentFor(proxy) });
+    // Неидемпотентный POST не должен уйти вторым каналом после потери ответа.
+    if (retryOnNetworkError) strategies.push({});
+  } else {
+    strategies.push({});
+  }
 
   let lastErr: unknown = null;
   for (const extra of strategies) {
@@ -76,7 +94,12 @@ export async function netFetch(url: string, init: NetFetchInit = {}): Promise<Re
 
   const cause = lastErr instanceof Error ? lastErr.message : String(lastErr);
   const proxied = proxy && !isLoopback;
-  const via = proxied ? 'прокси и прямое подключение' : 'прямое подключение';
+  const via =
+    strategies.length > 1
+      ? 'прокси и прямое подключение'
+      : proxied
+        ? 'только прокси (без повтора)'
+        : 'прямое подключение';
   const hint = proxied ? 'Проверьте интернет и локальный прокси (HTTPS_PROXY)' : 'Проверьте интернет';
   throw new Error(`${label ?? 'внешний сервис'}: сеть недоступна (${via}). ${hint}. Причина: ${cause}`);
 }

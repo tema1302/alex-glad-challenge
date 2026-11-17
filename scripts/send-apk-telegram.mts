@@ -19,7 +19,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -115,15 +115,59 @@ function gitDir(): string {
 }
 
 const deliveredMarker = path.join(gitDir(), 'tg-delivered-sha');
-let lastSha = '';
-try {
-  lastSha = readFileSync(deliveredMarker, 'utf8').trim();
-} catch {
-  // маркера ещё нет — первая доставка
+const deliveryClaim = `${deliveredMarker}.claim`;
+const CLAIM_TTL_MS = 10 * 60 * 1000;
+
+function readTrimmed(file: string): string {
+  try {
+    return readFileSync(file, 'utf8').trim();
+  } catch {
+    return '';
+  }
 }
 
-if (!force && lastSha === sha) {
+/**
+ * Атомарный захват доставки: claim-файл одновременно и лок, и write-ahead-маркер.
+ * Пока claim жив, второй процесс не отправит тот же APK, даже если ответ Telegram
+ * первого процесса потерян и обычный маркер ещё не записан.
+ */
+function claimDelivery(): boolean {
+  try {
+    if (Date.now() - statSync(deliveryClaim).mtimeMs > CLAIM_TTL_MS) unlinkSync(deliveryClaim);
+  } catch {
+    // claim ещё нет — это нормально
+  }
+  try {
+    writeFileSync(deliveryClaim, sha, { flag: 'wx' });
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw err;
+  }
+}
+
+function releaseClaim(): void {
+  try {
+    unlinkSync(deliveryClaim);
+  } catch {
+    // уже освобождён
+  }
+}
+
+if (!force && readTrimmed(deliveredMarker) === sha) {
   console.log(`APK уже доставлен: sha256=${sha.slice(0, 12)}… (--force — отправить заново)`);
+  process.exit(0);
+}
+
+if (!claimDelivery()) {
+  console.log(`APK уже доставляется другим процессом: sha256=${sha.slice(0, 12)}… — пропуск`);
+  process.exit(0);
+}
+
+// Маркер мог появиться между чтением и захватом claim — перепроверяем.
+if (!force && readTrimmed(deliveredMarker) === sha) {
+  releaseClaim();
+  console.log(`APK уже доставлен: sha256=${sha.slice(0, 12)}… — пропуск`);
   process.exit(0);
 }
 
@@ -184,20 +228,30 @@ form.append(
   path.basename(apkPath),
 );
 
-const res = await netFetch(`https://api.telegram.org/bot${cfg.botToken}/sendDocument`, {
-  method: 'POST',
-  body: form,
-  timeoutMs: 120_000,
-  label: 'Telegram Bot API',
-});
+let res: Response;
+try {
+  res = await netFetch(`https://api.telegram.org/bot${cfg.botToken}/sendDocument`, {
+    method: 'POST',
+    body: form,
+    timeoutMs: 120_000,
+    label: 'Telegram Bot API',
+    // sendDocument неидемпотентен: повтор через второй канал создаст второе сообщение.
+    retryOnNetworkError: false,
+  });
+} catch (err) {
+  releaseClaim();
+  fail(2, `Telegram sendDocument: ${err instanceof Error ? err.message : String(err)}`);
+}
 const data = (await res.json().catch(() => null)) as
   | { ok?: boolean; description?: string; result?: { message_id?: number } }
   | null;
 if (!res.ok || !data?.ok) {
+  releaseClaim();
   fail(2, `Telegram sendDocument: ${data?.description ?? `HTTP ${res.status}`}`);
 }
 
-writeFileSync(deliveredMarker, `${sha}\n`, 'utf8');
+// Атомарный переход claim → delivered: после этого повторный запуск всегда пропустит.
+renameSync(deliveryClaim, deliveredMarker);
 console.log(
   `APK отправлен: message_id=${data.result?.message_id ?? '?'}, ` +
     `${sizeMb} МБ, ${path.basename(apkPath)}, sha256=${sha}`,
