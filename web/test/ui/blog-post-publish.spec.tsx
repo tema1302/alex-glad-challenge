@@ -138,4 +138,42 @@ describe('BlogPostDetailPage: publish-целостность (dirty → save →
 
     expect(calls).toEqual(['PUBLISH']);
   });
+
+  it('сетевой сбой ≠ «Пост не найден»: ошибка видна, retry восстанавливает страницу', async () => {
+    let fail = true;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? 'GET';
+      if (url === '/api/settings') return json({ botChannelLabel: null });
+      if (url === '/api/blog/posts/7' && method === 'GET') {
+        if (fail) {
+          fail = false;
+          throw new Error('network down');
+        }
+        return json({
+          post: { id: 7, news_id: null, content: 'Пост загрузился после retry', verdict: null, created_at: '2026-11-17T10:00:00.000Z' },
+          blog: null,
+          tg: null,
+        });
+      }
+      return json({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <ToastProvider>
+        <BlogPostDetailPage />
+      </ToastProvider>,
+    );
+    const user = userEvent.setup();
+
+    // Сбой загрузки — ошибка, а не маска под 404.
+    expect(await screen.findByText('network down')).toBeInTheDocument();
+    expect(screen.queryByText(/Пост не найден/)).toBeNull();
+
+    // Retry поднимает страницу.
+    await user.click(screen.getByRole('button', { name: 'Повторить' }));
+    const textarea = await screen.findByLabelText(/Текст поста/);
+    expect(textarea).toHaveValue('Пост загрузился после retry');
+  });
 });

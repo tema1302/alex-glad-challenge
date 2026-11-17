@@ -54,6 +54,7 @@ export default function BlogPostDetailPage() {
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [publishOpen, setPublishOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [channelLabel, setChannelLabel] = useState<string | null>(null);
@@ -64,6 +65,7 @@ export default function BlogPostDetailPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const resp = await fetch(`/api/blog/posts/${id}`, { method: 'GET' });
       if (!resp.ok) {
@@ -78,11 +80,14 @@ export default function BlogPostDetailPage() {
       // затирать несохранённые правки черновика.
       if (!dirtyRef.current) setDraft(data.post.content);
     } catch (e) {
-      toast('err', e instanceof Error ? e.message : 'Не удалось загрузить пост');
+      // Сетевой сбой — НЕ «пост не найден»: честная ошибка с retry (404-маска
+      // отправляла владельца удалять/пересоздавать существующий пост).
+      setLoadError(e instanceof Error ? e.message : 'Не удалось загрузить пост');
+      setPost(null);
     } finally {
       setLoading(false);
     }
-  }, [id, toast]);
+  }, [id]);
 
   // deps [id]: перезагрузка поста не должна пере-запускаться на каждую перерисовку
   // (иначе несохранённый черновик затирается — e2e это поймал).
@@ -184,7 +189,7 @@ export default function BlogPostDetailPage() {
     <div className="space-y-6">
       <SectionHead
         code={`posts · #${id}`}
-        title={post ? `Пост #${post.id}` : loading ? 'Загрузка…' : 'Не найден'}
+        title={post ? `Пост #${post.id}` : loading ? 'Загрузка…' : loadError ? 'Ошибка загрузки' : 'Не найден'}
         description={
           post ? (
             <span className="font-mono text-xs">
@@ -279,6 +284,15 @@ export default function BlogPostDetailPage() {
             </Card>
           )}
         </>
+      ) : loadError ? (
+        <Card tone="danger" label="ошибка загрузки">
+          <p className="text-sm text-err">{loadError}</p>
+          <div className="mt-3">
+            <Button variant="ghost" onClick={() => void load()}>
+              Повторить
+            </Button>
+          </div>
+        </Card>
       ) : (
         <p className="text-sm text-dim">Пост не найден.</p>
       )}
