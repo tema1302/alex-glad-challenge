@@ -4,8 +4,17 @@
 import type { ChatMessage, ChatParams, LlmRequest, LlmResponse, LlmTimings, Usage } from './types.js';
 import { loadEnvUpward, getLlmProviderConfig } from './env.js';
 import { netFetch } from './net.js';
+import { stripLoneSurrogates } from './sanitize.js';
 
 loadEnvUpward();
+
+// Инвариант границы: в JSON запроса не должно быть непарных суррогатов
+// (половинок emoji) — JSON.stringify экранирует их как \udXXX, и строгие
+// парсеры провайдеров (DeepSeek) отклоняют тело с 400. Источники могут
+// обрезать текст по UTF-16 единицам; клиент не отправляет невалидный Unicode.
+function safeMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((m) => ({ ...m, content: stripLoneSurrogates(m.content) }));
+}
 
 export interface ProviderConfig {
   baseUrl: string;
@@ -39,7 +48,7 @@ export class LlmClient {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.config.apiKey}`,
       },
-      body: JSON.stringify(req),
+      body: JSON.stringify({ ...req, messages: safeMessages(req.messages) }),
       label: 'LLM-провайдер',
       timeoutMs: 120_000, // генерация длинных постов бывает дольше дефолтных 15с
     });
@@ -109,7 +118,7 @@ export class LlmClient {
       },
       body: JSON.stringify({
         model: params.model ?? this.config.defaultModel,
-        messages,
+        messages: safeMessages(messages),
         temperature: params.temperature,
         max_tokens: params.maxTokens,
         stop: params.stop,

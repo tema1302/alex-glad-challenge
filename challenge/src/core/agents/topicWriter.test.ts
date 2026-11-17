@@ -101,6 +101,34 @@ test('topicWriter: последние посты попадают в anti-repeat
   }
 });
 
+// Регрессия LLM 400 (DeepSeek «unexpected end of hex escape»): anti-repeat
+// срез последних постов резал emoji пополам на границе 220 UTF-16 единиц —
+// непарный суррогат попадал в user-message и провайдер отклонял JSON с 400.
+test('topicWriter: anti-repeat срез не режет emoji пополам (fallback из БД)', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'topic-'));
+  const db = new BlogDb(path.join(dir, 'blog.sqlite'));
+  try {
+    const blog = db.getBlogBySlug('artemia-artel')!;
+    // 219 символов + 🤣 (2 единицы): slice(0, 220) разрезал бы пару.
+    db.insertPost('x'.repeat(219) + '🤣 хвост', null, null, blog.id);
+
+    const captured: Captured[] = [];
+    const writer = new TopicPostWriter(fakeClient(captured));
+    await writer.writeMany(db, blog, { topic: 'Игротека' });
+
+    const user = captured[0].messages[1].content;
+    assert.match(user, /ПОСЛЕДНИЕ ПОСТЫ/);
+    assert.ok(
+      !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(user),
+      'в промпте не должно быть непарных суррогатов',
+    );
+    assert.ok(!JSON.stringify(user).includes('\\ud83e'), 'JSON не содержит половинку emoji');
+  } finally {
+    db.close();
+    safeRm(dir);
+  }
+});
+
 test('topicWriter: архивный блог не генерирует контент (центральный guard)', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'topic-archived-'));
   const db = new BlogDb(path.join(dir, 'blog.sqlite'));

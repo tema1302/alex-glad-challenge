@@ -24,16 +24,23 @@ vi.mock('../../lib/server/db', () => ({
   withDb: vi.fn((fn: () => unknown) => fn()),
 }));
 
-vi.mock('../../lib/server/challenge', () => ({
-  clean: vi.fn((s: string) => s.trim()),
-  dataPath: vi.fn((p: string) => p),
-  ProfileManager: class {
-    load = vi.fn();
-  },
-  TopicPostWriter: class {
-    writeMany = mocks.writeMany;
-  },
-}));
+vi.mock('../../lib/server/challenge', async () => {
+  // safeSlice — реальная реализация: регрессия обрезки emoji проверяется здесь.
+  const sanitize = await vi.importActual<typeof import('@challenge/core/sanitize')>(
+    '@challenge/core/sanitize',
+  );
+  return {
+    clean: vi.fn((s: string) => s.trim()),
+    safeSlice: sanitize.safeSlice,
+    dataPath: vi.fn((p: string) => p),
+    ProfileManager: class {
+      load = vi.fn();
+    },
+    TopicPostWriter: class {
+      writeMany = mocks.writeMany;
+    },
+  };
+});
 
 vi.mock('../../lib/server/llm', () => ({
   pickLlmClient: vi.fn(() => ({})),
@@ -155,5 +162,17 @@ describe('POST /api/blogs/[slug]/posts', () => {
     expect(res.status).toBe(502);
     await expect(res.json()).resolves.toMatchObject({ error: 'LLM unavailable' });
     expect(mocks.insertPost).not.toHaveBeenCalled();
+  });
+
+  // Регрессия LLM 400: срез последних постов для anti-repeat резал emoji
+  // пополам на границе 220 UTF-16 единиц — непарный суррогат уходил в промпт,
+  // DeepSeek отклонял JSON запроса с 400 («unexpected end of hex escape»).
+  it('anti-repeat срез не режет emoji пополам (регрессия LLM 400)', async () => {
+    mocks.recentPosts.mockReturnValue([{ content: 'x'.repeat(219) + '🤣 хвост' }]);
+    const res = await POST(req({ topic: 'Рождество' }), ctx());
+    expect(res.status).toBe(201);
+    const opts = mocks.writeMany.mock.calls[0][2] as { recent: string[] };
+    expect(opts.recent).toEqual(['x'.repeat(219)]);
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(opts.recent[0])).toBe(false);
   });
 });

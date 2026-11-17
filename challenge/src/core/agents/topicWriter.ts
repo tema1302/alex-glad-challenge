@@ -9,7 +9,7 @@ import type { BlogDb, BlogRow } from '../db.js';
 import { DEFAULT_BLOG_SLUG } from '../db.js';
 import type { ProfileManager } from '../profile.js';
 import { resolveBlogAgentPrompt, applyPromptVars } from '../blogAgentPrompts.js';
-import { clean } from '../sanitize.js';
+import { clean, safeSlice } from '../sanitize.js';
 import { msg } from '../types.js';
 import { cleanPost } from './postWriter.js';
 
@@ -74,7 +74,7 @@ export class TopicPostWriter {
     const count = Math.min(Math.max(Math.trunc(opts.count ?? 1), 1), TOPIC_VARIANTS.length);
     const recent =
       opts.recent ??
-      db.recentPosts(3, blog.id).map((p) => p.content.replace(/\s+/g, ' ').trim().slice(0, 220));
+      db.recentPosts(3, blog.id).map((p) => safeSlice(p.content.replace(/\s+/g, ' ').trim(), 220));
     const out: WrittenTopicPost[] = [];
     for (let i = 0; i < count; i++) {
       out.push(

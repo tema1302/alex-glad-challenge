@@ -9,7 +9,7 @@ import { NextRequest } from 'next/server';
 
 import { requireApiAuth } from '../../../../../lib/auth';
 import { blogTopicPostSchema } from '../../../../../lib/shared/forms';
-import { clean, ProfileManager, TopicPostWriter, dataPath } from '../../../../../lib/server/challenge';
+import { clean, safeSlice, ProfileManager, TopicPostWriter, dataPath } from '../../../../../lib/server/challenge';
 import { getBlogDb, withDb } from '../../../../../lib/server/db';
 import { jsonError, jsonOk } from '../../../../../lib/server/http';
 import { blogArchivedError } from '../../../../../lib/server/blogs';
@@ -48,7 +48,7 @@ export async function POST(
     if (!blog) return null;
     const recent = db
       .recentPosts(3, blog.id)
-      .map((p) => p.content.replace(/\s+/g, ' ').trim().slice(0, 220));
+      .map((p) => safeSlice(p.content.replace(/\s+/g, ' ').trim(), 220));
     return { blog, recent };
   });
   if (!prepared) return jsonError('not found', 404);

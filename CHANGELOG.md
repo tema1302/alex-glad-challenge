@@ -5,6 +5,37 @@
 
 ---
 
+## Фикс: LLM API error 400 при генерации поста по теме (2026-11-17)
+
+**Что сделано:**
+- `core/sanitize.ts`: `clean()` вырезает непарные суррогаты и режет длину через
+  новый `safeSlice()` — обрезка больше не разрезает emoji (surrogate pair)
+  пополам; `stripLoneSurrogates()` экспортирован.
+- `core/client.ts`: `chatRaw`/`chatStream` нормализуют messages перед
+  сериализацией — непарные суррогаты не уходят в JSON запроса ни от одного
+  потребителя (инвариант границы).
+- `core/agents/topicWriter.ts` и `web/app/api/blogs/[slug]/posts/route.ts`:
+  anti-repeat срез последних постов (220 символов) переведён на `safeSlice`.
+- Тесты: `sanitize.test.ts`, `client.test.ts`, `topicWriter.test.ts`,
+  `blog-topic-post-route.spec.ts` — регрессии падали до фикса, зелены после.
+
+**Зачем:** срез `.slice(0, 220)` резал emoji в посте про Винисиуса пополам —
+непарный суррогат `\ud83e` попадал в промпт, `JSON.stringify` экранировал его,
+DeepSeek отклонял тело запроса с 400 («unexpected end of hex escape»), route
+отдавал 502 «LLM API error 400» в Android-приложение.
+
+**Проверки:** challenge typecheck + 672/672 тестов; web typecheck + 715/717
+(2 падения `middleware.spec.ts` — предсуществующая утечка `WEB_PUBLIC_ORIGIN`
+из `.env` в тесты, к фиксу не относятся); прод-смоук: генерация 2 варианта →
+201 на боевой БД, черновики удалены. Фикс развёрнут (standalone-сборка,
+рестарт `alexglad-web`).
+
+**Риски:** такие же обрезки по UTF-16 единицам остались в сканерах/RSS
+(`telegramScanner`, `forumScanner`, `newsFetcher`, `rssSource`) — для
+LLM-запросов закрыты нормализацией в `LlmClient`, для прочих путей — нет.
+
+---
+
 ## News → пост по клику + правка (2026-11-16)
 
 **Ветка:** `feat/news-to-posts`

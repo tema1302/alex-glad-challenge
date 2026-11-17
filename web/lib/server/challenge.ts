@@ -49,7 +49,7 @@ export type { Constraint, ConstraintType } from '@challenge/core/constraints';
 export { FullHistory, SlidingWindow, StickyFacts, Branching } from '@challenge/core/strategy';
 export type { ContextStrategy } from '@challenge/core/strategy';
 // P2b: sanitize tainted-инструкции (profile-edit) перед передачей в LLM.
-export { clean } from '@challenge/core/sanitize';
+export { clean, safeSlice } from '@challenge/core/sanitize';
 // P3a: RAG-chat каталог + aliases, DialogDb task-state, TG-source filter для Retriever.
 export {
   loadChatTitles,
