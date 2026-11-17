@@ -1,4 +1,7 @@
 // /automation — правила автоматизации блогов + ручной запуск + история.
+// Прогон правила с автопубликацией — реальная отправка в TG-канал: как все
+// publish-пути морды, он идёт через ConfirmDialog; без автопубликации (черновик)
+// запуск идёт сразу.
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
@@ -6,6 +9,8 @@ import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SectionHead } from '../components/ui/SectionHead';
 import { EmptyState } from '../components/ui/EmptyState';
+import { ConfirmDialog } from '../components/ui/ConfirmDialog';
+import { useToast } from '../components/ui/Toast';
 
 interface Rule {
   blogId: number;
@@ -26,16 +31,26 @@ interface Run {
 }
 
 export default function AutomationPage() {
+  const { toast } = useToast();
   const [rules, setRules] = useState<Rule[] | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [runTarget, setRunTarget] = useState<Rule | null>(null);
 
   const load = useCallback(async () => {
-    const r = await fetch('/api/automation');
-    if (!r.ok) return setError('не удалось загрузить');
-    const data = (await r.json()) as { rules: Rule[]; runs: Run[] };
-    setRules(data.rules);
-    setRuns(data.runs);
+    try {
+      const r = await fetch('/api/automation');
+      if (!r.ok) {
+        setError('не удалось загрузить');
+        return;
+      }
+      const data = (await r.json()) as { rules: Rule[]; runs: Run[] };
+      setRules(data.rules);
+      setRuns(data.runs);
+    } catch {
+      // Сетевой сбой не должен выглядеть как «правил нет» — текст вместо пустоты.
+      setError('не удалось загрузить правила — сеть недоступна');
+    }
   }, []);
 
   useEffect(() => {
@@ -43,25 +58,53 @@ export default function AutomationPage() {
   }, [load]);
 
   const configure = async (blogId: number, patch: Partial<Pick<Rule, 'enabled' | 'intervalMinutes' | 'autoPublish'>>) => {
-    await fetch('/api/automation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'configure', blogId, ...patch }),
-    });
+    setError(null);
+    try {
+      const r = await fetch('/api/automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'configure', blogId, ...patch }),
+      });
+      if (!r.ok) {
+        const data = (await r.json().catch(() => ({}))) as { error?: string };
+        setError(data.error ?? 'не удалось сохранить правило');
+      }
+    } catch {
+      setError('не удалось сохранить правило — сеть недоступна');
+    }
     void load();
   };
 
-  const runNow = async (blogId: number) => {
-    setError(null);
-    const r = await fetch('/api/automation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'run', blogId }),
-    });
-    const data = (await r.json()) as { status?: string; message?: string; error?: string };
-    if (!r.ok || data.error) setError(data.error ?? 'ошибка запуска');
-    void load();
-  };
+  const runNow = useCallback(
+    async (target: Rule) => {
+      setError(null);
+      try {
+        const r = await fetch('/api/automation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'run', blogId: target.blogId }),
+        });
+        const data = (await r.json().catch(() => ({}))) as {
+          ok?: boolean;
+          status?: string;
+          message?: string;
+          error?: string;
+        };
+        if (!r.ok || data.error) {
+          setError(data.error ?? 'ошибка запуска');
+        } else if (data.status === 'error') {
+          // Прогон состоялся, но пайплайн упал — молчать нельзя.
+          setError(data.message ?? 'прогон завершился с ошибкой');
+        } else {
+          toast('ok', `Прогон выполнен${data.message ? `: ${data.message}` : ''}`);
+        }
+      } catch {
+        setError('не удалось запустить прогон — сеть недоступна');
+      }
+      void load();
+    },
+    [toast, load],
+  );
 
   const setPreset = async (slug: string, stylePreset: Rule['stylePreset']) => {
     setError(null);
@@ -82,7 +125,9 @@ export default function AutomationPage() {
       <SectionHead code="product · automation" title="Автоматизация блогов" description="Расписание генерации и публикации постов по каждому блогу. Стиль задаётся пресетом блога ниже; пресет Антонова — один из вариантов." />
       {error ? <p className="text-sm text-err">{error}</p> : null}
 
-      {rules == null ? null : rules.length === 0 ? (
+      {rules == null ? (
+        !error ? <p className="text-sm text-dim">Загрузка…</p> : null
+      ) : rules.length === 0 ? (
         <EmptyState title="Правил нет" hint="Включите автоматизацию для блога ниже." />
       ) : (
         <Card label="Правила">
@@ -106,7 +151,12 @@ export default function AutomationPage() {
                       <input type="checkbox" checked={r.autoPublish} onChange={(e) => configure(r.blogId, { autoPublish: e.target.checked })} className="accent-accent" />
                       автопубликация
                     </label>
-                    <Button variant="primary" onClick={() => runNow(r.blogId)}>Запустить</Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => (r.autoPublish ? setRunTarget(r) : void runNow(r))}
+                    >
+                      Запустить
+                    </Button>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-dim">
@@ -157,6 +207,30 @@ export default function AutomationPage() {
           </ul>
         )}
       </Card>
+
+      {/* Автопубликация = реальная отправка в канал: подтверждение перед прогоном,
+          как у всех publish-путей (TgComposer, DigestComposer, страница поста). */}
+      <ConfirmDialog
+        open={runTarget !== null}
+        onClose={() => setRunTarget(null)}
+        onConfirm={async () => {
+          if (runTarget) await runNow(runTarget);
+        }}
+        title="Запустить прогон с автопубликацией?"
+        confirmLabel="Запустить прогон"
+        body={
+          <div className="space-y-3">
+            <p className="text-sm">
+              Прогон сгенерирует пост и <strong className="text-warn">сразу опубликует</strong> его в
+              Telegram-канал блога «{runTarget?.blogName}».
+            </p>
+            <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
+              Реальная отправка — сообщение уйдёт подписчикам канала. У правил без
+              автопубликации прогон создаёт черновик и ничего не отправляет.
+            </p>
+          </div>
+        }
+      />
     </div>
   );
 }
