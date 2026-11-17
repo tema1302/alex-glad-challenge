@@ -9,7 +9,7 @@
 // никаких core/server.
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Field, INPUT_CLASS } from '../../components/ui/Field';
@@ -79,6 +79,7 @@ export function DigestComposer({
   const [phase, setPhase] = useState<Phase>('idle');
   const [days, setDays] = useState<7 | 14>(7);
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
+  const [blogsError, setBlogsError] = useState(false);
   const [blog, setBlog] = useState<string>('');
   const [digest, setDigest] = useState('');
   const [sources, setSources] = useState<DigestSource[]>([]);
@@ -95,12 +96,25 @@ export function DigestComposer({
   const generating = phase === 'generating';
 
   // Черновик: восстановление при монтировании…
-  useEffect(() => {
-    fetch('/api/blogs')
-      .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => setBlogs(j.blogs ?? []))
-      .catch(() => setBlogs([]));
+  // Селектор блогов: сбой загрузки виден и повторяем — молчаливый catch
+  // выдавал сетевую ошибку за «блогов нет», а причина disabled кнопки
+  // («нет профиля голоса») не показывалась рядом с ней.
+  const loadBlogs = useCallback(async () => {
+    setBlogsError(false);
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { blogs?: BlogOption[] };
+      setBlogs(j.blogs ?? []);
+    } catch {
+      setBlogs([]);
+      setBlogsError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadBlogs();
+  }, [loadBlogs]);
 
   useEffect(() => {
     try {
@@ -280,6 +294,30 @@ export function DigestComposer({
           >
             Собрать дайджест
           </Button>
+          {blog !== '' && !blogs.find((b) => b.slug === blog)?.hasProfile && (
+            <p className="w-full text-xs text-warn" role="note">
+              У блога «{blogs.find((b) => b.slug === blog)?.name ?? blog}» профиль голоса
+              не настроен — задайте его на странице блога в /blog/settings.
+            </p>
+          )}
+          {blogsError && (
+            <p className="w-full text-xs text-err">
+              Не удалось загрузить блоги —{' '}
+              <button
+                type="button"
+                className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+                onClick={() => void loadBlogs()}
+              >
+                обновить блоги
+              </button>
+            </p>
+          )}
+          {!blogsError && blogs.length === 0 && (
+            <p className="w-full text-xs text-dim">
+              Без выбора блога дайджест собирается по всем новостям в голосе
+              «Иди на факты глянь» (легаси-режим).
+            </p>
+          )}
           {generating && (
             <p className="w-full text-xs leading-relaxed text-dim" role="status">
               LLM пишет дайджест — обычно 30–120 с…

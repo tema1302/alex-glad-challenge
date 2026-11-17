@@ -36,6 +36,7 @@ interface TopNewsItem {
 
 export default function BlogNewsPage() {
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
+  const [blogsError, setBlogsError] = useState(false);
   const [blog, setBlog] = useState<string>('');
   const [hours, setHours] = useState(24);
   const [top, setTop] = useState(5);
@@ -55,19 +56,29 @@ export default function BlogNewsPage() {
   const activeBlog = blogs.find((b) => b.slug === blog) ?? null;
   const profileMissing = activeBlog !== null && !activeBlog.hasProfile;
 
-  useEffect(() => {
-    fetch('/api/blogs')
-      .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => {
-        const list = j.blogs ?? [];
-        setBlogs(list);
-        const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
-        if (fromQuery && list.some((b) => b.slug === fromQuery)) {
-          setBlog((prev) => prev || fromQuery);
-        }
-      })
-      .catch(() => setBlogs([]));
+  // Селектор блогов: сбой загрузки виден и повторяем — молчаливый catch
+  // выдавал сетевую ошибку за «блогов нет» и оставлял форму «угадывать».
+  const loadBlogs = useCallback(async () => {
+    setBlogsError(false);
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { blogs?: BlogOption[] };
+      const list = j.blogs ?? [];
+      setBlogs(list);
+      const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+      if (fromQuery && list.some((b) => b.slug === fromQuery)) {
+        setBlog((prev) => prev || fromQuery);
+      }
+    } catch {
+      setBlogs([]);
+      setBlogsError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadBlogs();
+  }, [loadBlogs]);
 
   const reset = (): void => {
     setPost(null);
@@ -278,6 +289,23 @@ export default function BlogNewsPage() {
             </Button>
           </div>
         </div>
+        {blogsError ? (
+          <p className="mt-2 text-xs text-err">
+            Не удалось загрузить блоги —{' '}
+            <button
+              type="button"
+              className="text-accent hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+              onClick={() => void loadBlogs()}
+            >
+              обновить блоги
+            </button>
+          </p>
+        ) : blogs.length === 0 ? (
+          <p className="mt-2 text-xs text-dim">
+            Настроенных блогов нет — без выбора блога прогон уйдёт в легаси-режиме
+            (дефолтные фиды, профиль default).
+          </p>
+        ) : null}
         {activeBlog && (
           <p className="mt-2 text-xs text-dim">
             Источников в блоге: {activeBlog.sourcesCount || 'нет'}.{' '}
