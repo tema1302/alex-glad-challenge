@@ -4,8 +4,8 @@
 // Редизайн C (день 30): Card-форма + data-list ссылок. Логика без изменений.
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SectionLabel } from '../../components/ui/SectionLabel';
 import { Card } from '../../components/ui/Card';
@@ -13,6 +13,14 @@ import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Field, INPUT_CLASS } from '../../components/ui/Field';
 import { SectionHead } from '../../components/ui/SectionHead';
+import { useIsomorphicLayoutEffect, useSpaHistory } from '../../components/ui/useSpaHistory';
+import {
+  clearListSnapshot,
+  consumeReturnFlag,
+  readListSnapshot,
+  readScroll,
+  saveListSnapshot,
+} from '../../../lib/shared/spaHistory';
 
 interface DialogChatItem {
   id: string;
@@ -22,12 +30,27 @@ interface DialogChatItem {
   msg_count: number;
 }
 
+// Ключ снапшота/якоря этой страницы (S2 «Back&scroll»): карточка чата
+// инвалидирует именно его при будущих мутациях.
+const LIST_PATH = '/rag/chat';
+
 export default function RagChatPickerPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [chats, setChats] = useState<DialogChatItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [creating, setCreating] = useState(false);
+
+  // S2 «Back&scroll»: отметка SPA-истории + throttled scroll-якорь (список).
+  useSpaHistory(pathname, { list: true });
+
+  // Возврат через popstate: высота после коммита данных; ref переживает
+  // StrictMode double-mount.
+  const pendingScrollRef = useRef<number | null>(null);
+  // Снапшот применён на mount → mount-fetch пропускаем; create чистит снапшот
+  // перед redirect — возврат «← назад» рефетчит и видит новый чат.
+  const fromSnapshotRef = useRef(false);
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -36,12 +59,36 @@ export default function RagChatPickerPage() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as { chats: DialogChatItem[] };
       setChats(data.chats);
+      // Снапшот для мгновенного возврата «← назад» из чата (TTL 60 с).
+      saveListSnapshot(LIST_PATH, data.chats);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load failed');
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  // Mount (до paint): свежий снапшот → мгновенный рендер без fetch.
+  useIsomorphicLayoutEffect(() => {
+    const snap = readListSnapshot<DialogChatItem[]>(LIST_PATH);
+    const savedY = consumeReturnFlag() ? readScroll(LIST_PATH) : null;
+    if (savedY !== null) pendingScrollRef.current = savedY;
+    if (snap && Array.isArray(snap)) {
+      setChats(snap);
+      fromSnapshotRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (fromSnapshotRef.current) return;
+    void load();
+  }, [load]);
+
+  // Возврат: высота восстановлена после коммита данных (снапшот или fetch).
+  useEffect(() => {
+    const y = pendingScrollRef.current;
+    if (y === null || chats === null || chats.length === 0) return;
+    pendingScrollRef.current = null;
+    window.scrollTo(0, y);
+  }, [chats]);
 
   const create = async (): Promise<void> => {
     setCreating(true);
@@ -54,6 +101,9 @@ export default function RagChatPickerPage() {
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as { id: string };
+      // Снапшот списка устарел (чат создан, но в нём его нет) — возврат
+      // «← назад» должен рефетчить, а не показать список без нового чата.
+      clearListSnapshot(LIST_PATH);
       router.push(`/rag/chat/${data.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create failed');

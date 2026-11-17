@@ -4,8 +4,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, usePathname } from 'next/navigation';
 import type { SseEvent, SseUsage } from '../../../lib/shared/sse';
 import type { StrategyName } from '../../../lib/shared/forms';
 import { useModelPrefDefault } from '../../../lib/shared/use-model-pref';
@@ -13,6 +12,8 @@ import { MemoryPanel } from './panels/MemoryPanel';
 import { BranchesPanel } from './panels/BranchesPanel';
 import { ProfilePanel } from './panels/ProfilePanel';
 import { ConstraintsPanel } from './panels/ConstraintsPanel';
+import { BackButton } from '../../components/ui/BackButton';
+import { useSpaHistory } from '../../components/ui/useSpaHistory';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Tabs } from '../../components/ui/Tabs';
@@ -49,6 +50,10 @@ const STRATEGY_OPTIONS: Array<{ value: StrategyName; label: string }> = [
 export default function ChatSessionPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
+  const pathname = usePathname();
+
+  // S2 «Back&scroll»: отметка SPA-истории (детальная гасит флаг возврата).
+  useSpaHistory(pathname);
 
   const [config, setConfig] = useState<SessionConfig | null>(null);
   const [messages, setMessages] = useState<SessionMessage[]>([]);
@@ -218,7 +223,7 @@ export default function ChatSessionPage() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-err">Сессия не загружена: {loadError}</p>
-        <Link href="/chat" className="text-sm text-accent hover:underline">← к списку сессий</Link>
+        <BackButton fallbackHref="/chat" />
       </div>
     );
   }
@@ -233,7 +238,7 @@ export default function ChatSessionPage() {
         code="chat · session"
         title="Chat-агент"
         description={<span className="font-mono text-xs">{config.id}</span>}
-        actions={<Link href="/chat" className="text-sm text-accent hover:underline">сессии</Link>}
+        actions={<BackButton fallbackHref="/chat" label="сессии" />}
       />
 
       {/* Панель управления */}

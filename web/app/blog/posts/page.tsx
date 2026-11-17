@@ -6,8 +6,9 @@
 // постов. 'use client'. НИКАКИХ импортов core/.
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -19,6 +20,14 @@ import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { useToast } from '../../components/ui/Toast';
 import { IconChevronRight, IconExternal, IconTrash } from '../../components/ui/icons';
 import { INPUT_CLASS } from '../../components/ui/Field';
+import { useIsomorphicLayoutEffect, useSpaHistory } from '../../components/ui/useSpaHistory';
+import {
+  consumeReturnFlag,
+  clearListSnapshot,
+  readListSnapshot,
+  readScroll,
+  saveListSnapshot,
+} from '../../../lib/shared/spaHistory';
 
 interface BlogOption {
   slug: string;
@@ -62,13 +71,39 @@ function verdictLabel(v: string | null): { text: string; tone: 'ok' | 'warn' | '
 // Шапка таблицы: sans medium (данные в ячейках остаются mono)
 const TH = 'px-3 py-2 text-xs font-medium text-dim';
 
+// Ключ снапшота/якоря этой страницы (S2 «Back&scroll»): детали из карточки
+// поста инвалидируют именно его.
+const LIST_PATH = '/blog/posts';
+
+/** Снапшот списка валиден только для того же ?blog= (данные зависят от фильтра). */
+interface PostsSnapshot {
+  readonly posts: PostItem[];
+  readonly blogFilter: string;
+}
+
 export default function BlogPostsPage() {
   const { toast } = useToast();
+  const pathname = usePathname();
   const [posts, setPosts] = useState<PostItem[]>([]);
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
   const [blogFilter, setBlogFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<PostItem | null>(null);
+
+  // S2 «Back&scroll»: отметка SPA-истории + throttled scroll-якорь (список).
+  useSpaHistory(pathname, { list: true });
+
+  // Возврат через popstate: восстановить высоту после коммита данных, а не по
+  // skeleton (нативный restore клампится). Живёт в ref — переживает StrictMode
+  // double-mount, съедается первым коммитом данных.
+  const pendingScrollRef = useRef<number | null>(null);
+  // Снапшот применён на mount → пропускаем mount-fetch (обновление кнопкой и
+  // смена фильтра идут в обход: они зовут load напрямую / сбрасывают ref).
+  const fromSnapshotRef = useRef(false);
+  // Latest-wins для параллельных load() (mount-флик фильтра ?blog=): медленный
+  // ответ со старым фильтром не должен затирать ни список, ни снапшот — иначе
+  // возврат «← назад» отвергнет снапшот и рефетчит (поймано e2e-кейсом ?blog=).
+  const loadSeqRef = useRef(0);
 
   useEffect(() => {
     fetch('/api/blogs')
@@ -77,29 +112,56 @@ export default function BlogPostsPage() {
       .catch(() => setBlogs([]));
   }, []);
 
-  useEffect(() => {
-    // Ссылка из карточки блога: /blog/posts?blog=<slug>.
-    const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
-    if (fromQuery) setBlogFilter(fromQuery);
+  // Mount (до paint): снапшот → мгновенный рендер без fetch; фильтр из URL
+  // применяем здесь же (раньше это делал отдельный effect ПОСЛЕ mount-fetch —
+  // двойной запрос и гонка «незаффильтрованный ответ затирает список»).
+  useIsomorphicLayoutEffect(() => {
+    const q = new URLSearchParams(window.location.search).get('blog') ?? '';
+    const snap = readListSnapshot<PostsSnapshot>(LIST_PATH);
+    const savedY = consumeReturnFlag() ? readScroll(LIST_PATH) : null;
+    if (savedY !== null) pendingScrollRef.current = savedY;
+    if (snap && snap.blogFilter === q && Array.isArray(snap.posts)) {
+      setPosts(snap.posts);
+      setBlogFilter(q);
+      setLoading(false);
+      fromSnapshotRef.current = true;
+    } else if (q) {
+      setBlogFilter(q);
+    }
   }, []);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const resp = await fetch(`/api/blog/posts?limit=50${blogFilter ? `&blog=${encodeURIComponent(blogFilter)}` : ''}`, { method: 'GET' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = (await resp.json()) as { posts: PostItem[] };
+      // Устаревший прогон (фильтр сменился в полёте) — не трогаем state/снапшот.
+      if (seq !== loadSeqRef.current) return;
       setPosts(data.posts ?? []);
+      // Снапшот для мгновенного возврата «← назад» (TTL 60 c, мутации чистят).
+      saveListSnapshot(LIST_PATH, { posts: data.posts ?? [], blogFilter });
     } catch (e) {
+      if (seq !== loadSeqRef.current) return;
       toast('err', e instanceof Error ? e.message : 'Не удалось загрузить посты');
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [toast, blogFilter]);
 
   useEffect(() => {
+    if (fromSnapshotRef.current) return;
     void load();
   }, [load]);
+
+  // Возврат: высота восстановлена после коммита данных (снапшот или fetch).
+  useEffect(() => {
+    const y = pendingScrollRef.current;
+    if (y === null || posts.length === 0) return;
+    pendingScrollRef.current = null;
+    window.scrollTo(0, y);
+  }, [posts]);
 
   const del = useCallback(async () => {
     if (!deleteTarget) return;
@@ -111,6 +173,9 @@ export default function BlogPostsPage() {
         throw new Error(j.error ?? `HTTP ${resp.status}`);
       }
       toast('ok', `Пост #${target.id} удалён`);
+      // Снапшот устарел (пост удалён): чистим ДО refetch — если сеть упадёт,
+      // возврат «← назад» всё равно не покажет удалённый пост из кэша.
+      clearListSnapshot(LIST_PATH);
       void load();
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось удалить');
@@ -130,7 +195,12 @@ export default function BlogPostsPage() {
               aria-label="Фильтр по блогу"
               className={`${INPUT_CLASS} h-9 w-full max-w-56 text-sm sm:w-auto`}
               value={blogFilter}
-              onChange={(e) => setBlogFilter(e.target.value)}
+              onChange={(e) => {
+                // ручная смена фильтра — список должен рефетчиться (mount-скачок
+                // снапшота больше неактуален)
+                fromSnapshotRef.current = false;
+                setBlogFilter(e.target.value);
+              }}
             >
               <option value="">все блоги</option>
               {blogs.map((b) => (

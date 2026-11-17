@@ -4,9 +4,9 @@
 // Если сессий нет — предлагает создать первую. Без импортов core/.
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { StrategyName } from '../../lib/shared/forms';
 import { SectionLabel } from '../components/ui/SectionLabel';
 import { Card } from '../components/ui/Card';
@@ -14,6 +14,14 @@ import { Button } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { INPUT_CLASS } from '../components/ui/Field';
 import { SectionHead } from '../components/ui/SectionHead';
+import { useIsomorphicLayoutEffect, useSpaHistory } from '../components/ui/useSpaHistory';
+import {
+  clearListSnapshot,
+  consumeReturnFlag,
+  readListSnapshot,
+  readScroll,
+  saveListSnapshot,
+} from '../../lib/shared/spaHistory';
 
 interface SessionItem {
   id: string;
@@ -27,8 +35,13 @@ interface SessionItem {
 
 const STRATEGY_OPTIONS: StrategyName[] = ['full', 'sliding', 'sticky', 'branching'];
 
+// Ключ снапшота/якоря этой страницы (S2 «Back&scroll»): карточка сессии
+// инвалидирует именно его при будущих мутациях.
+const LIST_PATH = '/chat';
+
 export default function ChatPickerPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const [sessions, setSessions] = useState<SessionItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +50,16 @@ export default function ChatPickerPage() {
   const [memoryEnabled, setMemoryEnabled] = useState(false);
   const [creating, setCreating] = useState(false);
 
+  // S2 «Back&scroll»: отметка SPA-истории + throttled scroll-якорь (список).
+  useSpaHistory(pathname, { list: true });
+
+  // Возврат через popstate: высота после коммита данных; ref переживает
+  // StrictMode double-mount.
+  const pendingScrollRef = useRef<number | null>(null);
+  // Снапшот применён на mount → mount-fetch пропускаем; create чистит снапшот
+  // перед redirect — возврат «← назад» рефетчит и видит новую сессию.
+  const fromSnapshotRef = useRef(false);
+
   const load = useCallback(async (): Promise<void> => {
     setError(null);
     try {
@@ -44,12 +67,36 @@ export default function ChatPickerPage() {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as { sessions: SessionItem[] };
       setSessions(data.sessions);
+      // Снапшот для мгновенного возврата «← назад» из сессии (TTL 60 с).
+      saveListSnapshot(LIST_PATH, data.sessions);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'load failed');
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  // Mount (до paint): свежий снапшот → мгновенный рендер без fetch.
+  useIsomorphicLayoutEffect(() => {
+    const snap = readListSnapshot<SessionItem[]>(LIST_PATH);
+    const savedY = consumeReturnFlag() ? readScroll(LIST_PATH) : null;
+    if (savedY !== null) pendingScrollRef.current = savedY;
+    if (snap && Array.isArray(snap)) {
+      setSessions(snap);
+      fromSnapshotRef.current = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (fromSnapshotRef.current) return;
+    void load();
+  }, [load]);
+
+  // Возврат: высота восстановлена после коммита данных (снапшот или fetch).
+  useEffect(() => {
+    const y = pendingScrollRef.current;
+    if (y === null || sessions === null || sessions.length === 0) return;
+    pendingScrollRef.current = null;
+    window.scrollTo(0, y);
+  }, [sessions]);
 
   const create = async (): Promise<void> => {
     setCreating(true);
@@ -62,6 +109,9 @@ export default function ChatPickerPage() {
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as { id: string };
+      // Снапшот списка устарел (сессия создана, но в нём её нет) — возврат
+      // «← назад» должен рефетчить, а не показать список без новой сессии.
+      clearListSnapshot(LIST_PATH);
       router.push(`/chat/${data.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'create failed');

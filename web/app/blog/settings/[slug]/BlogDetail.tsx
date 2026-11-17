@@ -6,9 +6,13 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
+import { BackButton } from '../../../components/ui/BackButton';
+import { useSpaHistory } from '../../../components/ui/useSpaHistory';
+import { clearListSnapshot } from '../../../../lib/shared/spaHistory';
 import { Card } from '../../../components/ui/Card';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { Dialog } from '../../../components/ui/Dialog';
@@ -136,6 +140,11 @@ function errorOf(json: unknown, fallback: string): string {
 
 export function BlogDetail({ slug }: { slug: string }) {
   const { toast } = useToast();
+  const pathname = usePathname();
+
+  // S2 «Back&scroll»: отметка SPA-истории (детальная гасит флаг возврата).
+  useSpaHistory(pathname);
+
   const [blog, setBlog] = useState<BlogDetailDto | null>(null);
   const [prompts, setPrompts] = useState<AgentPromptItem[]>([]);
   const [schedule, setSchedule] = useState<ScheduleEntry[]>([]);
@@ -361,6 +370,8 @@ export function BlogDetail({ slug }: { slug: string }) {
       if (!resp.ok || !data.blog) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       applyBlog(data.blog);
       await refreshPrompts();
+      // Хаб показывает имя/профиль/статус — его снапшот устарел после rename.
+      clearListSnapshot('/blog/settings');
       toast('ok', 'Настройки сохранены');
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Не удалось сохранить');
@@ -404,6 +415,8 @@ export function BlogDetail({ slug }: { slug: string }) {
       } else {
         toast('ok', data.published?.ok ? 'Пост создан и опубликован' : 'Черновики созданы');
       }
+      // Список постов должен показать новые черновики при возврате «← назад».
+      clearListSnapshot('/blog/posts');
       const postsResp = await fetch(`/api/blog/posts?limit=5&blog=${encodeURIComponent(blog.slug)}`, { cache: 'no-store' });
       if (postsResp.ok) {
         const postsData = (await postsResp.json().catch(() => ({}))) as { posts?: PostItem[] };
@@ -522,6 +535,8 @@ export function BlogDetail({ slug }: { slug: string }) {
       if (!resp.ok || !data.blog) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       applyBlog(data.blog);
       setArchiveOpen(false);
+      // Архивация меняет фильтр «активных» на хабе — снапшот устарел.
+      clearListSnapshot('/blog/settings');
       toast('ok', archived ? 'Блог в архиве' : 'Блог возвращён');
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось изменить статус');
@@ -542,14 +557,12 @@ export function BlogDetail({ slug }: { slug: string }) {
   if (error || !blog) {
     return (
       <div className="space-y-4">
-        <SectionHead code="blog · studio" title="Блог недоступен" actions={<Link className="text-sm text-accent hover:underline" href="/blog/settings">← Все блоги</Link>} />
+        <SectionHead code="blog · studio" title="Блог недоступен" actions={<BackButton fallbackHref="/blog/settings" />} />
         <Card label="ошибка" tone="danger">
           <p className="text-sm text-err">{error ?? 'Блог не найден'}</p>
           <div className="mt-3 flex gap-2">
             <Button onClick={() => void load()}>Повторить</Button>
-            <Link className="inline-flex min-h-[36px] items-center rounded-md border border-line-strong px-3 text-sm text-dim hover:text-ink" href="/blog/settings">
-              Все блоги
-            </Link>
+            <BackButton fallbackHref="/blog/settings" label="Все блоги" />
           </div>
         </Card>
       </div>
@@ -572,9 +585,7 @@ export function BlogDetail({ slug }: { slug: string }) {
           </span>
         }
         actions={
-          <Link className="text-sm text-accent hover:underline" href="/blog/settings">
-            ← Все блоги
-          </Link>
+          <BackButton fallbackHref="/blog/settings" />
         }
       />
 

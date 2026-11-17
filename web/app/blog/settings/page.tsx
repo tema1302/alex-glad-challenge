@@ -4,7 +4,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
@@ -16,6 +17,13 @@ import { SectionHead } from '../../components/ui/SectionHead';
 import { Textarea } from '../../components/ui/Textarea';
 import { useToast } from '../../components/ui/Toast';
 import { BLOG_AGENT_IDS } from '../../../lib/shared/forms';
+import { useIsomorphicLayoutEffect, useSpaHistory } from '../../components/ui/useSpaHistory';
+import {
+  consumeReturnFlag,
+  readListSnapshot,
+  readScroll,
+  saveListSnapshot,
+} from '../../../lib/shared/spaHistory';
 import { BlogCheatSheet } from './BlogCheatSheet';
 
 interface BlogCounts {
@@ -102,8 +110,18 @@ function Readiness({ blog }: { blog: BlogSummary }) {
   );
 }
 
+// Ключ снапшота/якоря этой страницы (S2 «Back&scroll»).
+const LIST_PATH = '/blog/settings';
+
+/** Снапшот хаба: и карточки, и профили для селекта создания. */
+interface HubSnapshot {
+  readonly blogs: BlogSummary[];
+  readonly profiles: string[];
+}
+
 export default function BlogHubPage() {
   const { toast } = useToast();
+  const pathname = usePathname();
   const [blogs, setBlogs] = useState<BlogSummary[]>([]);
   const [profiles, setProfiles] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +140,16 @@ export default function BlogHubPage() {
   const [sourcesText, setSourcesText] = useState('');
   const [formError, setFormError] = useState<string | null>(null);
 
+  // S2 «Back&scroll»: отметка SPA-истории + throttled scroll-якорь (список).
+  useSpaHistory(pathname, { list: true });
+
+  // Возврат через popstate: высота после коммита данных; ref переживает
+  // StrictMode double-mount (см. useSpaHistory).
+  const pendingScrollRef = useRef<number | null>(null);
+  // Снапшот применён на mount → mount-fetch пропускаем (мутации зовут load
+  // напрямую — их refetch/re-save не зависят от этого флага).
+  const fromSnapshotRef = useRef(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -131,6 +159,12 @@ export default function BlogHubPage() {
       if (!resp.ok) throw new Error(data.error ?? `HTTP ${resp.status}`);
       setBlogs(data.blogs ?? []);
       setProfiles(data.profiles ?? []);
+      // Снапшот для мгновенного возврата «← назад» из карточки блога (TTL 60 c;
+      // create/archive рефетчат через load и перезаписывают его).
+      saveListSnapshot(LIST_PATH, {
+        blogs: data.blogs ?? [],
+        profiles: data.profiles ?? [],
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось загрузить блоги');
     } finally {
@@ -138,9 +172,31 @@ export default function BlogHubPage() {
     }
   }, []);
 
+  // Mount (до paint): свежий снапшот → мгновенный рендер без fetch.
+  useIsomorphicLayoutEffect(() => {
+    const snap = readListSnapshot<HubSnapshot>(LIST_PATH);
+    const savedY = consumeReturnFlag() ? readScroll(LIST_PATH) : null;
+    if (savedY !== null) pendingScrollRef.current = savedY;
+    if (snap && Array.isArray(snap.blogs) && Array.isArray(snap.profiles)) {
+      setBlogs(snap.blogs);
+      setProfiles(snap.profiles);
+      setLoading(false);
+      fromSnapshotRef.current = true;
+    }
+  }, []);
+
   useEffect(() => {
+    if (fromSnapshotRef.current) return;
     void load();
   }, [load]);
+
+  // Возврат: высота восстановлена после коммита данных (снапшот или fetch).
+  useEffect(() => {
+    const y = pendingScrollRef.current;
+    if (y === null || blogs.length === 0) return;
+    pendingScrollRef.current = null;
+    window.scrollTo(0, y);
+  }, [blogs]);
 
   const visible = useMemo(
     () => blogs.filter((b) => includeArchived || b.status === 'active'),

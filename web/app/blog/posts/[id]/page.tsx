@@ -6,11 +6,12 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
 import { SectionHead } from '../../../components/ui/SectionHead';
 import { Card } from '../../../components/ui/Card';
 import { Button } from '../../../components/ui/Button';
+import { BackButton } from '../../../components/ui/BackButton';
+import { useSpaHistory } from '../../../components/ui/useSpaHistory';
 import { Field } from '../../../components/ui/Field';
 import { Textarea } from '../../../components/ui/Textarea';
 import { Badge, statusBadge } from '../../../components/ui/Badge';
@@ -19,6 +20,11 @@ import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useToast } from '../../../components/ui/Toast';
 import { IconSend, IconTrash } from '../../../components/ui/icons';
 import { tgVisibleText } from '../../../../lib/shared/tg-html';
+import {
+  clearInAppMark,
+  clearListSnapshot,
+  hasInAppHistory,
+} from '../../../../lib/shared/spaHistory';
 
 interface PostData {
   id: number;
@@ -45,8 +51,12 @@ interface TgStatus {
 export default function BlogPostDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { toast } = useToast();
   const id = typeof params?.id === 'string' ? params.id : Array.isArray(params?.id) ? params.id[0] : '';
+
+  // S2 «Back&scroll»: отметка SPA-истории + флаг возврата (детальная гасит его).
+  useSpaHistory(pathname);
 
   const [post, setPost] = useState<PostData | null>(null);
   const [blog, setBlog] = useState<BlogInfo | null>(null);
@@ -62,6 +72,14 @@ export default function BlogPostDetailPage() {
   // Актуальный «dirty» для асинхронных колбэков: замыкание load() могло бы
   // захватить устаревший post=null (StrictMode double-effect) и затереть правку.
   const dirtyRef = useRef(false);
+
+  // S2 «Back&scroll»: fallback для прямого захода/deep link — контекст ?blog=
+  // из загруженного поста (slug известен после load; кнопка и del рендерятся
+  // с актуальным адресом на момент клика). Slug экранируем — симметрия с
+  // fetch-путём фильтра списка.
+  const fallbackHref = blog
+    ? `/blog/posts?blog=${encodeURIComponent(blog.slug)}`
+    : '/blog/posts';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -161,6 +179,8 @@ export default function BlogPostDetailPage() {
       };
       if (!resp.ok || !j.ok) throw new Error(j.error ?? `HTTP ${resp.status}`);
       toast('ok', `Опубликовано в Telegram (message_id=${j.messageId ?? '?'})`);
+      // Список показывает TG-статус: снапшот устарел (draft → published).
+      clearListSnapshot('/blog/posts');
       void load();
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Ошибка публикации');
@@ -176,12 +196,21 @@ export default function BlogPostDetailPage() {
         throw new Error(j.error ?? `HTTP ${resp.status}`);
       }
       toast('ok', `Пост #${id} удалён`);
-      router.push('/blog/posts');
+      // Снапшот списка больше не валиден (пост удалён) — возврат должен рефетчить.
+      clearListSnapshot('/blog/posts');
+      // Тот же семантический helper, что BackButton: in-app возврат без нового
+      // entry, прямой заход — честный push с контекстом блога.
+      if (hasInAppHistory()) {
+        router.back();
+      } else {
+        clearInAppMark();
+        router.push(fallbackHref);
+      }
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось удалить');
       throw e;
     }
-  }, [id, router, toast]);
+  }, [id, router, toast, fallbackHref]);
 
   const overLimit = draft.length > 4096;
 
@@ -198,12 +227,7 @@ export default function BlogPostDetailPage() {
           ) : undefined
         }
         actions={
-          <Link
-            href="/blog/posts"
-            className="inline-flex min-h-[36px] items-center rounded-md px-2 text-sm text-dim transition-colors duration-fast hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
-          >
-            ← к списку
-          </Link>
+          <BackButton fallbackHref={fallbackHref} />
         }
       />
 

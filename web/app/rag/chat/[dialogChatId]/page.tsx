@@ -5,12 +5,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
-import Link from 'next/link';
+import { useParams, usePathname } from 'next/navigation';
 import type { SseEvent, SseSource, SseQuote, SseDebug, RagStageStep } from '../../../../lib/shared/sse';
 import { useModelPrefDefault } from '../../../../lib/shared/use-model-pref';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
+import { BackButton } from '../../../components/ui/BackButton';
+import { useSpaHistory } from '../../../components/ui/useSpaHistory';
 import { INPUT_CLASS } from '../../../components/ui/Field';
 import { SectionHead } from '../../../components/ui/SectionHead';
 
@@ -43,6 +44,10 @@ const STAGE_LABEL: Record<RagStageStep, string> = {
 export default function RagChatSessionPage() {
   const params = useParams<{ dialogChatId: string }>();
   const dialogChatId = params.dialogChatId;
+  const pathname = usePathname();
+
+  // S2 «Back&scroll»: отметка SPA-истории (детальная гасит флаг возврата).
+  useSpaHistory(pathname);
 
   const [title, setTitle] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -259,7 +264,7 @@ export default function RagChatSessionPage() {
     return (
       <div className="space-y-4">
         <p className="text-sm text-err">Чат не загружен: {loadError}</p>
-        <Link href="/rag/chat" className="text-sm text-accent hover:underline">← к списку чатов</Link>
+        <BackButton fallbackHref="/rag/chat" />
       </div>
     );
   }
@@ -270,7 +275,7 @@ export default function RagChatSessionPage() {
         code="rag · chat"
         title={title || 'RAG-чат'}
         description={<span className="font-mono text-xs">{dialogChatId}</span>}
-        actions={<Link href="/rag/chat" className="text-sm text-accent hover:underline">чаты</Link>}
+        actions={<BackButton fallbackHref="/rag/chat" label="чаты" />}
       />
 
       {/* Панель управления */}

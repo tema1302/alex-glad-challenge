@@ -27,6 +27,18 @@ const isStandaloneEnabled =
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // S2 «Back&scroll»: окно клиентского Router Cache (RSC-шелл динамических
+  // страниц) — 30 с вместо дефолтного 0. Гейтит только мягкие push-навигации
+  // (Link/router.push) к страницам, показанным <30 с назад: «← к списку» после
+  // delete/publish не ходит на сервер за RSC. 'static' не задаём — сборка
+  // подставляет дефолт 300 (next/dist/build/define-env.js:94-95). Не влияет:
+  // popstate-«назад» (restoreReducer без сети), SSE/POST-роуты, fetch() из
+  // useEffect; CSP-nonce не затрагивает (политика — на document-request).
+  experimental: {
+    staleTimes: {
+      dynamic: 30,
+    },
+  },
   // Короткий URL /todos → реальный маршрут /mcp/todos (issue #36): наивный путь
   // из названия карточки не должен давать 404.
   async rewrites() {

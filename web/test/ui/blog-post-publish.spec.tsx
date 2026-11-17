@@ -9,10 +9,13 @@ import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const push = vi.fn();
+const back = vi.fn();
 
+// usePathname/back — S2 «Back&scroll»: страница ведёт SPA-историю и BackButton.
 vi.mock('next/navigation', () => ({
   useParams: () => ({ id: '7' }),
-  useRouter: () => ({ push }),
+  usePathname: () => '/blog/posts/7',
+  useRouter: () => ({ push, back }),
 }));
 
 import BlogPostDetailPage from '../../app/blog/posts/[id]/page';
@@ -21,6 +24,7 @@ import { ToastProvider } from '../../app/components/ui/Toast';
 afterEach(() => {
   cleanup();
   push.mockClear();
+  back.mockClear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });

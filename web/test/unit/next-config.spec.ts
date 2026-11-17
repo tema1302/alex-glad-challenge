@@ -25,6 +25,13 @@ async function loadOutput(): Promise<NextConfig['output']> {
   return mod.default.output;
 }
 
+/** Свежий experimental-блок (S2 «Back&scroll»: staleTimes). */
+async function loadStaleTimes(): Promise<NonNullable<NextConfig['experimental']>['staleTimes']> {
+  vi.resetModules();
+  const mod = await import('../../next.config');
+  return mod.default.experimental?.staleTimes;
+}
+
 afterEach(() => {
   if (realPlatform) Object.defineProperty(process, 'platform', realPlatform);
   if (realStandalone === undefined) delete process.env.NEXT_STANDALONE;
@@ -54,5 +61,21 @@ describe('next.config standalone gate', () => {
     setPlatform('win32');
     process.env.NEXT_STANDALONE = '0';
     await expect(loadOutput()).resolves.toBeUndefined();
+  });
+});
+
+// S2 «Back&scroll» (консилиум personal-space-S2-01): окно клиентского Router
+// Cache для динамических страниц — 30 с вместо дефолтного 0. Гейтит мягкие
+// push-навигации к недавно показанным страницам; 'static' не задаём — дефолт
+// 300 подставит сборка (next/dist/build/define-env.js:94-95).
+describe('next.config staleTimes (S2 Back&scroll)', () => {
+  it('dynamic === 30 — RSC-шелл динамических страниц переиспользуется 30 с', async () => {
+    await expect(loadStaleTimes()).resolves.toMatchObject({ dynamic: 30 });
+  });
+
+  it('static не задаём — сборка подставляет дефолт 300', async () => {
+    const times = await loadStaleTimes();
+    expect(times?.static).toBeUndefined();
+    expect(Object.keys(times ?? {})).toEqual(['dynamic']);
   });
 });
