@@ -35,6 +35,16 @@ import { BlogDb, LlmClient, ProfileManager } from './core/index.js';
 import { runNewsPipeline } from './core/agents/pipeline.js';
 import { seedStyleSamples } from './core/agents/seed.js';
 import { publishPost, isTelegramConfigured } from './core/agents/telegram.js';
+import { DEFAULT_BLOG_SLUG, type TweetRow } from './core/db.js';
+import { ingestTweet, ingestManualTweet, fetchAuthorTimeline } from './core/agents/twitterSource.js';
+import { writePostFromTweet } from './core/agents/statsPost.js';
+import {
+  authorActivity,
+  popularityScore,
+  discussionScore,
+  windowSinceIso,
+  parseTweetUrl,
+} from './core/tweets.js';
 import { McpHttpClient } from './core/mcpHttpClient.js';
 import { parseTodoArgs } from './core/todoParser.js';
 import { CourseDb } from './core/courseDb.js';
@@ -92,7 +102,7 @@ import {
 } from './core/tg/index.js';
 import type { ProbeMessage, ChatTopicRef, TgBuiltChunk } from './core/tg/index.js';
 import { runTgBot } from './core/tg/bot.js';
-import { runMaximBot } from './core/tg/maximBot.js';
+import { runMaximBot, parseSilenceDays, sendMaximLetterOnce } from './core/tg/maximBot.js';
 import { OllamaNativeClient } from './core/rag/llm.js';
 import {
   bankTarget,
@@ -168,6 +178,14 @@ function printHelp(): void {
   console.log('    --top <N>          сколько топ-новостей брать (по умолчанию 5)');
   console.log('    --for <i>          индекс новости из топа для поста (0 = самая хайповая)');
   console.log('    --publish          опубликовать готовый пост в Telegram (только если verdict=ok)');
+  console.log('  tweets           Twitter-источник статистических постов (блогеры → ранжирование → пост Антонова)');
+  console.log('    add <url|id>       ингест твита по URL/ID (fxtwitter); --blog <slug> (по умолч. lookatfacts)');
+  console.log('    add-manual         офлайн-ввод: --author <h> --text <t> [--url --likes --views --date ...]');
+  console.log('    list               ранжирование: --window <дней 1|3|7|30|custom> --sort popularity|discussion|recent');
+  console.log('                       --author <h> --limit <N> --blog <slug>');
+  console.log('    authors            активность авторов за окно (кол-во твитов): --window <дней>');
+  console.log('    fetch <handle>     таймлайн блогера (best-effort syndication): --limit <N>');
+  console.log('    write <id|url>     пост в стиле Антонова: --llm local|cloud --no-factcheck --chart <desc> --publish');
   console.log('  seed-style       Залить образцы стиля канала в БД (один раз)');
   console.log('  db-stats         Статистика БД: сколько новостей/постов/образцов');
   console.log('  course-import <dir>  Импорт транскрипций курса (*.transcript.json) в course.sqlite');
@@ -201,6 +219,7 @@ function printHelp(): void {
   console.log('    --index-only       собрать/доклеить FTS-индекс (tg-fts.sqlite) и выйти, без сети');
   console.log('    --rebuild          полная перестройка FTS-индекса (можно вместе с --index-only)');
   console.log('  maxim-bot        Бот «Максим Артемьевич» (QA Lead front-back): напутствия в чат + капс при молчании');
+  console.log('  maxim-letter [дни]  Письмо Максима в чат и тишина на N дней (по умолч. 21; сервис остановить)');
   console.log('  sec-inject       ADVANCED day-11: лаборатория prompt injection (3 техники, локальная LLM)');
   console.log('    --target bank|medium|hardened|all  цель атаки (по умолчанию bank; hardened — усиленные промпты)');
   console.log('    --model <name>     модель Ollama (по умолчанию LOCAL_LLM_MODEL)');
@@ -568,6 +587,11 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (arg === 'tweets') {
+    await runTweetsCommand(argv.slice(1));
+    return;
+  }
+
   if (arg === 'seed-style') {
     await runSeedStyleCommand();
     return;
@@ -772,6 +796,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  // --- Письмо Максима: одно сообщение в чат + явная тишина на N дней ---
+  if (arg === 'maxim-letter') {
+    const days = parseSilenceDays(argv[1] ?? '');
+    if (days === null) {
+      console.error('maxim-letter: дни тишины — целое 1–365 (по умолч. 21), например: maxim-letter 21');
+      process.exit(1);
+    }
+    try {
+      const res = await sendMaximLetterOnce(days);
+      console.log(
+        `▶ письмо отправлено в чат (msg_id=${res.messageId ?? 'n/a'}), ` +
+          `тишина до ${new Date(res.silenceUntil).toLocaleString('ru-RU')}`,
+      );
+    } catch (err) {
+      console.error(`maxim-letter: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+    return;
+  }
+
   if (arg === 'file-server') {
     const allowWrite = argv.slice(1).includes('--write');
     console.log(
@@ -854,7 +898,7 @@ async function main(): Promise<void> {
 
   console.error(`Неизвестная команда "${arg}".`);
   console.error('Доступные дни: ' + demos.map((d) => d.id).join(', '));
-  console.error('Команды: chat, list, latest, news, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, sec-loop, red-team, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
+  console.error('Команды: chat, list, latest, news, tweets, seed-style, db-stats, course-import, rag, tg-collect, tg-top, tg-bot, maxim-bot, sec-inject, sec-indirect, sec-demo, sec-chat, llm-gateway, sec-loop, red-team, mcp-server, scheduler, day-20-server, day-20, todo, remind, todos, done, summary, mcp, mcp-tools, ask, support, support-seed, crm-server, file-server, files, help');
   process.exit(1);
 }
 
@@ -946,6 +990,194 @@ async function runNewsCommand(argv: string[]): Promise<void> {
         }
       }
     }
+  } finally {
+    db.close();
+  }
+}
+
+interface TweetsFlags {
+  blog?: string; author?: string; name?: string; text?: string; url?: string;
+  window?: number; sort?: string; limit?: number; llm?: 'local' | 'cloud';
+  factCheck?: boolean; chart?: string; publish?: boolean; date?: string;
+  likes?: number; retweets?: number; replies?: number; quotes?: number; views?: number; bookmarks?: number;
+}
+
+function parseTweetsFlags(argv: string[]): TweetsFlags {
+  const f: TweetsFlags = {};
+  const num = (v: string | undefined): number | undefined => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const next = argv[i + 1];
+    switch (argv[i]) {
+      case '--blog': f.blog = next; i++; break;
+      case '--author': f.author = next; i++; break;
+      case '--name': f.name = next; i++; break;
+      case '--text': f.text = next; i++; break;
+      case '--url': f.url = next; i++; break;
+      case '--window': f.window = num(next); i++; break;
+      case '--sort': f.sort = next; i++; break;
+      case '--limit': f.limit = num(next); i++; break;
+      case '--llm': f.llm = next === 'local' ? 'local' : 'cloud'; i++; break;
+      case '--no-factcheck': f.factCheck = false; break;
+      case '--chart': f.chart = next; i++; break;
+      case '--publish': f.publish = true; break;
+      case '--date': f.date = next; i++; break;
+      case '--likes': f.likes = num(next); i++; break;
+      case '--retweets': f.retweets = num(next); i++; break;
+      case '--replies': f.replies = num(next); i++; break;
+      case '--quotes': f.quotes = num(next); i++; break;
+      case '--views': f.views = num(next); i++; break;
+      case '--bookmarks': f.bookmarks = num(next); i++; break;
+    }
+  }
+  return f;
+}
+
+function resolveTweet(db: BlogDb, input: string): TweetRow | null {
+  const ref = parseTweetUrl(input);
+  if (ref) return db.getTweetByTweetId(ref.id);
+  if (/^\d+$/.test(input.trim())) return db.getTweet(Number(input.trim()));
+  return null;
+}
+
+// tweets — Twitter-источник статистических постов: ингест/ранжирование/генерация.
+async function runTweetsCommand(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  const flags = parseTweetsFlags(argv.slice(1));
+  const db = new BlogDb(DB_PATH);
+  try {
+    const blogSlug = flags.blog ?? DEFAULT_BLOG_SLUG;
+    const blog = db.getBlogBySlug(blogSlug);
+    if (!blog) {
+      console.error(`Блог «${blogSlug}» не найден.`);
+      process.exitCode = 1;
+      return;
+    }
+    const windowDays = flags.window ?? 7;
+
+    if (sub === 'add') {
+      const input = argv[1];
+      if (!input || input.startsWith('--')) {
+        console.error('Укажите URL/ID: tweets add <url|id> [--blog <slug>]');
+        process.exitCode = 1;
+        return;
+      }
+      const r = await ingestTweet(db, input, { blogId: blog.id });
+      console.log(`${r.isNew ? 'Новый твит' : 'Обновлён твит'} @${r.tweet.author_handle} (id=${r.tweet.id}, tweet_id=${r.tweet.tweet_id})`);
+      console.log(`  ${r.tweet.text.replace(/\s+/g, ' ').slice(0, 160)}`);
+      console.log(`  likes=${r.tweet.likes} RT=${r.tweet.retweets} views=${r.tweet.views} · ${r.tweet.url}`);
+      return;
+    }
+
+    if (sub === 'add-manual') {
+      if (!flags.author || !flags.text) {
+        console.error('Нужны --author и --text: tweets add-manual --author <h> --text <t> [--url <u>] [--likes N] [--views N] ...');
+        process.exitCode = 1;
+        return;
+      }
+      const r = ingestManualTweet(db, {
+        authorHandle: flags.author, authorName: flags.name, text: flags.text, url: flags.url,
+        publishedAt: flags.date, likes: flags.likes, retweets: flags.retweets, replies: flags.replies,
+        quotes: flags.quotes, views: flags.views, bookmarks: flags.bookmarks,
+      }, blog.id);
+      console.log(`${r.isNew ? 'Новый' : 'Обновлён'} manual-твит @${r.tweet.author_handle} (id=${r.tweet.id})`);
+      return;
+    }
+
+    if (sub === 'list') {
+      const rows = db.listTweets({
+        author: flags.author,
+        sinceIso: windowSinceIso(windowDays),
+        blogId: flags.blog ? blog.id : undefined,
+      });
+      const sort = flags.sort ?? 'popularity';
+      const scoreOf = (t: TweetRow): number => (sort === 'discussion' ? discussionScore(t) : popularityScore(t));
+      const sorted = sort === 'recent' ? rows : [...rows].sort((a, b) => scoreOf(b) - scoreOf(a));
+      const limited = flags.limit != null ? sorted.slice(0, flags.limit) : sorted;
+      console.log(`Твиты за ${windowDays} дн. (sort=${sort}, всего ${rows.length}):`);
+      if (limited.length === 0) {
+        console.log('  (пусто — ингестните твиты: tweets add <url>)');
+        return;
+      }
+      for (const t of limited) {
+        console.log(`  [${sort === 'recent' ? t.published_at : scoreOf(t)}] id=${t.id} @${t.author_handle} · ${t.published_at}`);
+        console.log(`     ${t.text.replace(/\s+/g, ' ').slice(0, 140)}`);
+        console.log(`     likes=${t.likes} RT=${t.retweets} replies=${t.replies} quotes=${t.quotes} views=${t.views}`);
+      }
+      return;
+    }
+
+    if (sub === 'authors') {
+      const act = authorActivity(db.listTweets({ sinceIso: windowSinceIso(windowDays) }));
+      console.log(`Активность авторов за ${windowDays} дн.:`);
+      if (act.length === 0) {
+        console.log('  (пусто)');
+        return;
+      }
+      for (const a of act) console.log(`  @${a.handle}: ${a.count} твит(ов), популярность ${a.popularity}`);
+      return;
+    }
+
+    if (sub === 'fetch') {
+      const handle = argv[1];
+      if (!handle || handle.startsWith('--')) {
+        console.error('Укажите handle: tweets fetch <handle> [--limit N] [--blog <slug>]');
+        process.exitCode = 1;
+        return;
+      }
+      const tweets = await fetchAuthorTimeline(handle, undefined, flags.limit ?? 20);
+      let added = 0;
+      for (const t of tweets) if (db.upsertTweet(t, blog.id)) added++;
+      console.log(`@${handle}: получено ${tweets.length}, новых в БД ${added} (best-effort syndication).`);
+      return;
+    }
+
+    if (sub === 'write') {
+      const input = argv[1];
+      if (!input || input.startsWith('--')) {
+        console.error('Укажите твит: tweets write <id|url> [--blog <slug>] [--llm local|cloud] [--no-factcheck] [--chart <desc>] [--publish]');
+        process.exitCode = 1;
+        return;
+      }
+      const tweet = resolveTweet(db, input);
+      if (!tweet) {
+        console.error(`Твит «${input}» не найден в БД (сначала tweets add).`);
+        process.exitCode = 1;
+        return;
+      }
+      const profile = new ProfileManager(PROFILE_DIR);
+      const names = profile.list();
+      if (names.length > 0) profile.load(names.includes('default') ? 'default' : names[0]);
+      const client = makeRagLlmClient(flags.llm ?? 'cloud');
+      console.log(`▶ Пост из твита @${tweet.author_handle} (блог «${blog.name}», стиль ${blog.style_preset})\n`);
+      const res = await writePostFromTweet(db, client, tweet, {
+        blog, profile, chartDescription: flags.chart, factCheck: flags.factCheck,
+      });
+      console.log('=== Пост ===');
+      console.log(res.post.content);
+      if (res.factCheck) {
+        console.log(`\nverdict: ${res.factCheck.verdict}`);
+        for (const issue of res.factCheck.issues) console.log(`  [${issue.severity}] ${issue.claim}`);
+      }
+      console.log(`\npostId=${res.postId}`);
+      if (flags.publish) {
+        if (!isTelegramConfigured()) {
+          console.log('[telegram] TG_BOT_TOKEN/TG_CHAT_ID не заданы — пропуск.');
+        } else if (res.factCheck && res.factCheck.verdict !== 'ok') {
+          console.log('[telegram] verdict != ok — пост НЕ опубликован.');
+        } else {
+          const tg = await publishPost(res.post.content);
+          console.log(tg.ok ? `[telegram] опубликовано (message_id=${tg.messageId})` : `[telegram] ошибка: ${tg.error}`);
+        }
+      }
+      return;
+    }
+
+    console.error('tweets: подкоманды add | add-manual | list | authors | fetch | write.');
+    console.error('Пример: tweets add https://x.com/markrstats/status/2122351771880456203');
+    process.exitCode = 1;
   } finally {
     db.close();
   }

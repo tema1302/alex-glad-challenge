@@ -10,7 +10,7 @@ import 'server-only';
 
 export { dataPath, DATA_DIR } from '@challenge/core/paths';
 export { BlogDb, DEFAULT_BLOG_SLUG } from '@challenge/core/db';
-export type { NewsRow, PostRow, StyleSampleRow, BlogRow, BlogStats } from '@challenge/core/db';
+export type { NewsRow, PostRow, StyleSampleRow, BlogRow, BlogStats, TweetRow, TweetAuthorRow } from '@challenge/core/db';
 export {
   BLOG_AGENT_IDS,
   BLOG_AGENT_SPECS,
@@ -151,6 +151,28 @@ export { createAutomationRunner } from '@challenge/core/agents/automationRun';
 // Ручной/праздничный пост по теме (без RSS) + варианты подачи.
 export { TopicPostWriter, TOPIC_VARIANTS } from '@challenge/core/agents/topicWriter';
 export type { WrittenTopicPost, TopicVariantSpec } from '@challenge/core/agents/topicWriter';
+// Twitter-источник статистических постов: ингест твитов блогеров (fxtwitter/syndication/
+// manual) + ранжирование (популярность/активность, окна 1/3/7/30/custom) + пост Антонова.
+export {
+  ingestTweet,
+  ingestManualTweet,
+  fetchAuthorTimeline,
+  TwitterScannerAgent,
+} from '@challenge/core/agents/twitterSource';
+export type { IngestResult, ManualTweetInput, TwitterFetcher } from '@challenge/core/agents/twitterSource';
+export { writePostFromTweet } from '@challenge/core/agents/statsPost';
+export type { TweetPostResult } from '@challenge/core/agents/statsPost';
+export {
+  rankByPopularity,
+  rankByDiscussion,
+  authorActivity,
+  popularityScore,
+  discussionScore,
+  windowSinceIso,
+  parseTweetUrl,
+  TWEET_WINDOW_PRESETS,
+} from '@challenge/core/tweets';
+export type { Tweet, TweetAuthor, TweetMedia, AuthorActivity } from '@challenge/core/tweets';
 // Недельное расписание (Сб/Вс): слоты в таймзоне + идемпотентный прогон.
 export {
   BlogScheduleStore,

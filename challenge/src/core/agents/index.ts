@@ -34,6 +34,19 @@ export { Orchestrator } from './orchestrator.js';
 export type { OrchestratorResult } from './orchestrator.js';
 export { runSourceAgents } from './sourcePipeline.js';
 
+export {
+  TwitterScannerAgent,
+  fetchTweet,
+  fetchAuthor,
+  fetchAuthorTimeline,
+  extractTweetsFromJson,
+  ingestTweet,
+  ingestManualTweet,
+} from './twitterSource.js';
+export type { TwitterFetcher, IngestResult, ManualTweetInput, TwitterScannerOptions } from './twitterSource.js';
+export { writePostFromTweet, tweetToNews } from './statsPost.js';
+export type { TweetPostResult, WritePostFromTweetOptions } from './statsPost.js';
+
 export { StatefulPipeline } from './statefulPipeline.js';
 export {
   createInitialState,

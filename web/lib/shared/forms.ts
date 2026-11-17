@@ -231,10 +231,61 @@ export const scoutOptsSchema = z.object({
   query: z.string().trim().max(500).optional(),
   enableTelegram: z.boolean().optional(),
   enableForum: z.boolean().optional(),
+  enableTwitter: z.boolean().optional(),
+  twitterHandles: z.array(z.string().trim().min(1).max(15)).max(20).optional(),
   llm: z.enum(['local', 'cloud']).optional(),
   blog: z.string().trim().min(1).max(100).optional(),
 });
 export type ScoutOptsInput = z.infer<typeof scoutOptsSchema>;
+
+// --- Twitter-источник статистических постов (блогеры → ранжирование → пост Антонова) ---
+
+// POST /api/blog/tweets/ingest — ингест твита: по URL/ID (fxtwitter) или manual (author+text).
+export const tweetIngestSchema = z
+  .object({
+    url: z.string().trim().max(300, 'URL/ID — до 300 символов').optional(),
+    author: z.string().trim().max(15, 'handle — до 15 символов').optional(),
+    name: z.string().trim().max(120).optional(),
+    text: z.string().trim().max(4000, 'Текст — до 4000 символов').optional(),
+    date: z.string().trim().max(40).optional(),
+    likes: z.coerce.number().int().min(0).optional(),
+    retweets: z.coerce.number().int().min(0).optional(),
+    replies: z.coerce.number().int().min(0).optional(),
+    quotes: z.coerce.number().int().min(0).optional(),
+    views: z.coerce.number().int().min(0).optional(),
+    bookmarks: z.coerce.number().int().min(0).optional(),
+    blog: z.string().trim().min(1).max(100).optional(),
+  })
+  .refine((d) => Boolean(d.url) || Boolean(d.author && d.text), {
+    message: 'Нужен url/ID твита или author+text (manual)',
+  });
+export type TweetIngestInput = z.infer<typeof tweetIngestSchema>;
+
+// GET /api/blog/tweets — ранжирование твитов за окно (дни): popularity|discussion|recent.
+export const tweetListSchema = z.object({
+  author: z.string().trim().max(15).optional(),
+  window: z.coerce.number().min(0.01, 'window: >0 дней').max(3650).optional(),
+  sort: z.enum(['popularity', 'discussion', 'recent']).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  blog: z.string().trim().min(1).max(100).optional(),
+});
+export type TweetListInput = z.infer<typeof tweetListSchema>;
+
+// GET /api/blog/tweets/authors — активность авторов за окно (кол-во твитов).
+export const tweetAuthorsSchema = z.object({
+  window: z.coerce.number().min(0.01, 'window: >0 дней').max(3650).optional(),
+});
+export type TweetAuthorsInput = z.infer<typeof tweetAuthorsSchema>;
+
+// POST /api/blog/tweets/post — пост в стиле Антонова из сохранённого твита.
+export const tweetPostSchema = z.object({
+  tweet: z.string().trim().min(1, 'Укажите id или URL твита').max(300),
+  blog: z.string().trim().min(1).max(100).optional(),
+  llm: z.enum(['local', 'cloud']).optional(),
+  factCheck: z.boolean().optional(),
+  chart: z.string().trim().max(2000, 'Описание графика — до 2000 символов').optional(),
+});
+export type TweetPostInput = z.infer<typeof tweetPostSchema>;
 
 // --- P5: MCP admin + agent + summary + settings ---
 

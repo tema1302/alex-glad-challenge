@@ -11,6 +11,7 @@ import type { SourceAgent } from './sourceAgent.js';
 import { RssSourceAgent } from './rssSource.js';
 import { ForumScannerAgent } from './forumScanner.js';
 import { TelegramScannerAgent, type AskFn } from './telegramScanner.js';
+import { TwitterScannerAgent } from './twitterSource.js';
 import { Orchestrator, type OrchestratorResult } from './orchestrator.js';
 
 export async function runSourceAgents(
@@ -22,6 +23,10 @@ export async function runSourceAgents(
     topK?: number;
     enableTelegram?: boolean;
     enableForum?: boolean;
+    /** Twitter-агент (opt-in): читает сохранённые твиты блогеров из БД, ранжирует по популярности. */
+    enableTwitter?: boolean;
+    /** Фильтр авторов для Twitter-агента (handles без @); пусто — все сохранённые. */
+    twitterHandles?: string[];
     sessionDir?: string;
     ask?: AskFn;
     /** Блог для per-blog промпта оркестратора; null/undefined — legacy default. */
@@ -46,6 +51,18 @@ export async function runSourceAgents(
     // Запрос влияет на выбор Mastodon-хештегов; Sports.ru/Lemmy отдают общий топ,
     // финальную релевантность решает оркестратор.
     agents.push(new ForumScannerAgent({ limit: 10, userQuery }));
+  }
+
+  if (opts.enableTwitter === true) {
+    // Twitter по умолчанию выкл (opt-in): агент читает уже ингестнутые твиты из БД
+    // (без сети), окно — из maxAgeHours. Ингест твитов — отдельный шаг (CLI tweets add / web).
+    agents.push(
+      new TwitterScannerAgent(db, {
+        limit: 10,
+        windowDays: Math.max(1, Math.ceil(maxAgeHours / 24)),
+        handles: opts.twitterHandles,
+      }),
+    );
   }
 
   if (opts.enableTelegram !== false) {

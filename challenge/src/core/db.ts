@@ -13,6 +13,7 @@ import path from 'node:path';
 
 import type { StylePreset } from './stylePreset.js';
 import { resolveStylePreset } from './stylePreset.js';
+import type { Tweet, TweetAuthor, TweetEngagement } from './tweets.js';
 
 export interface BlogRow {
   id: number;
@@ -97,6 +98,30 @@ export interface StyleSampleRow {
   blog_id: number | null;
 }
 
+// Твиты блогеров — источник статистических постов (tweets.ts). published_at = время
+// публикации твита (ISO), fetched_at = когда ингестнули. media — JSON-массив TweetMedia.
+export interface TweetRow extends TweetEngagement {
+  id: number;
+  tweet_id: string;
+  author_handle: string;
+  text: string;
+  url: string;
+  published_at: string;
+  media: string;
+  fetched_at: string;
+  blog_id: number | null;
+}
+
+export interface TweetAuthorRow {
+  id: number;
+  handle: string;
+  name: string;
+  description: string;
+  followers: number;
+  fetched_at: string;
+  created_at: string;
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS blogs (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,8 +177,38 @@ CREATE TABLE IF NOT EXISTS style_samples (
   blog_id INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS tweet_authors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  handle TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL DEFAULT '',
+  description TEXT NOT NULL DEFAULT '',
+  followers INTEGER NOT NULL DEFAULT 0,
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS tweets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tweet_id TEXT NOT NULL UNIQUE,
+  author_handle TEXT NOT NULL,
+  text TEXT NOT NULL,
+  url TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  likes INTEGER NOT NULL DEFAULT 0,
+  retweets INTEGER NOT NULL DEFAULT 0,
+  replies INTEGER NOT NULL DEFAULT 0,
+  quotes INTEGER NOT NULL DEFAULT 0,
+  views INTEGER NOT NULL DEFAULT 0,
+  bookmarks INTEGER NOT NULL DEFAULT 0,
+  media TEXT NOT NULL DEFAULT '[]',
+  fetched_at TEXT NOT NULL DEFAULT (datetime('now')),
+  blog_id INTEGER
+);
+
 CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at);
 CREATE INDEX IF NOT EXISTS idx_news_used ON news(used);
+CREATE INDEX IF NOT EXISTS idx_tweets_published ON tweets(published_at);
+CREATE INDEX IF NOT EXISTS idx_tweets_author ON tweets(author_handle);
 `;
 
 export class BlogDb {
@@ -534,6 +589,100 @@ export class BlogDb {
 
   postsCount(): number {
     const row = this.db.prepare('SELECT COUNT(*) AS n FROM posts').get() as { n: number };
+    return row.n;
+  }
+
+  // --- tweets (источник статистических постов) ---
+  upsertTweetAuthor(author: TweetAuthor): void {
+    this.db
+      .prepare(
+        `INSERT INTO tweet_authors (handle, name, description, followers)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(handle) DO UPDATE SET
+           name = excluded.name,
+           description = excluded.description,
+           followers = excluded.followers,
+           fetched_at = datetime('now')`,
+      )
+      .run(author.handle, author.name, author.description, author.followers);
+  }
+
+  /** true = твит новый; false = уже был (обновили engagement/текст повторным ингестом). */
+  upsertTweet(tweet: Tweet, blogId?: number | null): boolean {
+    const media = JSON.stringify(tweet.media);
+    const existing = this.getTweetByTweetId(tweet.tweetId);
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE tweets SET author_handle = ?, text = ?, url = ?, published_at = ?,
+             likes = ?, retweets = ?, replies = ?, quotes = ?, views = ?, bookmarks = ?,
+             media = ?, fetched_at = datetime('now') WHERE tweet_id = ?`,
+        )
+        .run(
+          tweet.authorHandle, tweet.text, tweet.url, tweet.publishedAt,
+          tweet.likes, tweet.retweets, tweet.replies, tweet.quotes, tweet.views, tweet.bookmarks,
+          media, tweet.tweetId,
+        );
+      return false;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO tweets (tweet_id, author_handle, text, url, published_at,
+           likes, retweets, replies, quotes, views, bookmarks, media, blog_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        tweet.tweetId, tweet.authorHandle, tweet.text, tweet.url, tweet.publishedAt,
+        tweet.likes, tweet.retweets, tweet.replies, tweet.quotes, tweet.views, tweet.bookmarks,
+        media, blogId ?? null,
+      );
+    return true;
+  }
+
+  getTweet(id: number): TweetRow | null {
+    const row = this.db.prepare('SELECT * FROM tweets WHERE id = ?').get(id);
+    return (row ?? null) as TweetRow | null;
+  }
+
+  getTweetByTweetId(tweetId: string): TweetRow | null {
+    const row = this.db.prepare('SELECT * FROM tweets WHERE tweet_id = ?').get(tweetId);
+    return (row ?? null) as TweetRow | null;
+  }
+
+  /** Твиты с опц. фильтром автора/окна/блога, свежие сверху. Ранжирование — tweets.ts. */
+  listTweets(opts: {
+    author?: string;
+    sinceIso?: string;
+    blogId?: number | null;
+    limit?: number;
+  } = {}): TweetRow[] {
+    const where: string[] = [];
+    const params: Array<string | number> = [];
+    if (opts.author) { where.push('author_handle = ?'); params.push(opts.author); }
+    if (opts.sinceIso) { where.push('published_at >= ?'); params.push(opts.sinceIso); }
+    if (opts.blogId != null) { where.push('blog_id = ?'); params.push(opts.blogId); }
+    const sql =
+      'SELECT * FROM tweets' +
+      (where.length > 0 ? ` WHERE ${where.join(' AND ')}` : '') +
+      ' ORDER BY published_at DESC' +
+      (opts.limit != null ? ' LIMIT ?' : '');
+    if (opts.limit != null) params.push(opts.limit);
+    return this.db.prepare(sql).all(...params) as unknown as TweetRow[];
+  }
+
+  tweetAuthors(): TweetAuthorRow[] {
+    return this.db
+      .prepare('SELECT * FROM tweet_authors ORDER BY handle')
+      .all() as unknown as TweetAuthorRow[];
+  }
+
+  getTweetAuthor(handle: string): TweetAuthorRow | null {
+    const row = this.db.prepare('SELECT * FROM tweet_authors WHERE handle = ?').get(handle);
+    return (row ?? null) as TweetAuthorRow | null;
+  }
+
+  tweetsCount(): number {
+    const row = this.db.prepare('SELECT COUNT(*) AS n FROM tweets').get() as { n: number };
     return row.n;
   }
 }

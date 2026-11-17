@@ -5,6 +5,45 @@
 
 ---
 
+## Фича: Twitter-источник статистических постов «Иди на факты глянь» (2026-11-17)
+
+**Задание:** на основе статистических графиков и описаний создавать посты для канала
+«Иди на факты глянь» в стиле Антонова (как в блог-пайплайне); парсить твиты блогеров
+(markstats и др.), ранжировать по популярности/активности за окна 1/3/7/30/custom дней.
+Референс — твит markstats про xG «Челси»/Кайседо.
+
+**Что сделано:**
+- `core/tweets.ts`: типы Tweet/TweetAuthor, parseTweetUrl, parseFxTweet/parseFxAuthor
+  (fxtwitter JSON, защитное сужение + clean()), popularityScore/discussionScore,
+  windowSinceIso (окна 1/3/7/30/custom), rankByPopularity/rankByDiscussion/authorActivity.
+- `core/db.ts`: таблицы tweet_authors/tweets (идемпотентно), upsertTweetAuthor/upsertTweet
+  (дедуп по tweet_id, обновление engagement), listTweets (окно/автор/блог), getTweet*.
+- `core/agents/twitterSource.ts`: fetchTweet (одиночный твит по URL/ID, fxtwitter — live),
+  fetchAuthorTimeline (syndication, best-effort), ingestTweet/ingestManualTweet (офлайн),
+  TwitterScannerAgent (source-агент scout: читает твиты из БД, ранжирует по популярности).
+- `core/agents/statsPost.ts`: writePostFromTweet — твит → NewsRow-форма → PostWriter
+  (пресет antonov через lookatfacts) → FactChecker → posts (news_id=null, topic=URL твита).
+- `core/agents/sourcePipeline.ts`: opt-in enableTwitter/twitterHandles в runSourceAgents.
+- CLI `tweets`: add | add-manual | list | authors | fetch | write (--window/--sort/--llm/--publish).
+- Web: `POST /api/blog/tweets/ingest`, `GET /api/blog/tweets`, `GET /api/blog/tweets/authors`,
+  `POST /api/blog/tweets/post`; scout получил enableTwitter/twitterHandles. Схемы в forms.ts,
+  экспорты в chokepoint challenge.ts, адаптер lib/server/tweets.ts. Новые /api/* закрыты middleware.
+
+**Зачем:** статистические твиты data-блогеров (xG, deep entries и т.п.) → готовые посты
+голосом канала без ручного рерайта; ранжирование помогает выбрать самый сильный материал.
+
+**Проверки:** challenge typecheck + 684/684 тестов (26 новых); web typecheck + 15 новых
+route-тестов; web build — 4 tweets-routes собрались. Live-смоук CLI: ингест твита markstats
+(fxtwitter) → list/authors (популярность 1151, discussion 81). Генерация поста — unit с
+fake-LLM (креденшалов в среде нет). 2 падения middleware.spec.ts — предсуществующие
+(утечка WEB_PUBLIC_ORIGIN), к фиче не относятся.
+
+**Риски:** bulk-таймлайн (syndication) в этой среде недоступен (сеть) — best-effort +
+fixture-тесты; в prod через HTTPS_PROXY может работать. Live-генерация LLM не смоук-тестилась
+(нет ключей). UI-страница твитов — follow-up. Коммиты не делались (явного запроса не было).
+
+---
+
 ## Фикс: LLM API error 400 при генерации поста по теме (2026-11-17)
 
 **Что сделано:**
@@ -36,6 +75,34 @@ LLM-запросов закрыты нормализацией в `LlmClient`, �
 
 ---
 
+## Максим: письмо в чат + явная тишина на N дней (2026-11-17)
+
+**Что сделано:**
+- `core/tg/maximBot.ts`: состояние `silenceUntil` — явная тишина сильнее
+  релизного календаря: пока она идёт, scheduler не шлёт напутствий и не капсит,
+  а пересчёт `nextNudgeAt` (миграция «на ближайший релиз») откладывается до её
+  конца; `/maxim_status` показывает срок тишины. `buildLetter()` — письмо в
+  голосе Максима: сегодня регресс, просьба быть внимательнее, срок тишины.
+- `cli.ts`: `maxim-letter [дни]` (по умолчанию 21, допустимо 1–365) — одно
+  письмо в рабочий чат и тишина на N дней. Запускать при остановленном
+  сервисе: живой процесс держит состояние в памяти и перезапишет `silenceUntil`.
+- Тесты: `parseSilenceDays`, `silenceUntil`/`isSilenced`, `silencePhrase`,
+  `buildLetter`; `node --import tsx --test "src/core/tg/*.test.ts"` — 156/156.
+
+**Зачем:** «сказать про регресс один раз и замолчать на три недели» — календарь
+умеет только «каждые 14 дней», поэтому понадобился явный срок тишины.
+
+**Статус доставки:** заблокировано — Bot API отвечает `403 Forbidden: bot was
+kicked from the group chat` (getChatMember: status `left`) для
+`MAXIM_CHAT_ID=-4805270771`, последняя успешная отправка — 2026-11-03
+(msg_id=58). Письмо уйдёт тем же `maxim-letter 21`, как только бота вернут в чат.
+
+**Риски:** `maxim-letter` при работающем сервисе перезапишется следующим
+апдейтом (в docstring и help — требование остановки); текст письма статичный,
+формулировки меняются только кодом.
+
+---
+
 ## News → пост по клику + правка (2026-11-16)
 
 **Ветка:** `feat/news-to-posts`
@@ -62,6 +129,26 @@ DTO с nullable id).
 можно переписать); фактчекинг может вернуть `needs_revision` — пост сохраняется
 черновиком и правится в редакторе. Точечная генерация занимает те же ~10–30 с,
 что и news-пайплайн.
+
+---
+
+## ChunkLoadError: восстановление вместо «Глобального сбоя» (2026-11-16)
+
+**Что сделано:** error-boundary (`web/app/global-error.tsx`, `web/app/error.tsx`)
+теперь распознают восстановимый `ChunkLoadError` и делают **одну** жёсткую
+перезагрузку документа (`reset()` сегмента не обновляет HTML со ссылками на
+актуальные чанки). sessionStorage-замок на 30 с не даёт уйти в reload-цикл;
+при повторном отказе показывается понятный fallback с ручным «Обновить».
+
+**Зачем:** на проде `challenge.memo7.ru` раздаваемый HTML ссылался на
+`8115-1f4adc294171a886.js`, а сервер отдавал для него `400` → любая загрузка
+заканчивалась экраном «fatal error / Глобальный сбой».
+
+**Коды/риски:** новый хелпер `web/lib/shared/chunkRecovery.ts`, 6 регресс-тестов
+(`web/test/ui/error-boundary-chunk.spec.tsx`). Авто-reload только по замку;
+при недоступном storage восстановление отключается. Плюс: сам absence чанка
+на проде — дефект деплоя, лечится чистой пересборкой + синхронизацией
+`web/.next/static` (см. `swarm-report/chunk-8115-diagnose-01.md`).
 
 ---
 

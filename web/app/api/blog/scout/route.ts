@@ -41,6 +41,8 @@ export async function POST(req: NextRequest): Promise<Response> {
   // TG по умолчанию выкл (MTProto), соцсети/форумы по умолчанию вкл — см. шапку.
   const enableTelegram = parsed.data.enableTelegram ?? false;
   const enableForum = parsed.data.enableForum ?? true;
+  // Twitter по умолчанию выкл (opt-in): агент читает ингестнутые твиты блогеров из БД.
+  const enableTwitter = parsed.data.enableTwitter ?? false;
 
   let blog: BlogRow | null = null;
   if (blogRef) {
@@ -80,6 +82,8 @@ export async function POST(req: NextRequest): Promise<Response> {
             userQuery: query,
             enableTelegram,
             enableForum,
+            enableTwitter,
+            twitterHandles: parsed.data.twitterHandles,
             blog,
             signal: req.signal,
           }),
