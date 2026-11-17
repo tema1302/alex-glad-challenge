@@ -3,6 +3,7 @@
 import Link from 'next/link';
 
 import { SectionLabel } from '../components/ui/SectionLabel';
+import { LinkButton } from '../components/ui/LinkButton';
 
 interface PulseItem {
   id: number;
@@ -46,12 +47,9 @@ export function BlogPulse({ totals, blogs }: { totals: PulseTotals; blogs: Pulse
         <div className="mt-3 rounded-xl border border-dashed border-line bg-surface/50 p-4">
           <p className="text-sm text-ink">Блогов пока нет</p>
           <p className="mt-1 text-xs text-dim">Создайте первый блог — и здесь появится его пульс.</p>
-          <Link
-            href="/blog/settings"
-            className="mt-3 inline-flex min-h-[36px] items-center rounded-md bg-accent px-3 text-sm font-medium text-accent-ink hover:bg-accent/90"
-          >
+          <LinkButton href="/blog/settings" variant="primary" size="md" className="mt-3">
             Создать блог
-          </Link>
+          </LinkButton>
         </div>
       ) : (
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">

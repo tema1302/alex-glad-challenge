@@ -23,6 +23,7 @@ import { INPUT_CLASS } from '../../components/ui/Field';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { IconPlay } from '../../components/ui/icons';
 
 /** Фиксированные параметры прогона — пороги как в дефолтах CLI; формы scout/news не дублируем. */
 const RUN_DEFAULTS = {
@@ -165,7 +166,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
     } catch (e) {
       // Ошибка фазы или остановка пользователем: чейнінг прерывается, следующая фаза не
       // стартует. Результаты завершённых фаз остаются видимыми как факт прогона.
-      if (e instanceof DOMException && e.name === 'AbortError') setError('Отменено');
+      if (e instanceof DOMException && e.name === 'AbortError') setError('Остановлено');
       else setError(e instanceof Error ? e.message : 'конвейер упал');
     } finally {
       setRunning(false);
@@ -213,9 +214,10 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
             </select>
           </label>
           <div className="ml-auto flex gap-2">
-            <Button variant="primary" onClick={run} disabled={running}>
+            <Button variant="primary" icon={<IconPlay />} loading={running} onClick={run} disabled={running}>
               Запустить весь конвейер
             </Button>
+            {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
             <Button variant="ghost" onClick={stop} disabled={!running}>
               Стоп
             </Button>

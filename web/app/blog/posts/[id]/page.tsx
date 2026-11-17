@@ -283,7 +283,6 @@ export default function BlogPostDetailPage() {
                 icon={<IconSend />}
                 onClick={() => setPublishOpen(true)}
                 disabled={!draft.trim() || overLimit}
-                title={overLimit ? 'Сократите текст до 4096 символов' : 'Реальная отправка в Telegram-канал'}
               >
                 Опубликовать в Telegram
               </Button>
@@ -292,7 +291,7 @@ export default function BlogPostDetailPage() {
                 onClick={() => setDraft(post.content)}
                 disabled={saving || !dirty}
               >
-                Откатить
+                Отменить правки
               </Button>
               <Button variant="danger" icon={<IconTrash />} className="ml-auto" onClick={() => setDeleteOpen(true)}>
                 Удалить

@@ -89,6 +89,7 @@ export function DigestComposer({
   const [lastError, setLastError] = useState<LastError | null>(null);
   const [publishedMsgId, setPublishedMsgId] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
   const over = digest.length > MAX;
@@ -408,13 +409,7 @@ export function DigestComposer({
               </Button>
               <Button
                 variant="ghost"
-                onClick={() => {
-                  setDigest('');
-                  setSources([]);
-                  setNewsCount(0);
-                  setTruncated(false);
-                  setPhase('idle');
-                }}
+                onClick={() => setClearOpen(true)}
                 disabled={sending}
               >
                 Очистить
@@ -485,6 +480,37 @@ export function DigestComposer({
               </p>
             </div>
           </div>
+        }
+      />
+
+      {/* Очистка черновика безвозвратна (текст + localStorage-копия) —
+          подтверждение; undo-тост невозможен: у Toast нет action-слота. */}
+      <ConfirmDialog
+        open={clearOpen}
+        onClose={() => setClearOpen(false)}
+        onConfirm={async () => {
+          setDigest('');
+          setSources([]);
+          setNewsCount(0);
+          setTruncated(false);
+          setPhase('idle');
+          // Немедленное удаление локальной копии (канон :232): дебаунс-автосейв
+          // (~500 мс) оставлял окно, в котором закрытие таба воскрешало
+          // «удалённый безвозвратно» черновик.
+          try {
+            localStorage.removeItem(DRAFT_KEY);
+          } catch {
+            /* приватный режим — локальной копии и так нет */
+          }
+        }}
+        title="Очистить черновик дайджеста?"
+        tone="danger"
+        confirmLabel="Очистить"
+        body={
+          <p>
+            Текст и источники черновика удалятся безвозвратно — вместе с локальной копией.
+            Понадобится снова — пересборка займёт 30–120 с.
+          </p>
         }
       />
     </div>

@@ -7,18 +7,21 @@ import { type ButtonHTMLAttributes, type ReactNode } from 'react';
 type Variant = 'primary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md';
 
-const VARIANTS: Record<Variant, string> = {
+// Стилевые карты экспортированы для LinkButton (S3): один словарь вариантов/
+// размеров/focus-ring на кнопки и кнопки-ссылки, без дублирования классов.
+export const VARIANTS: Record<Variant, string> = {
   primary: 'bg-accent text-accent-ink hover:bg-accent/90',
   ghost: 'border border-line-strong text-dim hover:border-accent-dim hover:text-ink',
   danger: 'border border-err/60 text-err hover:bg-err/10',
 };
 
-const SIZES: Record<Size, string> = {
+export const SIZES: Record<Size, string> = {
   sm: 'min-h-[32px] max-md:min-h-[40px] gap-1.5 px-2.5 py-1 text-xs',
   md: 'min-h-[36px] max-md:min-h-[44px] gap-2 px-3.5 py-1.5 text-sm',
 };
 
-const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
+export const FOCUS =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;

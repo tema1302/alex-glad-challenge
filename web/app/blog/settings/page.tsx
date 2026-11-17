@@ -3,12 +3,12 @@
 // PATCH /api/blogs/[slug] {status}. Детальная настройка — /blog/settings/[slug].
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { LinkButton } from '../../components/ui/LinkButton';
 import { Card } from '../../components/ui/Card';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { Dialog } from '../../components/ui/Dialog';
@@ -387,18 +387,20 @@ export default function BlogHubPage() {
                   {blog.profile ?? 'не задан'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <Link
+                  <LinkButton
                     href={`/blog/settings/${encodeURIComponent(blog.slug)}`}
-                    className="inline-flex min-h-[32px] items-center rounded-md border border-line-strong px-2.5 text-xs text-dim transition-colors hover:border-accent-dim hover:text-ink"
+                    variant="ghost"
+                    size="sm"
                   >
                     Обзор и промпты
-                  </Link>
-                  <Link
+                  </LinkButton>
+                  <LinkButton
                     href={`/blog/posts?blog=${encodeURIComponent(blog.slug)}`}
-                    className="inline-flex min-h-[32px] items-center rounded-md border border-line-strong px-2.5 text-xs text-dim transition-colors hover:border-accent-dim hover:text-ink"
+                    variant="ghost"
+                    size="sm"
                   >
                     Посты
-                  </Link>
+                  </LinkButton>
                   <Button size="sm" variant={blog.status === 'archived' ? 'ghost' : 'danger'} onClick={() => setArchiveTarget(blog)}>
                     {blog.status === 'archived' ? 'Вернуть' : 'Архивировать'}
                   </Button>

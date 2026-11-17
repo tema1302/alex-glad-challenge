@@ -11,6 +11,7 @@ import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { INPUT_CLASS } from '../../components/ui/Field';
+import { IconPlay } from '../../components/ui/icons';
 
 type Llm = 'local' | 'cloud';
 
@@ -149,7 +150,7 @@ export default function BlogNewsPage() {
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
-        setError('Отменено');
+        setError('Остановлено');
       } else {
         setError(e instanceof Error ? e.message : 'request failed');
       }
@@ -274,19 +275,26 @@ export default function BlogNewsPage() {
             </label>
           </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <div className="flex flex-col flex-wrap gap-2 sm:flex-row sm:justify-end">
             <Button
               variant="primary"
+              icon={<IconPlay />}
+              loading={running}
               onClick={run}
               disabled={running || profileMissing || creatingId !== null}
-              title={profileMissing ? 'Сначала настройте профиль голоса блога' : undefined}
               className="w-full sm:w-auto"
             >
               Запустить
             </Button>
+            {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
             <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
-              Отмена
+              Стоп
             </Button>
+            {profileMissing ? (
+              <p role="note" className="w-full text-xs text-warn">
+                Сначала настройте профиль голоса блога — генерация недоступна.
+              </p>
+            ) : null}
           </div>
         </div>
         {blogsError ? (

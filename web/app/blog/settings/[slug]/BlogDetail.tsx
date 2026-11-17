@@ -5,11 +5,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
+import { LinkButton } from '../../../components/ui/LinkButton';
 import { BackButton } from '../../../components/ui/BackButton';
 import { useSpaHistory } from '../../../components/ui/useSpaHistory';
 import { clearListSnapshot } from '../../../../lib/shared/spaHistory';
@@ -182,9 +183,15 @@ export function BlogDetail({ slug }: { slug: string }) {
   const [comment, setComment] = useState('');
   const [variants, setVariants] = useState(1);
   const [publishNow, setPublishNow] = useState(false);
+  const [publishConfirmOpen, setPublishConfirmOpen] = useState(false);
   const [creatingPost, setCreatingPost] = useState(false);
   const [createdPosts, setCreatedPosts] = useState<Array<{ id: number; variant: number; angle: string }>>([]);
   const [postError, setPostError] = useState<string | null>(null);
+  // Причина последнего полного сбоя создания: onConfirm подтверждения читает
+  // её после await — postError-стейт за оверлеем диалога невидим, а его
+  // значение в замыкании устаревает. Реф позволяет продублировать причину
+  // тостом поверх открытого диалога.
+  const createFailRef = useRef<string | null>(null);
 
   const applyBlog = useCallback((b: BlogDetailDto) => {
     setBlog(b);
@@ -380,12 +387,16 @@ export function BlogDetail({ slug }: { slug: string }) {
     }
   };
 
-  const createPost = async (): Promise<void> => {
-    if (creatingPost || !blog) return;
+  // Создание поста. Возвращает успех: частичный сбой (пост создан, публикация
+  // не удалась) считается успехом — черновики уже в БД, дубль опасен; полный
+  // сбой (!resp.ok) — false, его причину показывает postError, а подтверждение
+  // публикации (onConfirm в ConfirmDialog) бросает и оставляет диалог открытым.
+  const createPost = async (): Promise<boolean> => {
+    if (creatingPost || !blog) return false;
     const cleanTopic = topic.trim();
     if (cleanTopic.length < 3) {
       setPostError('Тема: минимум 3 символа');
-      return;
+      return false;
     }
     setCreatingPost(true);
     setPostError(null);
@@ -417,13 +428,26 @@ export function BlogDetail({ slug }: { slug: string }) {
       }
       // Список постов должен показать новые черновики при возврате «← назад».
       clearListSnapshot('/blog/posts');
-      const postsResp = await fetch(`/api/blog/posts?limit=5&blog=${encodeURIComponent(blog.slug)}`, { cache: 'no-store' });
-      if (postsResp.ok) {
-        const postsData = (await postsResp.json().catch(() => ({}))) as { posts?: PostItem[] };
-        setPosts(postsData.posts ?? []);
+      // Успех уже состоялся (пост создан, возможно, опубликован): refetch
+      // свежих черновиков — best-effort в собственном тихом catch и не может
+      // перевести создание в «false» — reopening диалога толкал бы на
+      // повторный POST (дубль черновиков и повторная реальная отправка).
+      // Показ поста не критичен для подтверждения создания.
+      try {
+        const postsResp = await fetch(`/api/blog/posts?limit=5&blog=${encodeURIComponent(blog.slug)}`, { cache: 'no-store' });
+        if (postsResp.ok) {
+          const postsData = (await postsResp.json().catch(() => ({}))) as { posts?: PostItem[] };
+          setPosts(postsData.posts ?? []);
+        }
+      } catch {
+        /* список обновится вручную («обновить») или рефетчем вкладки */
       }
+      return true;
     } catch (e) {
-      setPostError(e instanceof Error ? e.message : 'Не удалось создать пост');
+      const reason = e instanceof Error ? e.message : 'Не удалось создать пост';
+      createFailRef.current = reason;
+      setPostError(reason);
+      return false;
     } finally {
       setCreatingPost(false);
     }
@@ -632,9 +656,13 @@ export function BlogDetail({ slug }: { slug: string }) {
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button size="sm" onClick={() => changeTab('prompts')}>Промпты агентов</Button>
                 <Button size="sm" onClick={() => changeTab('general')}>Общие настройки</Button>
-                <Link href={`/blog/news?blog=${encodeURIComponent(blog.slug)}`} className="inline-flex min-h-[32px] items-center rounded-md border border-line-strong px-2.5 text-xs text-dim hover:text-ink">
+                <LinkButton
+                  href={`/blog/news?blog=${encodeURIComponent(blog.slug)}`}
+                  variant="ghost"
+                  size="sm"
+                >
                   Запустить news
-                </Link>
+                </LinkButton>
               </div>
             </Card>
 
@@ -739,7 +767,18 @@ export function BlogDetail({ slug }: { slug: string }) {
                 </p>
               ) : null}
               {postError ? <p className="text-xs text-err">{postError}</p> : null}
-              <Button variant="primary" onClick={() => void createPost()} disabled={creatingPost || topic.trim().length < 3} loading={creatingPost}>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  if (publishNow) {
+                    setPublishConfirmOpen(true);
+                    return;
+                  }
+                  void createPost();
+                }}
+                disabled={creatingPost || topic.trim().length < 3}
+                loading={creatingPost}
+              >
                 Создать пост
               </Button>
               {createdPosts.length > 0 ? (
@@ -963,9 +1002,20 @@ export function BlogDetail({ slug }: { slug: string }) {
                         <input type="checkbox" checked={s.enabled} onChange={(e) => updateSlot(i, { enabled: e.target.checked })} className="accent-accent" disabled={scheduleSaving} />
                         включён
                       </label>
-                      <button type="button" className="pb-2 text-xs text-err hover:underline disabled:opacity-50" onClick={() => { setSchedule((prev) => prev.filter((_, idx) => idx !== i)); setScheduleDirty(true); }} disabled={scheduleSaving}>
-                        удалить
-                      </button>
+                      {/* Локальный dirty-черновик до «Сохранить расписание» —
+                          подтверждение не нужно: слот вернётся повторным
+                          «Добавить слот», а несохранённые правки и так видны. */}
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => {
+                          setSchedule((prev) => prev.filter((_, idx) => idx !== i));
+                          setScheduleDirty(true);
+                        }}
+                        disabled={scheduleSaving}
+                      >
+                        Удалить слот
+                      </Button>
                     </div>
                     <label className="mt-2 flex flex-col gap-1 text-xs text-dim">
                       тема / фокус (пусто = регулярный пост блога)
@@ -1002,6 +1052,39 @@ export function BlogDetail({ slug }: { slug: string }) {
         tone="danger"
         confirmLabel="Сбросить"
         body={<p>Кастомный текст агента «{currentPrompt?.label}» будет удалён. Вернётся встроенное поведение (для автора — системный промпт/пресет).</p>}
+      />
+
+      {/* publishNow: реальная отправка в TG — подтверждение интента до POST
+          (текста поста ещё нет, его напишет агент; превью = тема/канал/warn). */}
+      <ConfirmDialog
+        open={publishConfirmOpen}
+        onClose={() => setPublishConfirmOpen(false)}
+        onConfirm={async () => {
+          const ok = await createPost();
+          if (!ok) {
+            // Полный сбой: postError за оверлеем диалога невидим — причина
+            // уходит тостом (канон: toast при сбое в archive-диалоге), бросок
+            // держит диалог открытым (контракт ConfirmDialog).
+            toast('err', createFailRef.current ?? 'Не удалось создать пост');
+            throw new Error('create post failed');
+          }
+        }}
+        title="Создать пост и опубликовать в Telegram?"
+        confirmLabel="Создать и опубликовать"
+        body={
+          <div className="space-y-3">
+            <p>
+              Агент напишет {variants === 1 ? 'единственный вариант' : `${variants} варианта`} по теме
+              «{topic.trim()}» и сразу опубликует первый в Telegram-канал блога «{blog.name}».
+            </p>
+            <p className="flex items-center gap-2">
+              Канал: <Badge tone="accent">{blog.tgChatId ?? 'общий канал'}</Badge>
+            </p>
+            <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
+              Реальная отправка — сообщение уйдёт подписчикам канала.
+            </p>
+          </div>
+        }
       />
 
       <ConfirmDialog

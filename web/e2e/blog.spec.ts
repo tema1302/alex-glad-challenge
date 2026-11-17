@@ -66,13 +66,13 @@ test.describe('Блог (админ)', () => {
     expect(page.url()).toBe(urlBefore);
   });
 
-  test('правка textarea включает Сохранить и Откатить', async ({ page }) => {
+  test('правка textarea включает Сохранить и Отменить правки', async ({ page }) => {
     await page.goto('/blog/posts');
     await page.locator('a[href^="/blog/posts/"]').first().click();
     await page.waitForURL(/\/blog\/posts\/\d+/);
 
     const save = page.getByRole('button', { name: 'Сохранить' });
-    const revert = page.getByRole('button', { name: 'Откатить' });
+    const revert = page.getByRole('button', { name: 'Отменить правки' });
     const textarea = page.locator('textarea');
 
     // Контент загружен в контролируемый textarea

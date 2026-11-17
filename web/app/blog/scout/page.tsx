@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { INPUT_CLASS } from '../../components/ui/Field';
+import { IconPlay } from '../../components/ui/icons';
 
 type Llm = 'local' | 'cloud';
 
@@ -142,7 +143,7 @@ export default function BlogScoutPage() {
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') {
-        setError('Отменено');
+        setError('Остановлено');
       } else {
         setError(e instanceof Error ? e.message : 'request failed');
       }
@@ -273,11 +274,19 @@ export default function BlogScoutPage() {
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button variant="primary" onClick={run} disabled={running} className="w-full sm:w-auto">
+              <Button
+                variant="primary"
+                icon={<IconPlay />}
+                loading={running}
+                onClick={run}
+                disabled={running}
+                className="w-full sm:w-auto"
+              >
                 Запустить
               </Button>
+              {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
               <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
-                Отмена
+                Стоп
               </Button>
             </div>
           </div>

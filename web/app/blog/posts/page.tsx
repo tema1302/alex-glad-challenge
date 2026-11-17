@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Button } from '../../components/ui/Button';
+import { LinkButton } from '../../components/ui/LinkButton';
 import { Card } from '../../components/ui/Card';
 import { Badge, statusBadge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -209,8 +210,8 @@ export default function BlogPostsPage() {
                 </option>
               ))}
             </select>
-            <Button variant="ghost" size="sm" onClick={load} disabled={loading} className="w-full sm:w-auto">
-              {loading ? 'загрузка…' : 'обновить'}
+            <Button variant="ghost" size="sm" onClick={load} loading={loading} className="w-full sm:w-auto">
+              обновить
             </Button>
           </span>
         }
@@ -257,11 +258,7 @@ export default function BlogPostsPage() {
         <EmptyState
           title="Постов пока нет"
           hint="Посты создаются конвейером блог-агентов (/blog/pipeline) или генератором новостей (/blog/news). Затем их можно править и публиковать в Telegram."
-          action={
-            <Link href="/blog/pipeline">
-              <Button variant="primary">Открыть pipeline</Button>
-            </Link>
-          }
+          action={<LinkButton href="/blog/pipeline" variant="primary">Открыть pipeline</LinkButton>}
         />
       ) : (
         <>
@@ -320,13 +317,15 @@ export default function BlogPostsPage() {
                       <td className="whitespace-nowrap px-3 py-2">
                         <div className="flex items-center gap-1">
                           <Tooltip label="Открыть пост">
-                            <Link
+                            <LinkButton
                               href={`/blog/posts/${p.id}`}
+                              variant="ghost"
+                              size="sm"
+                              square
                               aria-label={`Открыть пост #${p.id}`}
-                              className="inline-flex h-8 w-8 max-md:h-10 max-md:w-10 items-center justify-center rounded-md border border-line-strong font-medium text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
                             >
                               <IconExternal />
-                            </Link>
+                            </LinkButton>
                           </Tooltip>
                           <Tooltip label="Удалить">
                             <Button variant="danger" size="sm" square aria-label={`Удалить пост #${p.id}`} onClick={() => setDeleteTarget(p)}>
