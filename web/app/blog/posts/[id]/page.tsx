@@ -214,6 +214,10 @@ export default function BlogPostDetailPage() {
 
   const overLimit = draft.length > 4096;
 
+  // Канал подтверждения: карточка блога → маска из settings-API → ни того, ни
+  // другого нет — честный dim-бейдж вместо имени env-переменной.
+  const publishChannel = blog?.tgChatId ?? channelLabel;
+
   return (
     <div className="space-y-6">
       <SectionHead
@@ -330,9 +334,11 @@ export default function BlogPostDetailPage() {
           <div className="space-y-3">
             <p className="flex items-center gap-2">
               Канал:{' '}
-              <Badge tone="accent">
-                {blog?.tgChatId ?? channelLabel ?? 'TG_CHAT_ID'}
-              </Badge>
+              {publishChannel ? (
+                <Badge tone="accent">{publishChannel}</Badge>
+              ) : (
+                <Badge tone="dim">канал по умолчанию · не настроен</Badge>
+              )}
               {blog && <span className="text-xs text-dim">(блог «{blog.name}»)</span>}
             </p>
             <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
@@ -361,7 +367,7 @@ export default function BlogPostDetailPage() {
         title={`Удалить пост #${id}?`}
         confirmLabel="Удалить безвозвратно"
         tone="danger"
-        body={<p>Пост будет удалён из blog.sqlite вместе с содержимым. Действие безвозвратно.</p>}
+        body={<p>Пост будет удалён вместе с содержимым. Действие безвозвратно.</p>}
       />
     </div>
   );

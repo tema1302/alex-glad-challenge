@@ -252,7 +252,7 @@ export function DigestComposer({
         <Card tone="warn">
           <p className="text-sm font-medium text-warn">Telegram не настроен</p>
           <p className="mt-1 text-sm text-warn/80">
-            Сборка и редактирование доступны, отправка выключена. Задайте TG_BOT_TOKEN и TG_CHAT_ID в .env.
+            Сборка и редактирование доступны, отправка выключена — проверьте переменные окружения.
           </p>
         </Card>
       )}
@@ -315,8 +315,7 @@ export function DigestComposer({
           )}
           {!blogsError && blogs.length === 0 && (
             <p className="w-full text-xs text-dim">
-              Без выбора блога дайджест собирается по всем новостям в голосе
-              «Иди на факты глянь» (легаси-режим).
+              Блог не выбран — дайджест соберётся по всем новостям в стандартном голосе канала.
             </p>
           )}
           {generating && (
@@ -465,7 +464,12 @@ export function DigestComposer({
         body={
           <div className="space-y-3">
             <p className="flex items-center gap-2">
-              Канал: <Badge tone="accent">{channelLabel ?? 'TG_CHAT_ID'}</Badge>
+              Канал:{' '}
+              {channelLabel ? (
+                <Badge tone="accent">{channelLabel}</Badge>
+              ) : (
+                <Badge tone="dim">канал по умолчанию · не настроен</Badge>
+              )}
             </p>
             <p className="rounded-md border border-warn/40 bg-warn/10 p-2 text-xs text-warn">
               Реальная отправка — пост уйдёт подписчикам.

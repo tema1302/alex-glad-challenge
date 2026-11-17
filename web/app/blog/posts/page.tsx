@@ -12,7 +12,6 @@ import { usePathname } from 'next/navigation';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Button } from '../../components/ui/Button';
 import { LinkButton } from '../../components/ui/LinkButton';
-import { Card } from '../../components/ui/Card';
 import { Badge, statusBadge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { Skeleton } from '../../components/ui/Skeleton';
@@ -187,7 +186,7 @@ export default function BlogPostsPage() {
   return (
     <div className="space-y-6">
       <SectionHead
-        code="posts · blog.sqlite"
+        code="blog · посты"
         title="Посты блога"
         description="Правка и публикация в Telegram — из карточки поста."
         actions={
@@ -217,8 +216,13 @@ export default function BlogPostsPage() {
         }
       />
 
-      <Card label="как пользоваться · 4 шага">
-        <ol className="grid gap-2 text-sm text-ink sm:grid-cols-2">
+      {/* Обучающая карточка (4 шага + настройка нового блога) — свёрнута по умолчанию:
+          ежедневному сценарию она не нужна, а новичок раскроет одним кликом. */}
+      <details className="rounded-xl border border-line bg-surface p-4 shadow-panel">
+        <summary className="cursor-pointer select-none text-sm font-medium text-ink">
+          как это работает · 4 шага
+        </summary>
+        <ol className="mt-3 grid gap-2 text-sm text-ink sm:grid-cols-2">
           <li>
             <span className="text-dim">1.</span> Выберите блог: фильтр выше или
             страницы <Link href="/blog/news" className="text-accent hover:underline">/blog/news</Link>,{' '}
@@ -239,14 +243,14 @@ export default function BlogPostsPage() {
           </li>
         </ol>
         <p className="mt-3 text-xs leading-relaxed text-dim">
-          Новый блог: задайте RSS-источники и профиль голоса через{' '}
-          <code className="font-mono text-[11px]">PATCH /api/blogs/&lt;slug&gt;</code>.
-          Профиль голоса создаётся в <Link href="/chat" className="text-accent hover:underline">/chat</Link>{' '}
-          командой <code className="font-mono text-[11px]">/profile</code>. Промпты, расписание
-          и праздничные посты — в{' '}
-          <Link href="/blog/settings" className="text-accent hover:underline">/blog/settings</Link>.
+          Новый блог, его RSS и голос настраиваются в{' '}
+          <Link href="/blog/settings" className="text-accent hover:underline">студии</Link> — создайте
+          блог и откройте его карточку. Профиль голоса задаётся в{' '}
+          <Link href="/chat" className="text-accent hover:underline">чате</Link>{' '}
+          (<code className="font-mono text-[11px]">/chat</code>, команда{' '}
+          <code className="font-mono text-[11px]">/profile</code>).
         </p>
-      </Card>
+      </details>
 
       {loading && posts.length === 0 ? (
         <div className="space-y-2">
@@ -383,7 +387,7 @@ export default function BlogPostsPage() {
         title={deleteTarget ? `Удалить пост #${deleteTarget.id}?` : 'Удалить пост?'}
         confirmLabel="Удалить безвозвратно"
         tone="danger"
-        body={<p>Пост будет удалён из blog.sqlite вместе с содержимым. Действие безвозвратно.</p>}
+        body={<p>Пост будет удалён вместе с содержимым. Действие безвозвратно.</p>}
       />
     </div>
   );

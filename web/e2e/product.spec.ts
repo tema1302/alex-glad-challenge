@@ -15,7 +15,7 @@ test.describe.configure({ mode: 'serial' });
 const SKIP = process.env.E2E_SKIP_PRODUCT === '1';
 
 test.describe('Рабочий продукт — успешные прогоны', () => {
-  test('boot: все 23 раздела отвечают 200 (админ)', async ({ request }) => {
+  test('boot: все 40 разделов отвечают 200 (админ)', async ({ request }) => {
     test.setTimeout(300_000);
 
     const loginRes = await request.post('/api/auth/login', {

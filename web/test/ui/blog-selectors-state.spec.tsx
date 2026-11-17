@@ -3,7 +3,7 @@
 // /api/blogs ловился молча (.catch(() => setBlogs([]))) и выдавал «блогов нет»
 // при активной кнопке, а disabled «Собрать дайджест» не объяснял причину.
 // Контракт после фикса: ошибка загрузки видна с retry; пустой список — честная
-// пометка о легаси-режиме; причина disabled — рядом с кнопкой.
+// пометка без инженерного жаргона; причина disabled — рядом с кнопкой.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -59,7 +59,7 @@ describe('BlogNewsPage: состояние списка блогов', () => {
     expect(select.options.length).toBeGreaterThan(0);
   });
 
-  it('пустой список блогов — честная пометка про легаси-режим', async () => {
+  it('пустой список блогов — честная пометка без легаси-жаргона', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (input: RequestInfo | URL) =>
@@ -69,7 +69,10 @@ describe('BlogNewsPage: состояние списка блогов', () => {
 
     render(<BlogNewsPage />);
 
-    expect(await screen.findByText(/легаси-режиме/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Настроенных блогов нет — прогон пойдёт без выбранного блога/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/легаси/)).toBeNull();
   });
 });
 

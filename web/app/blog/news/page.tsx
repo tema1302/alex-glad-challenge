@@ -310,8 +310,10 @@ export default function BlogNewsPage() {
           </p>
         ) : blogs.length === 0 ? (
           <p className="mt-2 text-xs text-dim">
-            Настроенных блогов нет — без выбора блога прогон уйдёт в легаси-режиме
-            (дефолтные фиды, профиль default).
+            Настроенных блогов нет — прогон пойдёт без выбранного блога: стандартные
+            источники и голос канала. Создайте блог в{' '}
+            <Link href="/blog/settings" className="text-accent hover:underline">студии</Link>,
+            чтобы писать своим тоном.
           </p>
         ) : null}
         {activeBlog && (
@@ -323,7 +325,8 @@ export default function BlogNewsPage() {
           </p>
         )}
         <p className="mt-2 text-xs text-dim">
-          Реальный прогон: пишет в blog.sqlite, ходит в RSS/LLM — может занять до минуты.
+          Прогон настоящий: читает RSS и генерирует через LLM, может занять до минуты.
+          Черновик появится здесь и в „Постах“.
         </p>
         <p className="mt-1 text-xs text-dim">
           Нужен поиск по соцсетям и форумам с примерами запросов (АПЛ, Челси, статистика) —{' '}

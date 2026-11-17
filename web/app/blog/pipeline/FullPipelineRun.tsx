@@ -363,7 +363,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
                     <Badge tone="accent">ready to publish</Badge>
                     <span>
                       {sandbox
-                        ? 'черновик сохранён в blog.sqlite, отправка в канал здесь не выполняется'
+                        ? 'черновик готов — он в разделе „Посты“, отправка в канал здесь не выполняется'
                         : 'публикация — отдельно через страницу поста'}
                     </span>
                   </li>

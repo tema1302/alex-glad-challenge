@@ -10,6 +10,7 @@ import {
   type BlogStats,
 } from './challenge';
 import { getBlogDb, withDb } from './db';
+import { getOutboxDb } from './outbox';
 
 export interface BlogResolution {
   blog: BlogRow | null;
@@ -151,6 +152,48 @@ export async function readBlogPulse(): Promise<BlogPulseData> {
         customPrompts: blogs.reduce((sum, b) => sum + b.agentPromptsCount, 0),
       },
       blogs,
+    };
+  });
+}
+
+// Внимание хаба /blog: черновики без публикации + последняя отправка TG.
+export interface HubLastSend {
+  status: 'ok' | 'error';
+  error: string | null;
+  createdAt: string;
+  /** Пост отправки (manual/summary-записи без поста — null); error ведёт к посту. */
+  postId: number | null;
+}
+
+export interface HubAttentionData {
+  draftsCount: number;
+  lastSend: HubLastSend | null;
+}
+
+// Черновики: recentPosts(50) × outbox.latestForPost — семантика = /api/blog/posts
+// (join по blog_post_id: пост без записи outbox — черновик без публикации);
+// limit=50 (route: default 20, max 100).
+// Последняя отправка: outbox.recent(1) — как читает /api/telegram/history.
+// Наружу — только safe-поля (без text/source/message_id); один withDb.
+export async function readHubAttention(): Promise<HubAttentionData> {
+  return withDb(() => {
+    const db = getBlogDb();
+    const outbox = getOutboxDb();
+    const draftsCount = db.recentPosts(50).reduce(
+      (sum, post) => sum + (outbox.latestForPost(post.id) === null ? 1 : 0),
+      0,
+    );
+    const [last] = outbox.recent(1);
+    return {
+      draftsCount,
+      lastSend: last
+        ? {
+            status: last.status,
+            error: last.error,
+            createdAt: last.created_at,
+            postId: last.blog_post_id,
+          }
+        : null,
     };
   });
 }

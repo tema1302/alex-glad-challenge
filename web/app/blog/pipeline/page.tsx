@@ -226,7 +226,7 @@ export default function PipelinePage() {
         )}
         <div className="mt-3">
           <Button variant="ghost" disabled={busy || view.stage === 'idle'} onClick={() => setResetOpen(true)}>
-            Сбросить в idle
+            Начать заново
           </Button>
         </div>
       </section>
@@ -235,7 +235,7 @@ export default function PipelinePage() {
         open={resetOpen}
         onClose={() => setResetOpen(false)}
         onConfirm={reset}
-        title="Сбросить pipeline в idle?"
+        title="Начать заново?"
         confirmLabel="Сбросить"
         body={<p>Текущая стадия и прогресс будут сброшены. История переходов сохранится в логе.</p>}
       />

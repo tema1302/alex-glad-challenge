@@ -73,7 +73,8 @@ export const navGroups: Array<{
     tag: 'blog',
     icon: IconRss,
     items: [
-      { href: '/blog/settings', label: 'блоги' },
+      { href: '/blog', label: 'блоги' },
+      { href: '/blog/settings', label: 'студия' },
       { href: '/blog/news', label: 'новости' },
       { href: '/blog/posts', label: 'посты' },
       { href: '/blog/digest', label: 'дайджест' },

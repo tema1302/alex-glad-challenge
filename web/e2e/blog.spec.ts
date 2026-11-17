@@ -1,5 +1,5 @@
 // E2E: блог — список (таблица/TG-статусы), карточка поста, удаление до confirm
-// (БЕЗ подтверждения удаления — данные не трогаем).
+// (БЕЗ подтверждения удаления — данные не трогаем) + хаб /blog (S1, read-only).
 import { expect, test } from '@playwright/test';
 import { login } from './helpers';
 
@@ -93,5 +93,29 @@ test.describe('Блог (админ)', () => {
     await expect(textarea).toHaveValue(original);
     await expect(save).toBeDisabled();
     await expect(revert).toBeDisabled();
+  });
+});
+
+test.describe('Блог-хаб /blog', () => {
+  test('заголовок, 6 входов по задачам, пульс (state-tolerant)', async ({ page }) => {
+    await login(page, '/blog');
+
+    await expect(page.getByRole('heading', { name: 'Ваши блоги' })).toBeVisible();
+
+    // Входы по задачам: 6 плиток-ссылок, каждая видима.
+    const hubHrefs = [
+      '/blog/news',
+      '/blog/posts',
+      '/blog/digest',
+      '/blog/pipeline',
+      '/blog/scout',
+      '/blog/settings',
+    ];
+    for (const href of hubHrefs) {
+      await expect(page.locator(`a[href="${href}"]`).first()).toBeVisible();
+    }
+
+    // Пульс state-tolerant: живые блоги (testid BlogPulse) ИЛИ пустое «Блогов пока нет».
+    await expect(page.getByTestId('blog-pulse').or(page.getByText('Блогов пока нет'))).toBeVisible();
   });
 });
