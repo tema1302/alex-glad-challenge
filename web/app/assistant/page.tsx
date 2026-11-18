@@ -5,7 +5,7 @@ import { useCallback, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { SectionHead } from '../components/ui/SectionHead';
-import { INPUT_CLASS } from '../components/ui/Field';
+import { Field, INPUT_CLASS } from '../components/ui/Field';
 
 interface Turn {
   role: 'user' | 'assistant';
@@ -57,16 +57,26 @@ export default function AssistantPage() {
             ))
           )}
         </div>
-        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && void send()}
-            placeholder="Вопрос к ассистенту…"
-            className={`min-w-0 flex-1 ${INPUT_CLASS}`}
-          />
-          <Button variant="primary" loading={busy} onClick={send} className="w-full sm:w-auto">Отправить</Button>
-        </div>
+        {/* <form> (S4): Enter = «Отправить» без onKeyDown-хака; type="search" —
+            семантика поиска, доступное имя даёт Field «Вопрос». */}
+        <form
+          className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void send();
+          }}
+        >
+          <Field id="assistant-question" label="Вопрос" className="min-w-0 flex-1">
+            <input
+              type="search"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Вопрос к ассистенту…"
+              className={`w-full ${INPUT_CLASS}`}
+            />
+          </Field>
+          <Button variant="primary" type="submit" loading={busy} className="w-full sm:w-auto">Отправить</Button>
+        </form>
       </Card>
     </div>
   );

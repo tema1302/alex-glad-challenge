@@ -164,10 +164,11 @@ describe('BlogDetail, вкладка «Пост»: publishNow → подтвер
 
     await user.click(within(dialog).getByRole('button', { name: 'Создать и опубликовать' }));
 
-    // Причина видна поверх оверлея (postError за диалогом), диалог открыт —
-    // решение о повторе за владельцем, черновиков не создано.
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('LLM недоступна');
+    // Причина озвучена и видна поверх оверлея (S4: postError — role="alert"
+    // за диалогом + err-тост), диалог открыт — решение о повторе за владельцем,
+    // черновиков не создано.
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts.some((a) => a.textContent?.includes('LLM недоступна'))).toBe(true);
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(postBodies).toHaveLength(1);
     expect(screen.queryByText(/Черновики созданы/)).toBeNull();

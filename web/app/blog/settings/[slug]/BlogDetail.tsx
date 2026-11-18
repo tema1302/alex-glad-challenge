@@ -125,6 +125,48 @@ const SOURCE_LABELS: Record<AgentPromptItem['source'], string> = {
   default: 'по умолчанию',
 };
 
+// S4 «Инпуты»: подсказки для таймзон слотов расписания (datalist, прецедент
+// chatkey-dl в /rag/chats) и blur-валидация зоны. Кривая зона тихо убивала слот
+// в core (blogSchedule.ts) — теперь отказ виден до «Сохранить расписание».
+const TZ_SUGGESTIONS = [
+  'Europe/Moscow',
+  'Europe/Kaliningrad',
+  'Europe/Samara',
+  'Europe/Yekaterinburg',
+  'Asia/Novosibirsk',
+  'Asia/Irkutsk',
+  'Asia/Vladivostok',
+  'Europe/Kyiv',
+  'Europe/Minsk',
+  'Europe/Berlin',
+  'Europe/London',
+  'America/New_York',
+  'Asia/Tbilisi',
+  'Asia/Almaty',
+] as const;
+
+const TZ_ERROR = 'неизвестная таймзона — выберите из списка, например Europe/Moscow';
+
+/** null = зона валидна (Intl принимает); иначе — причина для Field error. */
+function timezoneError(tz: string): string | null {
+  try {
+    new Intl.DateTimeFormat('ru', { timeZone: tz });
+    return null;
+  } catch {
+    return TZ_ERROR;
+  }
+}
+
+// tgChatId: числовой id канала (pattern). @username легален для Bot API, но
+// publishPost превращает его в NaN — блокируем сохранение до ввода -100….
+const CHAT_ID_ERROR =
+  'ожидается числовой id канала (например, -100…): publishPost превращает @username в NaN';
+
+function isTgChatIdInvalid(value: string): boolean {
+  const v = value.trim();
+  return v !== '' && !/^-?\d+$/.test(v);
+}
+
 function formatDate(value: string | null): string {
   if (!value) return '—';
   const d = new Date(value);
@@ -160,11 +202,17 @@ export function BlogDetail({ slug }: { slug: string }) {
   const [name, setName] = useState('');
   const [profile, setProfile] = useState('');
   const [tgChatId, setTgChatId] = useState('');
+  // tgChatId-ошибка — после blur (S4): во время ввода минус/цифры не мигают.
+  const [tgChatIdTouched, setTgChatIdTouched] = useState(false);
   const [stylePreset, setStylePreset] = useState<'default' | 'antonov'>('default');
   const [sourcesText, setSourcesText] = useState('');
   const [contextPrompt, setContextPrompt] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // S4: какие таймзоны слотов уже блюрились (индекс → true) — ошибка зоны
+  // показывается после ухода из поля, а блокирует сохранение любая кривая зона.
+  const [tzTouched, setTzTouched] = useState<Record<number, boolean>>({});
 
   // prompts editor
   const [agent, setAgent] = useState('post.writer');
@@ -253,6 +301,7 @@ export function BlogDetail({ slug }: { slug: string }) {
         setSchedule((data.schedules ?? []).map((s) => ({ ...s })));
         setRuns(data.runs ?? []);
         setScheduleDirty(false);
+        setTzTouched({});
       }
 
       if (postsResp.ok) {
@@ -338,7 +387,7 @@ export function BlogDetail({ slug }: { slug: string }) {
   };
 
   const saveGeneral = async (): Promise<void> => {
-    if (!blog || saving) return;
+    if (!blog || saving || isTgChatIdInvalid(tgChatId)) return;
     const cleanName = name.trim();
     if (!cleanName) {
       setFormError('Название обязательно');
@@ -527,6 +576,8 @@ export function BlogDetail({ slug }: { slug: string }) {
 
   const saveSchedule = async (): Promise<void> => {
     if (!blog || scheduleSaving) return;
+    // Кривая таймзона не уходит на сервер: молчаливый сбой слота в core.
+    if (schedule.some((s) => timezoneError(s.timezone) !== null)) return;
     setScheduleSaving(true);
     try {
       const resp = await fetch(`/api/blogs/${encodeURIComponent(blog.slug)}/schedule`, {
@@ -538,6 +589,7 @@ export function BlogDetail({ slug }: { slug: string }) {
       if (!resp.ok) throw new Error(errorOf(data, `HTTP ${resp.status}`));
       setSchedule((data.schedules ?? []).map((s) => ({ ...s })));
       setScheduleDirty(false);
+      setTzTouched({});
       toast('ok', 'Расписание сохранено');
     } catch (e) {
       toast('err', e instanceof Error ? e.message : 'Не удалось сохранить расписание');
@@ -766,7 +818,7 @@ export function BlogDetail({ slug }: { slug: string }) {
                   Первый вариант уйдёт в Telegram-канал блога{blog.tgChatId ? ` (${blog.tgChatId})` : ' (общий канал)'}.
                 </p>
               ) : null}
-              {postError ? <p className="text-xs text-err">{postError}</p> : null}
+              {postError ? <p role="alert" className="text-xs text-err">{postError}</p> : null}
               <Button
                 variant="primary"
                 onClick={() => {
@@ -916,8 +968,21 @@ export function BlogDetail({ slug }: { slug: string }) {
               <Field id="blog-profile" label="Профиль голоса" hint="Имя профиля из /chat; пусто = без профиля.">
                 <input className={`${INPUT_CLASS} w-full`} value={profile} maxLength={100} onChange={(e) => setProfile(e.target.value)} disabled={saving} />
               </Field>
-              <Field id="blog-tg" label="Telegram chat_id" hint="Пусто = общий канал из env.">
-                <input className={`${INPUT_CLASS} w-full`} value={tgChatId} maxLength={100} onChange={(e) => setTgChatId(e.target.value)} disabled={saving} />
+              <Field
+                id="blog-tg"
+                label="Telegram chat_id"
+                hint="числовой id канала, например -1001234567890 (t.me/c/1234567890 → -1001234567890). Пусто = общий канал из env."
+                error={tgChatIdTouched && isTgChatIdInvalid(tgChatId) ? CHAT_ID_ERROR : undefined}
+              >
+                <input
+                  className={`${INPUT_CLASS} w-full`}
+                  value={tgChatId}
+                  maxLength={100}
+                  pattern="-?\d+"
+                  onBlur={() => setTgChatIdTouched(true)}
+                  onChange={(e) => setTgChatId(e.target.value)}
+                  disabled={saving}
+                />
               </Field>
               <Field id="blog-style" label="Пресет стиля">
                 <select className={`${INPUT_CLASS} w-full`} value={stylePreset} onChange={(e) => setStylePreset(e.target.value as 'default' | 'antonov')} disabled={saving}>
@@ -940,9 +1005,14 @@ export function BlogDetail({ slug }: { slug: string }) {
           </Card>
 
           <div className="lg:col-span-2">
-            {formError ? <p className="mb-2 text-sm text-err">{formError}</p> : null}
+            {formError ? <p role="alert" className="mb-2 text-sm text-err">{formError}</p> : null}
             <div className="flex flex-wrap gap-2">
-              <Button variant="primary" onClick={() => void saveGeneral()} disabled={!dirtyGeneral || saving} loading={saving}>
+              <Button
+                variant="primary"
+                onClick={() => void saveGeneral()}
+                disabled={!dirtyGeneral || saving || isTgChatIdInvalid(tgChatId)}
+                loading={saving}
+              >
                 Сохранить настройки
               </Button>
               <Button
@@ -950,6 +1020,7 @@ export function BlogDetail({ slug }: { slug: string }) {
                   setName(blog.name);
                   setProfile(blog.profile ?? '');
                   setTgChatId(blog.tgChatId ?? '');
+                  setTgChatIdTouched(false);
                   setStylePreset(blog.stylePreset);
                   setSourcesText(blog.sources.join('\n'));
                   setContextPrompt(blog.contextPrompt ?? '');
@@ -977,27 +1048,37 @@ export function BlogDetail({ slug }: { slug: string }) {
               <div className="space-y-3">
                 {schedule.map((s, i) => (
                   <div key={i} className="rounded-md border border-line bg-surface-2 p-3">
-                    <div className="flex flex-wrap items-end gap-3 text-xs text-dim">
-                      <label className="flex flex-col gap-1">
-                        день
+                    {/* S4: контролы слота — Field с per-index id (уникальные
+                        aria-цепочки); таймзона — datalist + blur-валидация. */}
+                    <div className="flex flex-wrap items-end gap-3">
+                      <Field id={`slot-${i}-day`} label="день">
                         <select className={INPUT_CLASS} value={s.dayOfWeek} onChange={(e) => updateSlot(i, { dayOfWeek: Number(e.target.value) })} disabled={scheduleSaving}>
                           {DAY_OPTIONS.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                         </select>
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        время
+                      </Field>
+                      <Field id={`slot-${i}-time`} label="время">
                         <input type="time" className={INPUT_CLASS} value={s.timeLocal} onChange={(e) => updateSlot(i, { timeLocal: e.target.value })} disabled={scheduleSaving} />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        таймзона
-                        <input className={`${INPUT_CLASS} w-40`} value={s.timezone} onChange={(e) => updateSlot(i, { timezone: e.target.value })} disabled={scheduleSaving} />
-                      </label>
-                      <label className="flex flex-col gap-1">
-                        вариантов
+                      </Field>
+                      <Field
+                        id={`slot-${i}-tz`}
+                        label="таймзона"
+                        hint="например, Europe/Moscow"
+                        error={tzTouched[i] && timezoneError(s.timezone) !== null ? TZ_ERROR : undefined}
+                      >
+                        <input
+                          className={`w-40 ${INPUT_CLASS}`}
+                          list="tz-suggestions"
+                          value={s.timezone}
+                          onBlur={() => setTzTouched((prev) => ({ ...prev, [i]: true }))}
+                          onChange={(e) => updateSlot(i, { timezone: e.target.value })}
+                          disabled={scheduleSaving}
+                        />
+                      </Field>
+                      <Field id={`slot-${i}-variants`} label="вариантов">
                         <select className={INPUT_CLASS} value={s.variants} onChange={(e) => updateSlot(i, { variants: Number(e.target.value) })} disabled={scheduleSaving}>
                           <option value={1}>1</option><option value={2}>2</option><option value={3}>3</option>
                         </select>
-                      </label>
+                      </Field>
                       <label className="flex items-center gap-2 pb-2">
                         <input type="checkbox" checked={s.enabled} onChange={(e) => updateSlot(i, { enabled: e.target.checked })} className="accent-accent" disabled={scheduleSaving} />
                         включён
@@ -1017,17 +1098,26 @@ export function BlogDetail({ slug }: { slug: string }) {
                         Удалить слот
                       </Button>
                     </div>
-                    <label className="mt-2 flex flex-col gap-1 text-xs text-dim">
-                      тема / фокус (пусто = регулярный пост блога)
+                    <Field id={`slot-${i}-topic`} label="тема / фокус (пусто = регулярный пост блога)" className="mt-2">
                       <input className={`${INPUT_CLASS} w-full`} value={s.topic} maxLength={500} onChange={(e) => updateSlot(i, { topic: e.target.value })} disabled={scheduleSaving} />
-                    </label>
+                    </Field>
                   </div>
                 ))}
+                <datalist id="tz-suggestions">
+                  {TZ_SUGGESTIONS.map((tz) => (
+                    <option key={tz} value={tz} />
+                  ))}
+                </datalist>
               </div>
             )}
             <div className="flex flex-wrap gap-2">
               <Button onClick={addSlot} disabled={scheduleSaving || schedule.length >= 14}>Добавить слот</Button>
-              <Button variant="primary" onClick={() => void saveSchedule()} disabled={!scheduleDirty || scheduleSaving} loading={scheduleSaving}>
+              <Button
+                variant="primary"
+                onClick={() => void saveSchedule()}
+                disabled={!scheduleDirty || scheduleSaving || schedule.some((s) => timezoneError(s.timezone) !== null)}
+                loading={scheduleSaving}
+              >
                 Сохранить расписание
               </Button>
             </div>

@@ -106,14 +106,22 @@ export default function IntegrationsPage() {
       <SectionHead code="product · integrations" title="Интеграции" description="Исходящие webhook'и с HMAC-подписью на события публикации, задач и автоматизации." />
 
       <Card label="Новая подписка">
-        <div className="space-y-2">
+        {/* <form> (арбитраж №8): Enter в полях = «Добавить»; паттерн —
+            support/page.tsx, лейблы/классы не меняются (пин integrations-fields). */}
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void create();
+          }}
+        >
           {/* name+URL — 2 колонки от sm, секрет — полная строка; на узких — стек (Field даёт label↔контрол; grid-логика в className Field'а). */}
           <div className="grid gap-2 sm:grid-cols-2">
             <Field id="hook-name" label="Название">
               <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Название" className={`block w-full ${INPUT_CLASS}`} />
             </Field>
             <Field id="hook-url" label="URL">
-              <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hook" className={`block w-full ${INPUT_CLASS}`} />
+              <input type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/hook" className={`block w-full ${INPUT_CLASS}`} />
             </Field>
             <Field id="hook-secret" label="Секрет подписи (необязательно)" className="sm:col-span-2">
               <input value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="Секрет подписи (необязательно)" className={`block w-full ${INPUT_CLASS}`} />
@@ -127,9 +135,9 @@ export default function IntegrationsPage() {
               </label>
             ))}
           </div>
-          <Button variant="primary" onClick={create}>Добавить</Button>
+          <Button variant="primary" type="submit">Добавить</Button>
           {error ? <p className="text-sm text-err">{error}</p> : null}
-        </div>
+        </form>
       </Card>
 
       <Card label="Подписки">
@@ -152,7 +160,15 @@ export default function IntegrationsPage() {
       </Card>
 
       <Card label="Входящие webhooks">
-        <div className="space-y-2">
+        {/* <form> (арбитраж №8): Enter в полях = «Создать хук»; список хуков —
+            витрина, остаётся вне формы. */}
+        <form
+          className="space-y-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void createInbound();
+          }}
+        >
           <p className="text-xs text-dim">
             Внешний сервис шлёт POST на URL хука с заголовком x-artel-signature (HMAC-SHA256 тела секретом);
             событие превращается в уведомление или todo.
@@ -166,7 +182,7 @@ export default function IntegrationsPage() {
               <option value="todo">todo</option>
             </select>
           </Field>
-          <Button variant="primary" onClick={createInbound}>Создать хук</Button>
+          <Button variant="primary" type="submit">Создать хук</Button>
           {inError ? <p className="text-sm text-err">{inError}</p> : null}
           {inCreated ? (
             <div className="rounded-lg border border-line bg-surface px-3 py-2 text-xs text-dim">
@@ -175,7 +191,7 @@ export default function IntegrationsPage() {
               <p className="mt-1">URL: <span className="font-mono text-ink">{inCreated.url}</span></p>
             </div>
           ) : null}
-        </div>
+        </form>
         {inbound.length === 0 ? (
           <EmptyState title="Входящих хуков нет" hint="Создайте хук — система покажет секрет и URL для внешнего сервиса." />
         ) : (

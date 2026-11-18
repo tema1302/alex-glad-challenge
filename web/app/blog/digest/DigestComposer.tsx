@@ -259,25 +259,30 @@ export function DigestComposer({
 
       <Card label="сборка">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Блог</span>
+          {/* «— без блога —» первым (S4, канон scout/news): value='' — явная опция,
+              hint объясняет поведение; лейбл «Блог» — пин (blog-selectors-state). */}
+          <Field
+            id="digest-blog"
+            label="Блог"
+            hint={blog === '' ? 'пусто — все новости в голосе канала по умолчанию' : undefined}
+          >
             <select
-              className={`mt-1 min-w-48 ${INPUT_CLASS}`}
+              className={`min-w-48 ${INPUT_CLASS}`}
               value={blog}
               onChange={(e) => setBlog(e.target.value)}
               disabled={generating}
             >
+              <option value="">— без блога —</option>
               {blogs.map((b) => (
                 <option key={b.slug} value={b.slug}>
                   {b.name}
                 </option>
               ))}
             </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Окно</span>
+          </Field>
+          <Field id="digest-window" label="Окно">
             <select
-              className={`mt-1 ${INPUT_CLASS}`}
+              className={INPUT_CLASS}
               value={days}
               onChange={(e) => setDays(Number(e.target.value) as 7 | 14)}
               disabled={generating}
@@ -285,7 +290,7 @@ export function DigestComposer({
               <option value={7}>7 дней</option>
               <option value={14}>14 дней</option>
             </select>
-          </label>
+          </Field>
           <Button
             variant="primary"
             icon={<IconRss />}

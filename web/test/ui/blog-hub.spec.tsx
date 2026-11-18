@@ -106,4 +106,20 @@ describe('BlogHubPage', () => {
       expect(body).not.toHaveProperty('tgChatId');
     });
   });
+
+  it('создание с пустым названием → formError с role="alert" (S4: ошибка озвучивается)', async () => {
+    const fetchMock = mockFetch();
+    const user = userEvent.setup();
+    render(<BlogHubPage />);
+    await screen.findByText('Главный · main');
+
+    await user.click(screen.getByRole('button', { name: 'Новый блог' }));
+    await user.click(screen.getByRole('button', { name: 'Создать' }));
+
+    // Клиентская валидация: POST не уходит — единственные /api/blogs-вызовы
+    // это mount-GET с query (/api/blogs?includeArchived=1), точных POST-URL нет.
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toContain('Название обязательно');
+    expect(fetchMock.mock.calls.filter(([url]) => String(url) === '/api/blogs')).toHaveLength(0);
+  });
 });

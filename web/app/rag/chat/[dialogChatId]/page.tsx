@@ -7,12 +7,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, usePathname } from 'next/navigation';
 import type { SseEvent, SseSource, SseQuote, SseDebug, RagStageStep } from '../../../../lib/shared/sse';
+import { intFieldError, NUMBER_FIELD_LIMITS } from '../../../../lib/shared/forms';
 import { useModelPrefDefault } from '../../../../lib/shared/use-model-pref';
 import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { BackButton } from '../../../components/ui/BackButton';
 import { useSpaHistory } from '../../../components/ui/useSpaHistory';
-import { INPUT_CLASS } from '../../../components/ui/Field';
+import { Field, INPUT_CLASS } from '../../../components/ui/Field';
 import { SectionHead } from '../../../components/ui/SectionHead';
 
 type Strategy = 'fixed' | 'structure' | 'telegram' | 'notes';
@@ -61,7 +62,10 @@ export default function RagChatSessionPage() {
   const [llm, setLlm] = useState<Llm>('local');
   // follow-up P5: дефолт llm-селектора — из preference (cookie model_pref через /api/settings).
   useModelPrefDefault(setLlm);
-  const [k, setK] = useState(4);
+  // number-draft (S4): строка до отправки — очистка не «отскакивает», ошибка
+  // видна сразу; пустое поле не уходит в body (дефолт сервера).
+  const [k, setK] = useState('4');
+  const kError = intFieldError(k, { ...NUMBER_FIELD_LIMITS.k, label: 'Чанков (k)' });
   const [chatKey, setChatKey] = useState('');
   const [topicId, setTopicId] = useState('');
   // P3b: /norag — ответ без RAG (chatStream напрямую). Переключается командой /norag.
@@ -118,7 +122,7 @@ export default function RagChatSessionPage() {
 
   const send = useCallback(async (): Promise<void> => {
     const raw = input.trim();
-    if (!raw || running) return;
+    if (!raw || running || kError) return;
     setError(null);
 
     // --- /-команды: /task <desc>, /task-clear → PATCH, минуя RAG-стрим ---
@@ -167,7 +171,7 @@ export default function RagChatSessionPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: raw, strategy, llm, k, noRag,
+          text: raw, strategy, llm, ...(k !== '' ? { k: Number(k) } : {}), noRag,
           chatKey: strategy === 'telegram' ? chatKey || undefined : undefined,
           topicId: strategy === 'telegram' && topicId ? Number(topicId) : undefined,
         }),
@@ -233,7 +237,7 @@ export default function RagChatSessionPage() {
       // Перезабрать историю с серверными id/ts (flush дал настоящие id) — безопасно для персистента.
       void reloadHistory();
     }
-  }, [input, running, dialogChatId, strategy, llm, k, chatKey, topicId, noRag]);
+  }, [input, running, dialogChatId, strategy, llm, k, kError, chatKey, topicId, noRag]);
 
   const reloadHistory = useCallback(async (): Promise<void> => {
     try {
@@ -281,21 +285,19 @@ export default function RagChatSessionPage() {
       {/* Панель управления */}
       <Card label="Параметры">
         <div className="flex flex-wrap items-end gap-4">
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Стратегия</span>
+          <Field id="rag-chat-strategy" label="Стратегия">
             <select
-              className={`mt-1 ${INPUT_CLASS}`}
+              className={INPUT_CLASS}
               value={strategy}
               onChange={(e) => setStrategy(e.target.value as Strategy)}
               disabled={running}
             >
               {STRATEGY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">LLM</span>
+          </Field>
+          <Field id="rag-chat-llm" label="LLM">
             <select
-              className={`mt-1 ${INPUT_CLASS}`}
+              className={INPUT_CLASS}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -303,17 +305,16 @@ export default function RagChatSessionPage() {
               <option value="local">local (Ollama)</option>
               <option value="cloud">cloud</option>
             </select>
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">Чанков (k)</span>
+          </Field>
+          <Field id="rag-chat-k" label="Чанков (k)" hint="1–20" error={kError ?? undefined}>
             <input
-              className={`mt-1 w-16 ${INPUT_CLASS}`}
+              className={`w-16 ${INPUT_CLASS}`}
               type="number" min={1} max={20}
               value={k}
-              onChange={(e) => setK(Number(e.target.value) || 4)}
+              onChange={(e) => setK(e.target.value)}
               disabled={running}
             />
-          </label>
+          </Field>
           <Button size="sm" className="ml-auto" onClick={onRename} disabled={running}>
             переименовать
           </Button>
@@ -333,26 +334,26 @@ export default function RagChatSessionPage() {
         </div>
         {strategy === 'telegram' && (
           <div className="mt-3 flex flex-wrap items-end gap-4">
-            <label className="flex-1 text-sm">
-              <span className="block text-xs font-medium text-dim">chatKey (-100… / @username)</span>
+            <Field id="rag-chat-chatkey" label="chatKey (-100… / @username)" className="flex-1">
               <input
-                className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
+                className={`w-full font-mono text-xs ${INPUT_CLASS}`}
                 value={chatKey}
                 onChange={(e) => setChatKey(e.target.value)}
                 disabled={running}
                 placeholder="-1001234567890"
               />
-            </label>
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">topicId (опц.)</span>
+            </Field>
+            <Field id="rag-chat-topic" label="topicId (опц.)">
               <input
-                className={`mt-1 w-28 ${INPUT_CLASS}`}
+                className={`w-28 ${INPUT_CLASS}`}
+                type="number"
+                min={0}
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
                 disabled={running}
                 placeholder="общий"
               />
-            </label>
+            </Field>
           </div>
         )}
       </Card>
@@ -457,7 +458,7 @@ export default function RagChatSessionPage() {
           disabled={running}
         />
         <div className="flex flex-row gap-1 sm:flex-col">
-          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim()} className="flex-1 sm:flex-none">
+          <Button variant="primary" onClick={() => void send()} disabled={running || !input.trim() || kError !== null} className="flex-1 sm:flex-none">
             {running ? '…' : 'Спросить'}
           </Button>
           <Button variant="ghost" onClick={cancel} disabled={!running} className="flex-1 sm:flex-none">

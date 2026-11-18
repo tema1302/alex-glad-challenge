@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
 import { Button } from '../../../components/ui/Button';
+import { Field, INPUT_CLASS } from '../../../components/ui/Field';
 
 interface BranchItem { id: number; label: string; parentId: number | null; active: boolean; messageCount: number; }
 interface BranchView { branches: BranchItem[]; activeId: number; }
@@ -43,14 +44,17 @@ export function BranchesPanel({ sessionId }: { sessionId: string }) {
           </li>
         ))}
       </ul>
-      <div className="flex gap-1">
-        <input
-          className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-          placeholder="метка (опц.)"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          disabled={busy}
-        />
+      <div className="flex items-end gap-1">
+        {/* Field «Метка» (S4): ширина через className Field — кнопка остаётся в ряду. */}
+        <Field id="branch-label" label="Метка" className="flex-1 min-w-0">
+          <input
+            className={`w-full ${INPUT_CLASS}`}
+            placeholder="метка (опц.)"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            disabled={busy}
+          />
+        </Field>
         <Button size="sm" disabled={busy} onClick={() => { void post({ action: 'checkpoint', label: label.trim() || undefined }); setLabel(''); }}>
           + checkpoint (ветка от активной)
         </Button>

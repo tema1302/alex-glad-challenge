@@ -4,6 +4,11 @@
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
 import { Button } from '../../../components/ui/Button';
+import { INPUT_CLASS } from '../../../components/ui/Field';
+
+// Инпуты в одну строку с кнопкой — доступное имя через aria-label (S4):
+// видимый label над inline-полем ломает компактный ряд; имена уникальны
+// в пределах панели (getByLabelText в тестах кидает multiple).
 
 interface LongTermEntry { key: string; value: string; updatedAt: string; }
 interface MemoryView {
@@ -52,8 +57,8 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={ltKey} onChange={(e) => setLtKey(e.target.value)} disabled={busy} />
-          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={ltVal} onChange={(e) => setLtVal(e.target.value)} disabled={busy} />
+          <input className={`flex-1 ${INPUT_CLASS}`} aria-label="ключ (long-term)" placeholder="ключ" value={ltKey} onChange={(e) => setLtKey(e.target.value)} disabled={busy} />
+          <input className={`flex-1 ${INPUT_CLASS}`} aria-label="значение (long-term)" placeholder="значение" value={ltVal} onChange={(e) => setLtVal(e.target.value)} disabled={busy} />
           <Button size="sm" disabled={busy || !ltKey.trim()} onClick={() => { void post({ action: 'remember', key: ltKey.trim(), value: ltVal }); setLtKey(''); setLtVal(''); }}>remember</Button>
         </div>
       </section>
@@ -63,7 +68,7 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
         <h4 className="text-xs uppercase tracking-wide text-dim">Task (текущая задача)</h4>
         <p className="mt-1 text-sm">{view.task ?? <span className="text-dim">нет</span>}</p>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание задачи" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} disabled={busy} />
+          <input className={`flex-1 ${INPUT_CLASS}`} aria-label="текущая задача" placeholder="описание задачи" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} disabled={busy} />
           <Button size="sm" disabled={busy || !taskDraft.trim()} onClick={() => { void post({ action: 'task', description: taskDraft.trim() }); setTaskDraft(''); }}>set</Button>
         </div>
       </section>
@@ -84,8 +89,8 @@ export function MemoryPanel({ sessionId }: { sessionId: string }) {
           ))}
         </ul>
         <div className="mt-1 flex gap-1">
-          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="ключ" value={wfKey} onChange={(e) => setWfKey(e.target.value)} disabled={busy} />
-          <input className="flex-1 rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="значение" value={wfVal} onChange={(e) => setWfVal(e.target.value)} disabled={busy} />
+          <input className={`flex-1 ${INPUT_CLASS}`} aria-label="ключ (рабочий факт)" placeholder="ключ" value={wfKey} onChange={(e) => setWfKey(e.target.value)} disabled={busy} />
+          <input className={`flex-1 ${INPUT_CLASS}`} aria-label="значение (рабочий факт)" placeholder="значение" value={wfVal} onChange={(e) => setWfVal(e.target.value)} disabled={busy} />
           <Button size="sm" disabled={busy || !wfKey.trim()} onClick={() => { void post({ action: 'task-add', key: wfKey.trim(), value: wfVal }); setWfKey(''); setWfVal(''); }}>add</Button>
         </div>
       </section>

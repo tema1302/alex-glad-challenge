@@ -626,6 +626,38 @@ export function noteFileError(name: string, size: number): string | null {
   return null;
 }
 
+// --- number-draft (S4 «Инпуты»): строковый state числовых полей форм ---
+
+// Границы зеркалят zod-схемы выше (newsOptsSchema hours/top/forIndex,
+// scoutOptsSchema hours/topK, ragQuerySchema/ragChatSendSchema k); zod —
+// авторитет, пин синхронности — test/unit/forms.spec.ts. forIndex без max
+// (≥0). Без server-only — импортируется клиентом.
+export const NUMBER_FIELD_LIMITS = {
+  hours: { min: 1, max: 168 },
+  top: { min: 1, max: 50 },
+  topK: { min: 1, max: 10 },
+  forIndex: { min: 0 },
+  k: { min: 1, max: 20 },
+} as const;
+
+/**
+ * null = значение ок ИЛИ пусто (пустое поле не уходит в body — дефолт сервера);
+ * иначе — человекочитаемая причина (единый источник текстов, канон noteFileError).
+ */
+export function intFieldError(
+  raw: string,
+  opts: { min: number; max?: number; label: string },
+): string | null {
+  if (raw.trim() === '') return null;
+  const n = Number(raw);
+  const range = opts.max !== undefined ? `${opts.min}–${opts.max}` : `от ${opts.min}`;
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return `${opts.label}: ожидается целое число ${range}`;
+  if (n < opts.min || (opts.max !== undefined && n > opts.max)) {
+    return `${opts.label}: ожидается целое число ${range}`;
+  }
+  return null;
+}
+
 // --- Token estimate: POST /api/tokens/estimate ---
 
 // Грубая оценка токенов по UTF-8-байтам (bytes / 4) — без токенизатора.

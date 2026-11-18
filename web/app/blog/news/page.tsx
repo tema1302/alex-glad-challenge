@@ -6,11 +6,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type { SseBlogNewsEvent } from '../../../lib/shared/sse';
+import { intFieldError, NUMBER_FIELD_LIMITS } from '../../../lib/shared/forms';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { SectionHead } from '../../components/ui/SectionHead';
-import { INPUT_CLASS } from '../../components/ui/Field';
+import { Field, INPUT_CLASS } from '../../components/ui/Field';
 import { IconPlay } from '../../components/ui/icons';
 
 type Llm = 'local' | 'cloud';
@@ -39,9 +40,16 @@ export default function BlogNewsPage() {
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
   const [blogsError, setBlogsError] = useState(false);
   const [blog, setBlog] = useState<string>('');
-  const [hours, setHours] = useState(24);
-  const [top, setTop] = useState(5);
-  const [forIndex, setForIndex] = useState(0);
+  // number-draft (S4): строка до отправки — очистка не «отскакивает», ошибка
+  // видна сразу; пустое поле не уходит в body (дефолт сервера). Границы — из
+  // newsOptsSchema (NUMBER_FIELD_LIMITS).
+  const [hours, setHours] = useState('24');
+  const [top, setTop] = useState('5');
+  const [forIndex, setForIndex] = useState('0');
+  const hoursError = intFieldError(hours, { ...NUMBER_FIELD_LIMITS.hours, label: 'Часов' });
+  const topError = intFieldError(top, { ...NUMBER_FIELD_LIMITS.top, label: 'Топ' });
+  const forIndexError = intFieldError(forIndex, { ...NUMBER_FIELD_LIMITS.forIndex, label: 'Пост про' });
+  const paramsInvalid = hoursError !== null || topError !== null || forIndexError !== null;
   const [llm, setLlm] = useState<Llm>('cloud');
 
   const [running, setRunning] = useState(false);
@@ -90,7 +98,7 @@ export default function BlogNewsPage() {
   };
 
   const run = useCallback(async () => {
-    if (running) return;
+    if (running || paramsInvalid) return;
     reset();
     setRunning(true);
     const ac = new AbortController();
@@ -117,7 +125,13 @@ export default function BlogNewsPage() {
       const resp = await fetch('/api/blog/news', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hours, top, forIndex, llm, ...(blog ? { blog } : {}) }),
+        body: JSON.stringify({
+          llm,
+          ...(hours !== '' ? { hours: Number(hours) } : {}),
+          ...(top !== '' ? { top: Number(top) } : {}),
+          ...(forIndex !== '' ? { forIndex: Number(forIndex) } : {}),
+          ...(blog ? { blog } : {}),
+        }),
         signal: ac.signal,
       });
       if (!resp.ok || !resp.body) {
@@ -158,7 +172,7 @@ export default function BlogNewsPage() {
       setRunning(false);
       abortRef.current = null;
     }
-  }, [hours, top, forIndex, llm, blog, running]);
+  }, [hours, top, forIndex, llm, blog, paramsInvalid, running]);
 
   const cancel = (): void => {
     abortRef.current?.abort();
@@ -202,101 +216,111 @@ export default function BlogNewsPage() {
       <SectionHead code="blog · news" title="Блог-pipeline" />
 
       <Card label="Параметры запуска">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-            <label className="col-span-2 text-sm">
-              <span className="block text-xs font-medium text-dim">Блог</span>
-              <select
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                value={blog}
-                onChange={(e) => {
-                  setBlog(e.target.value);
-                  reset();
-                }}
-                disabled={running}
+        {/* <form> (S4): Enter в любом поле = «Запустить»; параметры — Field
+            (label↔контрол), пустой блог — явная опция «— без блога —». */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
+          }}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-6">
+              <Field
+                id="news-blog"
+                label="Блог"
+                className="col-span-2"
+                hint={blog === '' ? 'пусто — стандартные источники и голос канала' : undefined}
               >
-                {blogs.map((b) => (
-                  <option key={b.slug} value={b.slug}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <select
+                  className={`w-full ${INPUT_CLASS}`}
+                  value={blog}
+                  onChange={(e) => {
+                    setBlog(e.target.value);
+                    reset();
+                  }}
+                  disabled={running}
+                >
+                  <option value="">— без блога —</option>
+                  {blogs.map((b) => (
+                    <option key={b.slug} value={b.slug}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
 
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">Часов</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="number"
-                min={1}
-                max={168}
-                value={hours}
-                onChange={(e) => setHours(Number(e.target.value) || 24)}
-                disabled={running}
-              />
-            </label>
+              <Field id="news-hours" label="Часов" hint="1–168" error={hoursError ?? undefined}>
+                <input
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
+                  disabled={running}
+                />
+              </Field>
 
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">Топ</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="number"
-                min={1}
-                max={50}
-                value={top}
-                onChange={(e) => setTop(Number(e.target.value) || 5)}
-                disabled={running}
-              />
-            </label>
+              <Field id="news-top" label="Топ" hint="1–50" error={topError ?? undefined}>
+                <input
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={top}
+                  onChange={(e) => setTop(e.target.value)}
+                  disabled={running}
+                />
+              </Field>
 
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">Пост про</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="number"
-                min={0}
-                value={forIndex}
-                onChange={(e) => setForIndex(Number(e.target.value) || 0)}
-                disabled={running}
-              />
-            </label>
+              <Field id="news-for" label="Пост про" hint="от 0" error={forIndexError ?? undefined}>
+                <input
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="number"
+                  min={0}
+                  value={forIndex}
+                  onChange={(e) => setForIndex(e.target.value)}
+                  disabled={running}
+                />
+              </Field>
 
-            <label className="col-span-2 text-sm sm:col-span-1">
-              <span className="block text-xs font-medium text-dim">LLM</span>
-              <select
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                value={llm}
-                onChange={(e) => setLlm(e.target.value as Llm)}
-                disabled={running}
+              <Field id="news-llm" label="LLM" className="col-span-2 sm:col-span-1">
+                <select
+                  className={`w-full ${INPUT_CLASS}`}
+                  value={llm}
+                  onChange={(e) => setLlm(e.target.value as Llm)}
+                  disabled={running}
+                >
+                  <option value="cloud">cloud</option>
+                  <option value="local">local (Ollama)</option>
+                </select>
+              </Field>
+            </div>
+
+            <div className="flex flex-col flex-wrap gap-2 sm:flex-row sm:justify-end">
+              <Button
+                variant="primary"
+                icon={<IconPlay />}
+                loading={running}
+                type="submit"
+                disabled={running || paramsInvalid || profileMissing || creatingId !== null}
+                className="w-full sm:w-auto"
               >
-                <option value="cloud">cloud</option>
-                <option value="local">local (Ollama)</option>
-              </select>
-            </label>
+                Запустить
+              </Button>
+              {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
+              <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
+                Стоп
+              </Button>
+              {profileMissing ? (
+                <p role="note" className="w-full text-xs text-warn">
+                  Сначала настройте профиль голоса блога — генерация недоступна.
+                </p>
+              ) : null}
+            </div>
           </div>
-
-          <div className="flex flex-col flex-wrap gap-2 sm:flex-row sm:justify-end">
-            <Button
-              variant="primary"
-              icon={<IconPlay />}
-              loading={running}
-              onClick={run}
-              disabled={running || profileMissing || creatingId !== null}
-              className="w-full sm:w-auto"
-            >
-              Запустить
-            </Button>
-            {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
-            <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
-              Стоп
-            </Button>
-            {profileMissing ? (
-              <p role="note" className="w-full text-xs text-warn">
-                Сначала настройте профиль голоса блога — генерация недоступна.
-              </p>
-            ) : null}
-          </div>
-        </div>
+        </form>
         {blogsError ? (
           <p className="mt-2 text-xs text-err">
             Не удалось загрузить блоги —{' '}

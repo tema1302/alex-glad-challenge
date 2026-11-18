@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chatSendSchema,
   newsOptsSchema,
+  NUMBER_FIELD_LIMITS,
   ragQuerySchema,
   scoutOptsSchema,
   styleSampleSchema,
@@ -49,6 +50,55 @@ describe('newsOptsSchema / scoutOptsSchema', () => {
     expect(newsOptsSchema.safeParse({ topic: 'а'.repeat(201) }).success).toBe(false);
     expect(newsOptsSchema.safeParse({ topic: 'а'.repeat(200) }).success).toBe(true);
     expect(newsOptsSchema.safeParse({}).success).toBe(true);
+  });
+
+  // S4 number-draft: граница forIndex не была покрыта — coerce и min(0),
+  // верха нет (индекс новости может быть любым неотрицательным).
+  it('forIndex: coerce из строки, минимум 0, без верхней границы', () => {
+    expect(newsOptsSchema.safeParse({ forIndex: '2' }).success).toBe(true);
+    expect(newsOptsSchema.parse({ forIndex: '2' }).forIndex).toBe(2);
+    expect(newsOptsSchema.safeParse({ forIndex: 0 }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ forIndex: 1000 }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ forIndex: -1 }).success).toBe(false);
+    expect(newsOptsSchema.safeParse({ forIndex: 1.5 }).success).toBe(false);
+  });
+});
+
+describe('NUMBER_FIELD_LIMITS — границы number-draft-полей зеркалят zod', () => {
+  // Константа — единственный источник границ для intFieldError (тексты ошибок
+  // форм); zod остаётся авторитетом. Пин не даёт константе молча разъехаться.
+  it('hours/top/forIndex (news) и hours/topK (scout) совпадают со схемами', () => {
+    const hours = NUMBER_FIELD_LIMITS.hours;
+    expect(newsOptsSchema.safeParse({ hours: hours.min }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ hours: hours.max }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ hours: hours.min - 1 }).success).toBe(false);
+    expect(newsOptsSchema.safeParse({ hours: hours.max + 1 }).success).toBe(false);
+
+    const top = NUMBER_FIELD_LIMITS.top;
+    expect(newsOptsSchema.safeParse({ top: top.min }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ top: top.max }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ top: top.min - 1 }).success).toBe(false);
+    expect(newsOptsSchema.safeParse({ top: top.max + 1 }).success).toBe(false);
+
+    const forIndex = NUMBER_FIELD_LIMITS.forIndex;
+    expect(newsOptsSchema.safeParse({ forIndex: forIndex.min }).success).toBe(true);
+    expect(newsOptsSchema.safeParse({ forIndex: forIndex.min - 1 }).success).toBe(false);
+
+    const topK = NUMBER_FIELD_LIMITS.topK;
+    expect(scoutOptsSchema.safeParse({ topK: topK.min }).success).toBe(true);
+    expect(scoutOptsSchema.safeParse({ topK: topK.max }).success).toBe(true);
+    expect(scoutOptsSchema.safeParse({ topK: topK.min - 1 }).success).toBe(false);
+    expect(scoutOptsSchema.safeParse({ topK: topK.max + 1 }).success).toBe(false);
+
+    expect(scoutOptsSchema.safeParse({ hours: NUMBER_FIELD_LIMITS.hours.max }).success).toBe(true);
+  });
+
+  it('k (rag) совпадает с ragQuerySchema', () => {
+    const k = NUMBER_FIELD_LIMITS.k;
+    expect(ragQuerySchema.safeParse({ query: 'q', k: k.min }).success).toBe(true);
+    expect(ragQuerySchema.safeParse({ query: 'q', k: k.max }).success).toBe(true);
+    expect(ragQuerySchema.safeParse({ query: 'q', k: k.min - 1 }).success).toBe(false);
+    expect(ragQuerySchema.safeParse({ query: 'q', k: k.max + 1 }).success).toBe(false);
   });
 });
 

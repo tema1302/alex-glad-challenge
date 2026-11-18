@@ -72,6 +72,7 @@ export default function SupportPage() {
       <Card label="База знаний">
         <div className="flex gap-2">
           <input
+            type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && void search()}

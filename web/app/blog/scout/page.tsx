@@ -6,10 +6,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SseBlogScoutEvent } from '../../../lib/shared/sse';
+import { intFieldError, NUMBER_FIELD_LIMITS } from '../../../lib/shared/forms';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { SectionHead } from '../../components/ui/SectionHead';
-import { INPUT_CLASS } from '../../components/ui/Field';
+import { Field, INPUT_CLASS } from '../../components/ui/Field';
 import { IconPlay } from '../../components/ui/icons';
 
 type Llm = 'local' | 'cloud';
@@ -46,8 +47,14 @@ export default function BlogScoutPage() {
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
   const [blog, setBlog] = useState('');
   const [query, setQuery] = useState('');
-  const [hours, setHours] = useState(24);
-  const [topK, setTopK] = useState(3);
+  // number-draft (S4): строка до отправки — очистка не «отскакивает», ошибка
+  // видна сразу; пустое поле не уходит в body (дефолт сервера). Границы — из
+  // scoutOptsSchema (NUMBER_FIELD_LIMITS).
+  const [hours, setHours] = useState('24');
+  const [topK, setTopK] = useState('3');
+  const hoursError = intFieldError(hours, { ...NUMBER_FIELD_LIMITS.hours, label: 'Часов' });
+  const topKError = intFieldError(topK, { ...NUMBER_FIELD_LIMITS.topK, label: 'Топ (topK)' });
+  const paramsInvalid = hoursError !== null || topKError !== null;
   const [enableForum, setEnableForum] = useState(true);
   const [enableTelegram, setEnableTelegram] = useState(false);
   const [llm, setLlm] = useState<Llm>('cloud');
@@ -78,7 +85,7 @@ export default function BlogScoutPage() {
   };
 
   const run = useCallback(async () => {
-    if (running) return;
+    if (running || paramsInvalid) return;
     reset();
     setRunning(true);
     const ac = new AbortController();
@@ -103,8 +110,8 @@ export default function BlogScoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          hours,
-          topK,
+          ...(hours !== '' ? { hours: Number(hours) } : {}),
+          ...(topK !== '' ? { topK: Number(topK) } : {}),
           ...(blog ? { blog } : {}),
           query: query.trim() || undefined,
           enableForum,
@@ -151,7 +158,7 @@ export default function BlogScoutPage() {
       setRunning(false);
       abortRef.current = null;
     }
-  }, [query, hours, topK, enableForum, enableTelegram, llm, blog, running]);
+  }, [query, hours, topK, enableForum, enableTelegram, llm, blog, paramsInvalid, running]);
 
   const cancel = (): void => {
     abortRef.current?.abort();
@@ -166,131 +173,135 @@ export default function BlogScoutPage() {
       />
 
       <Card label="Параметры сбора">
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-            <label className="col-span-2 text-sm">
-              <span className="block text-xs font-medium text-dim">Блог</span>
-              <select
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                value={blog}
-                onChange={(e) => setBlog(e.target.value)}
-                disabled={running}
-              >
-                <option value="">— без блога —</option>
-                {blogs.map((b) => (
-                  <option key={b.slug} value={b.slug}>{b.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">Часов</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="number"
-                min={1}
-                max={168}
-                value={hours}
-                onChange={(e) => setHours(Number(e.target.value) || 24)}
-                disabled={running}
-              />
-            </label>
-
-            <label className="text-sm">
-              <span className="block text-xs font-medium text-dim">Топ (topK)</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="number"
-                min={1}
-                max={10}
-                value={topK}
-                onChange={(e) => setTopK(Number(e.target.value) || 3)}
-                disabled={running}
-              />
-            </label>
-
-            <label className="col-span-2 text-sm sm:col-span-1">
-              <span className="block text-xs font-medium text-dim">LLM</span>
-              <select
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                value={llm}
-                onChange={(e) => setLlm(e.target.value as Llm)}
-                disabled={running}
-              >
-                <option value="cloud">cloud</option>
-                <option value="local">local (Ollama)</option>
-              </select>
-            </label>
-          </div>
-
-          <div>
-            <label className="block text-sm">
-              <span className="block text-xs font-medium text-dim">Запрос</span>
-              <input
-                className={`mt-1 w-full ${INPUT_CLASS}`}
-                type="text"
-                placeholder="Например: футбольные новости АПЛ и Челси"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                disabled={running}
-              />
-            </label>
-            <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-dim">Примеры:</span>
-              {QUERY_EXAMPLES.map((example) => (
-                <button
-                  key={example}
-                  type="button"
-                  onClick={() => setQuery(example)}
+        {/* <form> (S4): Enter в «Запросе» = «Запустить»; параметры — Field
+            (label↔контрол), «Запрос» остаётся textbox (не searchbox). */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void run();
+          }}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <Field id="scout-blog" label="Блог" className="col-span-2">
+                <select
+                  className={`w-full ${INPUT_CLASS}`}
+                  value={blog}
+                  onChange={(e) => setBlog(e.target.value)}
                   disabled={running}
-                  className="rounded-full border border-line-strong px-2.5 py-1 text-left text-xs text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {example}
-                </button>
-              ))}
-            </div>
-          </div>
+                  <option value="">— без блога —</option>
+                  {blogs.map((b) => (
+                    <option key={b.slug} value={b.slug}>{b.name}</option>
+                  ))}
+                </select>
+              </Field>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
-              <label className="flex items-center gap-1.5">
+              <Field id="scout-hours" label="Часов" hint="1–168" error={hoursError ?? undefined}>
                 <input
-                  type="checkbox"
-                  checked={enableForum}
-                  onChange={(e) => setEnableForum(e.target.checked)}
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={hours}
+                  onChange={(e) => setHours(e.target.value)}
                   disabled={running}
                 />
-                Соцсети/форумы
-              </label>
-              <label className="flex items-center gap-1.5">
+              </Field>
+
+              <Field id="scout-topk" label="Топ (topK)" hint="1–10" error={topKError ?? undefined}>
                 <input
-                  type="checkbox"
-                  checked={enableTelegram}
-                  onChange={(e) => setEnableTelegram(e.target.checked)}
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={topK}
+                  onChange={(e) => setTopK(e.target.value)}
                   disabled={running}
                 />
-                TG
-              </label>
+              </Field>
+
+              <Field id="scout-llm" label="LLM" className="col-span-2 sm:col-span-1">
+                <select
+                  className={`w-full ${INPUT_CLASS}`}
+                  value={llm}
+                  onChange={(e) => setLlm(e.target.value as Llm)}
+                  disabled={running}
+                >
+                  <option value="cloud">cloud</option>
+                  <option value="local">local (Ollama)</option>
+                </select>
+              </Field>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Button
-                variant="primary"
-                icon={<IconPlay />}
-                loading={running}
-                onClick={run}
-                disabled={running}
-                className="w-full sm:w-auto"
-              >
-                Запустить
-              </Button>
-              {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
-              <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
-                Стоп
-              </Button>
+            <div>
+              <Field id="scout-query" label="Запрос">
+                <input
+                  className={`w-full ${INPUT_CLASS}`}
+                  type="text"
+                  placeholder="Например: футбольные новости АПЛ и Челси"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  disabled={running}
+                />
+              </Field>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-xs text-dim">Примеры:</span>
+                {QUERY_EXAMPLES.map((example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => setQuery(example)}
+                    disabled={running}
+                    className="rounded-full border border-line-strong px-2.5 py-1 text-left text-xs text-dim transition-colors duration-fast hover:border-accent-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {example}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap items-center gap-4 text-sm text-ink">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={enableForum}
+                    onChange={(e) => setEnableForum(e.target.checked)}
+                    disabled={running}
+                  />
+                  Соцсети/форумы
+                </label>
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={enableTelegram}
+                    onChange={(e) => setEnableTelegram(e.target.checked)}
+                    disabled={running}
+                  />
+                  TG
+                </label>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  variant="primary"
+                  icon={<IconPlay />}
+                  loading={running}
+                  type="submit"
+                  disabled={running || paramsInvalid}
+                  className="w-full sm:w-auto"
+                >
+                  Запустить
+                </Button>
+                {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
+                <Button variant="ghost" onClick={cancel} disabled={!running} className="w-full sm:w-auto">
+                  Стоп
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
+        </form>
         <p className="mt-3 text-xs leading-relaxed text-dim">
           Соцсети/форумы: Mastodon + Lemmy + Sports.ru. TG требует настроенной MTProto-сессии и по
           умолчанию выключен; прогон ходит в RSS/соцсети + LLM.

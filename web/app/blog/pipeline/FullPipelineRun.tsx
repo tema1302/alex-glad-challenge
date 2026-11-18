@@ -19,7 +19,7 @@ import type {
   SseBlogScoutError,
   SseBlogScoutEvent,
 } from '../../../lib/shared/sse';
-import { INPUT_CLASS } from '../../components/ui/Field';
+import { INPUT_CLASS, Field } from '../../components/ui/Field';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
@@ -184,27 +184,21 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
         {/* Единственная постоянная строка описания (кнопки и стадии говорят сами). */}
         <p className="text-xs text-dim">RSS → оркестратор → автор → фактчекер · в TG не отправляет</p>
         <div className="mt-3 flex flex-wrap items-end gap-4">
-          <label className="flex-1 min-w-[220px] text-sm">
-            <span className="block text-xs font-medium text-dim">
-              Запрос для разведки
-            </span>
+          {/* Параметры — Field (S4); лейблы «Запрос для разведки»/«LLM» — пины
+              (blog-pipeline-full-run.spec), фикс-параметры прогона — hint. */}
+          <Field id="pipeline-query" label="Запрос для разведки" className="min-w-[220px] flex-1">
             <input
-              className={`mt-1 w-full ${INPUT_CLASS}`}
+              className={`w-full ${INPUT_CLASS}`}
               type="text"
               placeholder="самые горячие футбольные новости"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={running}
             />
-            <span className="mt-1 block text-xs text-dim">
-              часов: {RUN_DEFAULTS.hours} · топ разведки: {RUN_DEFAULTS.scoutTopK} · топ новостей:{' '}
-              {RUN_DEFAULTS.newsTop}
-            </span>
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">LLM</span>
+          </Field>
+          <Field id="pipeline-llm" label="LLM">
             <select
-              className={`mt-1 ${INPUT_CLASS}`}
+              className={INPUT_CLASS}
               value={llm}
               onChange={(e) => setLlm(e.target.value as Llm)}
               disabled={running}
@@ -212,7 +206,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
               <option value="cloud">cloud</option>
               <option value="local">local (Ollama)</option>
             </select>
-          </label>
+          </Field>
           <div className="ml-auto flex gap-2">
             <Button variant="primary" icon={<IconPlay />} loading={running} onClick={run} disabled={running}>
               Запустить весь конвейер
@@ -223,6 +217,10 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
             </Button>
           </div>
         </div>
+        <p className="mt-2 text-xs text-dim">
+          часов: {RUN_DEFAULTS.hours} · топ разведки: {RUN_DEFAULTS.scoutTopK} · топ новостей:{' '}
+          {RUN_DEFAULTS.newsTop}
+        </p>
       </Card>
 
       {(phase !== 'idle' || error) && (

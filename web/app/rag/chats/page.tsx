@@ -116,6 +116,8 @@ export default function RagChatsPage() {
             <span className="block text-xs font-medium text-dim">topicId (опц.)</span>
             <input
               className={`mt-1 w-full sm:w-24 ${INPUT_CLASS}`}
+              type="number"
+              min={0}
               value={topicId} onChange={(e) => setTopicId(e.target.value)} disabled={busy}
             />
           </label>

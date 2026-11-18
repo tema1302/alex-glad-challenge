@@ -49,8 +49,8 @@ test.describe('Рабочий продукт — успешные прогоны
 
     await login(page, '/blog/news');
     // Окно свежести 72ч — чтобы у прогона были кандидаты даже без свежего RSS
-    await page.getByLabel('Часов (hours)').fill('72');
-    await page.getByLabel('Топ (top)').fill('3');
+    await page.getByLabel('Часов').fill('72');
+    await page.getByLabel('Топ').fill('3');
     await page.getByRole('button', { name: 'Запустить' }).click();
 
     // Прогон завершился: кнопка снова активна, пустого состояния нет

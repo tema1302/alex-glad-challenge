@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
 import { Button } from '../../../components/ui/Button';
+import { Field, INPUT_CLASS } from '../../../components/ui/Field';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 
 interface ProfileView {
@@ -28,7 +29,8 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
       <section>
         <h4 className="text-xs uppercase tracking-wide text-dim">Активный профиль</h4>
         <select
-          className="mt-1 w-full rounded-md border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
+          className={`mt-1 w-full ${INPUT_CLASS}`}
+          aria-label="активный профиль"
           value={view.active ?? ''}
           disabled={busy}
           onChange={(e) => void post({ action: 'use', name: e.target.value })}
@@ -48,14 +50,16 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
       {/* Edit via LLM */}
       <section>
         <h4 className="text-xs uppercase tracking-wide text-dim">Edit через LLM</h4>
-        <textarea
-          className="mt-1 w-full resize-y rounded-md border border-line-strong bg-surface-2 p-2 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim"
-          rows={2}
-          placeholder="напр: смени клуб на Арсенал, добавь заметку про стиль"
-          value={instruction}
-          onChange={(e) => { setInstruction(e.target.value); setSummary(null); }}
-          disabled={busy}
-        />
+        <Field id="profile-instruction" label="Инструкция для LLM">
+          <textarea
+            className={`w-full resize-y ${INPUT_CLASS}`}
+            rows={2}
+            placeholder="напр: смени клуб на Арсенал, добавь заметку про стиль"
+            value={instruction}
+            onChange={(e) => { setInstruction(e.target.value); setSummary(null); }}
+            disabled={busy}
+          />
+        </Field>
         <Button
           size="sm"
           className="mt-1"
@@ -71,13 +75,13 @@ export function ProfilePanel({ sessionId }: { sessionId: string }) {
       </section>
 
       {/* New / note / reset */}
-      <section className="flex flex-wrap gap-2">
-        <input className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim" placeholder="новый профиль" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={busy} />
+      <section className="flex flex-wrap items-end gap-2">
+        <input className={`min-w-0 flex-1 ${INPUT_CLASS}`} aria-label="имя нового профиля" placeholder="новый профиль" value={newName} onChange={(e) => setNewName(e.target.value)} disabled={busy} />
         <Button size="sm" disabled={busy || !newName.trim()} onClick={() => { void post({ action: 'new', name: newName.trim() }); setNewName(''); }}>+ new</Button>
         <Button size="sm" variant="danger" disabled={busy || !view.active} onClick={() => setResetOpen(true)}>reset</Button>
       </section>
-      <section className="flex gap-2">
-        <input className="min-w-0 flex-1 rounded-md border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-dim" placeholder="заметка к активному профилю" value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
+      <section className="flex items-end gap-2">
+        <input className={`min-w-0 flex-1 ${INPUT_CLASS}`} aria-label="заметка к активному профилю" placeholder="заметка к активному профилю" value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
         <Button size="sm" disabled={busy || !note.trim() || !view.active} onClick={() => { void post({ action: 'note', text: note.trim() }); setNote(''); }}>+ note</Button>
       </section>
 

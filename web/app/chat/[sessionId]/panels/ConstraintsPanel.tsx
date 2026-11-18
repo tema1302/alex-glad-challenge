@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { usePanelView } from './usePanelView';
 import { Button } from '../../../components/ui/Button';
+import { Field, INPUT_CLASS } from '../../../components/ui/Field';
 
 interface ConstraintItem { id: string; type: string; title: string; description: string; createdAt: string; }
 interface ConstraintsView { items: ConstraintItem[]; }
@@ -49,13 +50,20 @@ export function ConstraintsPanel({ sessionId }: { sessionId: string }) {
         </section>
       ))}
 
-      <section className="space-y-1 border-t border-line pt-2">
+      <section className="space-y-2 border-t border-line pt-2">
         <h4 className="text-xs uppercase tracking-wide text-dim">Добавить инвариант</h4>
-        <select className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
-          {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
-        </select>
-        <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="название" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
-        <input className="w-full rounded border border-line-strong bg-surface-2 px-2 py-1 text-sm text-ink placeholder:text-dim focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent" placeholder="описание" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={busy} />
+        {/* Вертикальная форма → Field (S4): label htmlFor + INPUT_CLASS через cloneElement. */}
+        <Field id="constraint-type" label="Тип">
+          <select className={`w-full ${INPUT_CLASS}`} value={type} onChange={(e) => setType(e.target.value)} disabled={busy}>
+            {TYPE_ORDER.map((t) => <option key={t} value={t}>{TYPE_LABELS[t]}</option>)}
+          </select>
+        </Field>
+        <Field id="constraint-title" label="Название">
+          <input className={`w-full ${INPUT_CLASS}`} placeholder="название" value={title} onChange={(e) => setTitle(e.target.value)} disabled={busy} />
+        </Field>
+        <Field id="constraint-desc" label="Описание">
+          <input className={`w-full ${INPUT_CLASS}`} placeholder="описание" value={desc} onChange={(e) => setDesc(e.target.value)} disabled={busy} />
+        </Field>
         <Button size="sm" disabled={busy || !title.trim()} onClick={() => { void post({ action: 'add', type, title: title.trim(), description: desc.trim() }); setTitle(''); setDesc(''); }}>+ add</Button>
       </section>
 

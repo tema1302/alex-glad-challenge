@@ -106,6 +106,7 @@ export function CommandPalette({ isAdmin }: { isAdmin: boolean }) {
       >
         <input
           ref={inputRef}
+          type="search"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);

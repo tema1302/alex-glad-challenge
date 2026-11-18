@@ -12,7 +12,7 @@ import { SectionLabel } from '../components/ui/SectionLabel';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
-import { INPUT_CLASS } from '../components/ui/Field';
+import { INPUT_CLASS, Field } from '../components/ui/Field';
 import { SectionHead } from '../components/ui/SectionHead';
 
 interface BriefingStats {
@@ -79,26 +79,33 @@ export default function BriefingPage() {
 
       {/* Топ-TG по chatKey (опц.) */}
       <Card label="топ-TG по чату">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="flex-1 text-sm">
-            <span className="block text-xs font-medium text-dim">chatKey</span>
+        {/* <form> (S4): Enter в полях = «обновить»; поля — через Field (label↔input). */}
+        <form
+          className="flex flex-wrap items-end gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void load(chatKey, topicId);
+          }}
+        >
+          <Field id="briefing-chatkey" label="chatKey" className="flex-1">
             <input
-              className={`mt-1 w-full font-mono text-xs ${INPUT_CLASS}`}
+              className={`w-full font-mono text-xs ${INPUT_CLASS}`}
               value={chatKey} onChange={(e) => setChatKey(e.target.value)}
               placeholder="-1001234567890 (пусто — без топ-TG)"
             />
-          </label>
-          <label className="text-sm">
-            <span className="block text-xs font-medium text-dim">topicId</span>
+          </Field>
+          <Field id="briefing-topic" label="topicId">
             <input
-              className={`mt-1 w-24 ${INPUT_CLASS}`}
+              className={`w-24 ${INPUT_CLASS}`}
+              type="number"
+              min={0}
               value={topicId} onChange={(e) => setTopicId(e.target.value)}
             />
-          </label>
-          <Button variant="primary" onClick={() => void load(chatKey, topicId)}>
+          </Field>
+          <Button variant="primary" type="submit">
             обновить
           </Button>
-        </div>
+        </form>
       </Card>
 
       {error && (

@@ -463,8 +463,18 @@ export default function BlogHubPage() {
               <input className={`${INPUT_CLASS} w-full`} value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="default" />
             )}
           </Field>
-          <Field id="new-blog-tg" label="Telegram chat_id (необязательно)">
-            <input className={`${INPUT_CLASS} w-full`} value={tgChatId} onChange={(e) => setTgChatId(e.target.value)} placeholder="-1001234567890" />
+          <Field
+            id="new-blog-tg"
+            label="Telegram chat_id (необязательно)"
+            hint="числовой id канала, например -1001234567890 (t.me/c/1234567890 → -1001234567890)"
+          >
+            <input
+              className={`${INPUT_CLASS} w-full`}
+              value={tgChatId}
+              onChange={(e) => setTgChatId(e.target.value)}
+              placeholder="-1001234567890"
+              pattern="-?\d+"
+            />
           </Field>
           <Field id="new-blog-style" label="Пресет стиля">
             <select className={`${INPUT_CLASS} w-full`} value={stylePreset} onChange={(e) => setStylePreset(e.target.value as 'default' | 'antonov')}>
@@ -475,7 +485,7 @@ export default function BlogHubPage() {
           <Field id="new-blog-sources" label="RSS-источники" hint="По одной ссылке в строке. Пусто = источники добавите позже.">
             <Textarea value={sourcesText} onValueChange={setSourcesText} max={6000} rows={3} placeholder="https://example.com/rss" />
           </Field>
-          {formError ? <p className="text-xs text-err">{formError}</p> : null}
+          {formError ? <p role="alert" className="text-xs text-err">{formError}</p> : null}
         </div>
       </Dialog>
 
