@@ -66,20 +66,16 @@ export async function GET(
     return {
       blog: { id: blog.id, slug: blog.slug, name: blog.name },
       schedules: store.list(blog.id).map(toDto),
-      runs: store
-        .listRuns(50)
-        .filter((r) => r.blog_id === blog.id)
-        .slice(0, 10)
-        .map((r) => ({
-          id: r.id,
-          scheduleId: r.schedule_id,
-          status: r.status,
-          attempts: r.attempts,
-          postId: r.post_id,
-          message: r.message,
-          startedAt: r.started_at,
-          finishedAt: r.finished_at,
-        })),
+      runs: store.listRuns(10, blog.id).map((r) => ({
+        id: r.id,
+        scheduleId: r.schedule_id,
+        status: r.status,
+        attempts: r.attempts,
+        postId: r.post_id,
+        message: r.message,
+        startedAt: r.started_at,
+        finishedAt: r.finished_at,
+      })),
     };
   });
   if (!data) return jsonError('not found', 404);

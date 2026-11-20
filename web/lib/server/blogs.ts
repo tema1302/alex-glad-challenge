@@ -227,7 +227,7 @@ export function loadBlogProfile(blog: BlogRow): ProfileManager | null {
 export function blogProfileMissing(blog: BlogRow): string {
   return blog.profile
     ? `Профиль голоса «${blog.profile}» для блога «${blog.name}» не найден — создайте его в /chat (/profile)`
-    : `У блога «${blog.name}» не настроен профиль голоса — задайте его через /api/blogs/${blog.slug}`;
+    : `У блога «${blog.name}» не настроен профиль голоса — задайте его в настройках блога`;
 }
 
 // blogs.sources — JSON-массив URL RSS; null/битый = [] (пайплайн возьмёт дефолт).

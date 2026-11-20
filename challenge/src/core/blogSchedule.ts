@@ -339,9 +339,16 @@ export class BlogScheduleStore {
       .run(status, postId, message.slice(0, 500), now.toISOString(), runId);
   }
 
-  listRuns(limit = 30): BlogScheduleRunRow[] {
+  listRuns(limit = 30, blogId?: number): BlogScheduleRunRow[] {
+    // S6: per-blog история — иначе глобальный top-N вытесняется шумным соседом
+    // и «тихий» блог показывает пустую историю. Индекс idx_..._blog уже есть.
+    if (blogId === undefined) {
+      return this.db
+        .prepare('SELECT * FROM blog_schedule_runs ORDER BY id DESC LIMIT ?')
+        .all(limit) as unknown as BlogScheduleRunRow[];
+    }
     return this.db
-      .prepare('SELECT * FROM blog_schedule_runs ORDER BY id DESC LIMIT ?')
-      .all(limit) as unknown as BlogScheduleRunRow[];
+      .prepare('SELECT * FROM blog_schedule_runs WHERE blog_id = ? ORDER BY id DESC LIMIT ?')
+      .all(blogId, limit) as unknown as BlogScheduleRunRow[];
   }
 }

@@ -53,32 +53,37 @@ beforeEach(() => {
       updated_at: '2026-10-01 10:00:00',
     },
   ]);
-  mocks.listRuns.mockReset().mockReturnValue([
-    {
-      id: 9,
-      schedule_id: 3,
-      blog_id: 7,
-      slot_key: '7:3:2026-10-24:10:00',
-      status: 'success',
-      attempts: 1,
-      post_id: 55,
-      message: 'Создано вариантов: 1',
-      started_at: '2026-10-24T07:00:00.000Z',
-      finished_at: '2026-10-24T07:00:02.000Z',
-    },
-    {
-      id: 8,
-      schedule_id: 3,
-      blog_id: 99,
-      slot_key: '99:3:2026-10-24:10:00',
-      status: 'error',
-      attempts: 1,
-      post_id: null,
-      message: 'чужой блог',
-      started_at: '2026-10-24T07:00:00.000Z',
-      finished_at: '2026-10-24T07:00:01.000Z',
-    },
-  ]);
+  mocks.listRuns.mockReset().mockImplementation(
+    (limit: number, blogId?: number) =>
+      [
+        {
+          id: 9,
+          schedule_id: 3,
+          blog_id: 7,
+          slot_key: '7:3:2026-10-24:10:00',
+          status: 'success',
+          attempts: 1,
+          post_id: 55,
+          message: 'Создано вариантов: 1',
+          started_at: '2026-10-24T07:00:00.000Z',
+          finished_at: '2026-10-24T07:00:02.000Z',
+        },
+        {
+          id: 8,
+          schedule_id: 3,
+          blog_id: 99,
+          slot_key: '99:3:2026-10-24:10:00',
+          status: 'error',
+          attempts: 1,
+          post_id: null,
+          message: 'чужой блог',
+          started_at: '2026-10-24T07:00:00.000Z',
+          finished_at: '2026-10-24T07:00:01.000Z',
+        },
+      ]
+        .filter((r) => (blogId === undefined ? true : r.blog_id === blogId))
+        .slice(0, limit),
+  );
   mocks.replaceForBlog.mockReset().mockImplementation(
     (_blogId: number, entries: Array<Record<string, unknown>>) =>
       entries.map((e, i) => ({
@@ -141,6 +146,8 @@ describe('/api/blogs/[slug]/schedule', () => {
       ],
       runs: [{ id: 9, status: 'success', postId: 55, attempts: 1 }],
     });
+    // S6: фильтр per-blog ушёл в store (SQL WHERE) — route больше не режет хвост.
+    expect(mocks.listRuns).toHaveBeenCalledWith(10, 7);
   });
 
   it('PUT невалидное время → 400, без записи', async () => {

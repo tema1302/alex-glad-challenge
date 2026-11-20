@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { Button } from '../../components/ui/Button';
+import { Card } from '../../components/ui/Card';
 import { LinkButton } from '../../components/ui/LinkButton';
 import { Badge, statusBadge } from '../../components/ui/Badge';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -33,7 +34,6 @@ interface BlogOption {
   slug: string;
   name: string;
 }
-
 interface PostItem {
   id: number;
   news_id: number | null;
@@ -88,6 +88,10 @@ export default function BlogPostsPage() {
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
   const [blogFilter, setBlogFilter] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  // S6 «сбой ≠ пусто»: сетевой сбой не маскируется под EmptyState.
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // S6: селектор блогов не глотает сбой молча (тот же класс, что scout).
+  const [blogsError, setBlogsError] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<PostItem | null>(null);
 
   // S2 «Back&scroll»: отметка SPA-истории + throttled scroll-якорь (список).
@@ -105,12 +109,22 @@ export default function BlogPostsPage() {
   // возврат «← назад» отвергнет снапшот и рефетчит (поймано e2e-кейсом ?blog=).
   const loadSeqRef = useRef(0);
 
-  useEffect(() => {
-    fetch('/api/blogs')
-      .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => setBlogs(j.blogs ?? []))
-      .catch(() => setBlogs([]));
+  const loadBlogs = useCallback(async () => {
+    setBlogsError(false);
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { blogs?: BlogOption[] };
+      setBlogs(j.blogs ?? []);
+    } catch {
+      setBlogs([]);
+      setBlogsError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadBlogs();
+  }, [loadBlogs]);
 
   // Mount (до paint): снапшот → мгновенный рендер без fetch; фильтр из URL
   // применяем здесь же (раньше это делал отдельный effect ПОСЛЕ mount-fetch —
@@ -133,6 +147,7 @@ export default function BlogPostsPage() {
   const load = useCallback(async () => {
     const seq = ++loadSeqRef.current;
     setLoading(true);
+    setLoadError(null);
     try {
       const resp = await fetch(`/api/blog/posts?limit=50${blogFilter ? `&blog=${encodeURIComponent(blogFilter)}` : ''}`, { method: 'GET' });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -144,6 +159,9 @@ export default function BlogPostsPage() {
       saveListSnapshot(LIST_PATH, { posts: data.posts ?? [], blogFilter });
     } catch (e) {
       if (seq !== loadSeqRef.current) return;
+      // Честная ошибка: при пустом списке рисуется error-карточка с «Повторить»,
+      // при данных на экране — они остаются + тост (last-known-good, арбитраж S6).
+      setLoadError(e instanceof Error ? e.message : 'Не удалось загрузить посты');
       toast('err', e instanceof Error ? e.message : 'Не удалось загрузить посты');
     } finally {
       if (seq === loadSeqRef.current) setLoading(false);
@@ -216,6 +234,15 @@ export default function BlogPostsPage() {
         }
       />
 
+      {blogsError ? (
+        <p className="text-xs text-err">
+          Не удалось загрузить блоги —{' '}
+          <button type="button" className="text-accent" onClick={() => void loadBlogs()}>
+            обновить блоги
+          </button>
+        </p>
+      ) : null}
+
       {/* Обучающая карточка (4 шага + настройка нового блога) — свёрнута по умолчанию:
           ежедневному сценарию она не нужна, а новичок раскроет одним кликом. */}
       <details className="rounded-xl border border-line bg-surface p-4 shadow-panel">
@@ -258,6 +285,17 @@ export default function BlogPostsPage() {
           <Skeleton variant="line" />
           <Skeleton variant="line" />
         </div>
+      ) : posts.length === 0 && loadError ? (
+        // S6 «сбой ≠ пусто»: сетевой сбой — честная ошибка с «Повторить»,
+        // а не EmptyState «Постов пока нет» (канон страницы поста).
+        <Card tone="danger" label="ошибка загрузки">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-err">{loadError}</p>
+            <Button variant="ghost" onClick={() => void load()}>
+              Повторить
+            </Button>
+          </div>
+        </Card>
       ) : posts.length === 0 ? (
         <EmptyState
           title="Постов пока нет"

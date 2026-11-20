@@ -66,17 +66,29 @@ export default function BlogScoutPage() {
 
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    fetch('/api/blogs')
-      .then((r) => r.json())
-      .then((j: { blogs?: BlogOption[] }) => {
-        const list = j.blogs ?? [];
-        setBlogs(list);
-        const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
-        if (fromQuery && list.some((b) => b.slug === fromQuery)) setBlog(fromQuery);
-      })
-      .catch(() => setBlogs([]));
+  const [blogsError, setBlogsError] = useState(false);
+
+  // S6: селектор блогов — сбой загрузки виден и повторяем (канон news/digest),
+  // а не «блогов нет» из молчаливого catch. ?blog= применяем при успехе.
+  const loadBlogs = useCallback(async () => {
+    setBlogsError(false);
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { blogs?: BlogOption[] };
+      const list = j.blogs ?? [];
+      setBlogs(list);
+      const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+      if (fromQuery && list.some((b) => b.slug === fromQuery)) setBlog(fromQuery);
+    } catch {
+      setBlogs([]);
+      setBlogsError(true);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadBlogs();
+  }, [loadBlogs]);
 
   const reset = (): void => {
     setRanked([]);
@@ -196,6 +208,15 @@ export default function BlogScoutPage() {
                   ))}
                 </select>
               </Field>
+
+              {blogsError ? (
+                <p className="col-span-2 text-xs text-err sm:col-span-5">
+                  Не удалось загрузить блоги —{' '}
+                  <button type="button" className="text-accent" onClick={() => void loadBlogs()}>
+                    обновить блоги
+                  </button>
+                </p>
+              ) : null}
 
               <Field id="scout-hours" label="Часов" hint="1–168" error={hoursError ?? undefined}>
                 <input

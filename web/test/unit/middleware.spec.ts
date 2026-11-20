@@ -10,6 +10,11 @@ import type { MiddlewareConfig, NextResponse } from 'next/server';
 
 process.env.WEB_AUTH_SECRET = 'test-secret-for-vitest';
 process.env.WEB_ADMIN_PASSWORD = 'test-password';
+// Детерминизм от machine-.env: WEB_PUBLIC_ORIGIN из корневого .env подтягивается
+// loadEnvUpward() (lib/auth) при импорте middleware и меняет location-пины.
+// dotenv не перекрывает уже существующие ключи — фиксируем пустую строку до
+// импорта (канон: прямое присваивание, vi.stubEnv в репо не используется).
+process.env.WEB_PUBLIC_ORIGIN = '';
 
 let middleware: (request: NextRequest) => NextResponse;
 let config: MiddlewareConfig;

@@ -25,8 +25,9 @@ test.describe('Блог (админ)', () => {
 
     await expect(page.getByRole('heading', { name: 'Управление блогами' })).toBeVisible();
     await expect(page.getByText('шпаргалка · как пользоваться')).toBeVisible();
-    await expect(page.getByText('Выберите блог', { exact: true })).toBeVisible();
-    await expect(page.getByText('Задайте расписание')).toBeVisible();
+    // Живые заголовки шагов шпаргалки (тексты синхронизированы с BlogCheatSheet).
+    await expect(page.getByText('Откройте карточку блога')).toBeVisible();
+    await expect(page.getByText('Пост или расписание')).toBeVisible();
 
     const summary = page.getByText('Telegram-команда и частые вопросы');
     await expect(summary).toBeVisible();

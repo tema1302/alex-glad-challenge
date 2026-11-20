@@ -76,7 +76,7 @@ export async function POST(req: NextRequest): Promise<Response> {
   // означает «легаси-дефолтные футбольные фиды» (см. challenge/src/core/agents/pipeline.ts).
   if (blog && blog.slug !== DEFAULT_BLOG_SLUG && blogSources(blog).length === 0) {
     return new Response(
-      JSON.stringify({ error: `У блога «${blog.name}» не настроены RSS-источники — задайте их через PATCH /api/blogs/${blog.slug}` }),
+      JSON.stringify({ error: `У блога «${blog.name}» не настроены RSS-источники — добавьте их в настройках блога` }),
       { status: 400, headers: { 'Content-Type': 'application/json' } },
     );
   }

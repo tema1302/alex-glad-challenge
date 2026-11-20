@@ -17,6 +17,7 @@ import { Card } from '../../components/ui/Card';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { SectionHead } from '../../components/ui/SectionHead';
 import { SectionLabel } from '../../components/ui/SectionLabel';
+import { Skeleton } from '../../components/ui/Skeleton';
 // Полный конвейер (feat): одна кнопка — scout SSE → news SSE → фаза 3 «ready to publish»
 // (клиентский чейнінг существующих роутов, новых endpoint'ов нет).
 import { FullPipelineRun } from './FullPipelineRun';
@@ -130,7 +131,27 @@ export default function PipelinePage() {
   }, []);
 
   if (!view) {
-    return <p className="text-sm text-dim">{error ?? 'Загрузка…'}</p>;
+    // S6: загрузка и сбой — разные состояния; у сбоя есть «Повторить», у
+    // загрузки — скелетон (раньше обе ветки были одной строкой текста).
+    if (error) {
+      return (
+        <Card tone="danger" label="ошибка загрузки">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-err">{error}</p>
+            <Button variant="ghost" onClick={() => void load()}>
+              Повторить
+            </Button>
+          </div>
+        </Card>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        <Skeleton variant="line" />
+        <Skeleton variant="line" />
+        <Skeleton variant="line" />
+      </div>
+    );
   }
 
   // Гость: сервер отвечает только последним шагом — для отображения склеиваем с локальной.

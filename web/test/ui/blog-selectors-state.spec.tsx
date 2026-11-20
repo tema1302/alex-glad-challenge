@@ -9,6 +9,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import BlogNewsPage from '../../app/blog/news/page';
+import BlogScoutPage from '../../app/blog/scout/page';
 import { DigestComposer } from '../../app/blog/digest/DigestComposer';
 
 afterEach(() => {
@@ -162,5 +163,36 @@ describe('Пустой выбор «— без блога —» — явная �
     await waitFor(() => expect(bodies).toHaveLength(1));
     expect(bodies[0]).toMatchObject({ days: 7 });
     expect(Object.hasOwn(bodies[0], 'blog')).toBe(false);
+  });
+});
+
+// S6: третий экземпляр того же класса — scout молча глотал сбой /api/blogs
+// (.catch(() => setBlogs([]))), выдавая сетевую ошибку за «блогов нет».
+describe('BlogScoutPage: сбой загрузки блогов виден и повторяем', () => {
+  it('ошибка показана, «обновить блоги» перезагружает селектор', async () => {
+    let blogsCalls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/blogs') {
+          blogsCalls += 1;
+          if (blogsCalls === 1) throw new Error('network down');
+          return blogsResponse([PROFILED_BLOG]);
+        }
+        return json({});
+      }),
+    );
+
+    render(<BlogScoutPage />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText(/Не удалось загрузить блоги/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'обновить блоги' }));
+    await waitFor(() => {
+      const select = screen.getByLabelText('Блог') as HTMLSelectElement;
+      expect(select.options.length).toBeGreaterThan(1);
+    });
+    expect(screen.queryByText(/Не удалось загрузить блоги/)).toBeNull();
   });
 });

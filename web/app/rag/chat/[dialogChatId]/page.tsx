@@ -13,8 +13,10 @@ import { Button } from '../../../components/ui/Button';
 import { Card } from '../../../components/ui/Card';
 import { BackButton } from '../../../components/ui/BackButton';
 import { useSpaHistory } from '../../../components/ui/useSpaHistory';
+import { Dialog } from '../../../components/ui/Dialog';
 import { Field, INPUT_CLASS } from '../../../components/ui/Field';
 import { SectionHead } from '../../../components/ui/SectionHead';
+import { clearListSnapshot } from '../../../../lib/shared/spaHistory';
 
 type Strategy = 'fixed' | 'structure' | 'telegram' | 'notes';
 type Llm = 'local' | 'cloud';
@@ -253,14 +255,33 @@ export default function RagChatSessionPage() {
 
   const cancel = (): void => { abortRef.current?.abort(); };
 
-  const onRename = async (): Promise<void> => {
-    const t = prompt('Заголовок чата:', title);
-    if (t === null) return;
+  // S6: переименование — Dialog + Field (канон «Новый блог») вместо window.prompt:
+  // пустой ввод блокируется, сбой виден в диалоге, мутация чистит снапшот списка.
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState('');
+  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+
+  const openRename = (): void => {
+    setRenameDraft(title);
+    setRenameError(null);
+    setRenameOpen(true);
+  };
+
+  const doRename = async (): Promise<void> => {
+    const next = renameDraft.trim();
+    if (!next) return;
+    setRenaming(true);
+    setRenameError(null);
     try {
-      await patch({ title: t || 'untitled' });
-      setTitle(t || 'untitled');
+      await patch({ title: next });
+      setTitle(next);
+      clearListSnapshot('/rag/chat'); // «← назад» не покажет старое название
+      setRenameOpen(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'rename failed');
+      setRenameError(e instanceof Error ? e.message : 'Не удалось переименовать чат');
+    } finally {
+      setRenaming(false);
     }
   };
 
@@ -315,10 +336,47 @@ export default function RagChatSessionPage() {
               disabled={running}
             />
           </Field>
-          <Button size="sm" className="ml-auto" onClick={onRename} disabled={running}>
+          <Button size="sm" className="ml-auto" onClick={openRename} disabled={running}>
             переименовать
           </Button>
         </div>
+        <Dialog
+          open={renameOpen}
+          onClose={() => {
+            if (!renaming) setRenameOpen(false);
+          }}
+          title="Переименовать чат"
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setRenameOpen(false)} disabled={renaming}>
+                Отмена
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => void doRename()}
+                loading={renaming}
+                disabled={!renameDraft.trim()}
+              >
+                Сохранить
+              </Button>
+            </>
+          }
+        >
+          <Field id="rag-chat-title" label="Название">
+            <input
+              className={INPUT_CLASS}
+              value={renameDraft}
+              maxLength={120}
+              onChange={(e) => setRenameDraft(e.target.value)}
+              disabled={renaming}
+            />
+          </Field>
+          {renameError ? (
+            <p role="alert" className="mt-2 text-xs text-err">
+              {renameError}
+            </p>
+          ) : null}
+        </Dialog>
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <span
             className={

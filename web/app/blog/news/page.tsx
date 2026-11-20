@@ -135,8 +135,16 @@ export default function BlogNewsPage() {
         signal: ac.signal,
       });
       if (!resp.ok || !resp.body) {
+        // S6: тело роута уже человеческое ({error}) — не оборачиваем в «HTTP 400: {json}».
         const txt = await resp.text().catch(() => '');
-        setError(`HTTP ${resp.status}: ${txt.slice(0, 200)}`);
+        let message = `Не удалось запустить конвейер (HTTP ${resp.status})`;
+        try {
+          const j = JSON.parse(txt) as { error?: string };
+          if (j.error) message = j.error;
+        } catch {
+          /* тело не JSON — остаётся общий текст со статусом */
+        }
+        setError(message);
         return;
       }
       const reader = resp.body.getReader();

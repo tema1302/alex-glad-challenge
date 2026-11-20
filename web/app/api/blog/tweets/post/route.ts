@@ -41,7 +41,7 @@ export async function POST(req: NextRequest): Promise<Response> {
 
   const tweet = await withDb(() => resolveTweetRow(getBlogDb(), tweetRef));
   if (!tweet) {
-    return NextResponse.json({ error: 'Твит не найден в БД — сначала ингест (/api/blog/tweets/ingest)' }, { status: 404 });
+    return NextResponse.json({ error: 'Твит не найден в БД — сначала сохраните твит в разделе твитов' }, { status: 404 });
   }
 
   const blogProfile = loadBlogProfile(blog);

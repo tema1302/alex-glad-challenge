@@ -130,6 +130,42 @@ test('blogSchedule: store валидирует вход и атомарно за
   }
 });
 
+test('blogSchedule: listRuns(limit, blogId) — per-blog история не вытесняется шумным соседом', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'schedule-'));
+  const store = new BlogScheduleStore(path.join(dir, 'schedule.sqlite'));
+  try {
+    const now = new Date('2026-10-24T07:00:00Z');
+    const [quiet] = store.replaceForBlog(1, [{ dayOfWeek: 6, timeLocal: '10:00' }]);
+    const quietRun = store.claim(slotOf(quiet), now);
+    assert.notEqual(quietRun, null);
+    store.finish(quietRun!, 'success', 7, 'ok', now);
+
+    // Шумный сосед: три прогона другого блога перекрывают глобальный хвост.
+    const noisy = store.replaceForBlog(2, [
+      { dayOfWeek: 1, timeLocal: '10:00' },
+      { dayOfWeek: 2, timeLocal: '10:00' },
+      { dayOfWeek: 3, timeLocal: '10:00' },
+    ]);
+    for (const s of noisy) {
+      const run = store.claim(slotOf(s), now);
+      assert.notEqual(run, null);
+      store.finish(run!, 'success', null, 'ok', now);
+    }
+
+    // Глобальный top-2 видит только соседа — история тихого блога вытеснена.
+    assert.equal(store.listRuns(2).every((r) => r.blog_id === 2), true);
+    // Per-blog (SQL WHERE) видит историю тихого блога.
+    const mine = store.listRuns(10, 1);
+    assert.equal(mine.length, 1);
+    assert.equal(mine[0].post_id, 7);
+    // Старая форма без blogId не изменилась (глобальный хвост).
+    assert.equal(store.listRuns().length, 4);
+  } finally {
+    store.close();
+    safeRm(dir);
+  }
+});
+
 test('blogSchedule: claim идемпотентен, error ретраится не больше MAX_ATTEMPTS', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'schedule-'));
   const store = new BlogScheduleStore(path.join(dir, 'schedule.sqlite'));
