@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   // Типизированная сигнатура: payload уведомления читается из mock.calls без cast.
   notifyAdd: vi.fn<(input: { type: string; title: string; body: string; href: string }) => number>(),
   deliverEvent: vi.fn(),
+  resolveBlog: vi.fn(),
 }));
 
 vi.mock('../../lib/server/db', () => ({
@@ -25,6 +26,13 @@ vi.mock('../../lib/server/db', () => ({
   getNotificationDb: vi.fn(() => ({ add: mocks.notifyAdd })),
   getWebhookDb: vi.fn(() => ({})),
   withDb: vi.fn((fn: () => unknown) => fn()),
+}));
+
+// S5: адресация «в канал блога» — граница резолва замокана (канон route-спеков).
+vi.mock('../../lib/server/blogs', () => ({
+  resolveBlog: mocks.resolveBlog,
+  blogArchivedError: (blog: { archived_at: string | null }) =>
+    blog.archived_at ? 'Блог в архиве — верните его из архива' : null,
 }));
 
 vi.mock('../../lib/server/challenge', () => ({
@@ -58,6 +66,7 @@ beforeEach(() => {
   mocks.award.mockReset();
   mocks.notifyAdd.mockReset();
   mocks.deliverEvent.mockReset();
+  mocks.resolveBlog.mockReset().mockReturnValue({ blog: null, error: 'Блог не найден' });
 });
 
 function req(body: unknown, cookie?: string): NextRequest {
@@ -99,6 +108,39 @@ describe('POST /api/telegram/publish', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toMatchObject({ ok: true, messageId: 42 });
     expect(publishToTelegram).toHaveBeenCalledWith('<b>привет</b>', 'manual', undefined, 'HTML');
+  });
+
+  it('blog slug → chat_id блога резолвится на сервере (не из тела)', async () => {
+    publishToTelegram.mockResolvedValue({ ok: true, messageId: 43 });
+    mocks.resolveBlog.mockReturnValue({
+      blog: { name: 'Артемия Артель', archived_at: null, tg_chat_id: '-100777' },
+    });
+    const res = await POST(
+      req({ text: 'дайджест', parseMode: 'none', blog: 'artemia-artel' }, `admin_session=${createSessionValue()}`),
+    );
+
+    expect(res.status).toBe(200);
+    expect(mocks.resolveBlog).toHaveBeenCalledWith('artemia-artel');
+    expect(publishToTelegram).toHaveBeenCalledWith('дайджест', 'manual', undefined, 'none', '-100777');
+  });
+
+  it('blog: неизвестный slug → 400, publish не зван', async () => {
+    const res = await POST(
+      req({ text: 'дайджест', parseMode: 'none', blog: 'nope' }, `admin_session=${createSessionValue()}`),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringMatching(/не найден/i) });
+    expect(publishToTelegram).not.toHaveBeenCalled();
+  });
+
+  it('blog без tg_chat_id → 400 «не задан TG-канал», publish не зван', async () => {
+    mocks.resolveBlog.mockReturnValue({ blog: { name: 'Тихий', archived_at: null, tg_chat_id: null } });
+    const res = await POST(
+      req({ text: 'дайджест', blog: 'tihiy' }, `admin_session=${createSessionValue()}`),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringMatching(/TG-канал/i) });
+    expect(publishToTelegram).not.toHaveBeenCalled();
   });
 
   it('уведомление post_published: тело — чистый текст без HTML-тегов', async () => {

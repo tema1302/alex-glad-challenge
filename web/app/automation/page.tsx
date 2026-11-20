@@ -2,13 +2,21 @@
 // Прогон правила с автопубликацией — реальная отправка в TG-канал: как все
 // publish-пути морды, он идёт через ConfirmDialog; без автопубликации (черновик)
 // запуск идёт сразу.
+// S5: правило создаётся из UI (upsert по action:'configure' — новый эндпоинт не
+// нужен); флаг планировщика (schedulerEnabled) показывается честно: правило при
+// мёртвом тикере не «работает»; тумблер автопубликации — общий для интервальных
+// прогонов и слотов расписания блога (одна запись automation_rules).
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { LinkButton } from '../components/ui/LinkButton';
 import { SectionHead } from '../components/ui/SectionHead';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Dialog } from '../components/ui/Dialog';
+import { Field, INPUT_CLASS } from '../components/ui/Field';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useToast } from '../components/ui/Toast';
 
@@ -27,7 +35,35 @@ interface Run {
   blogId: number;
   status: string;
   message: string;
+  postId?: number | null;
   startedAt: string;
+}
+interface BlogOption {
+  id: number;
+  slug: string;
+  name: string;
+  hasProfile: boolean;
+  sourcesCount: number;
+  tgChatId?: string | null;
+  tgChatIdSet?: boolean;
+  readyForNews?: boolean;
+}
+
+// Шаги интервала — общий набор для создания и правки правила.
+const INTERVAL_STEPS: ReadonlyArray<{ minutes: number; label: string }> = [
+  { minutes: 5, label: '5 мин' },
+  { minutes: 30, label: '30 мин' },
+  { minutes: 60, label: '1 ч' },
+  { minutes: 180, label: '3 ч' },
+  { minutes: 360, label: '6 ч' },
+  { minutes: 720, label: '12 ч' },
+  { minutes: 1440, label: 'сутки' },
+];
+
+function intervalLabel(minutes: number): string {
+  if (minutes % 1440 === 0) return 'раз в сутки';
+  if (minutes % 60 === 0) return `каждые ${minutes / 60} ч`;
+  return `каждые ${minutes} мин`;
 }
 
 export default function AutomationPage() {
@@ -36,6 +72,18 @@ export default function AutomationPage() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [runTarget, setRunTarget] = useState<Rule | null>(null);
+  const [schedulerEnabled, setSchedulerEnabled] = useState<boolean | null>(null);
+
+  // Данные для диалога «Новое правило».
+  const [blogs, setBlogs] = useState<BlogOption[] | null>(null);
+  const [blogsError, setBlogsError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newBlogId, setNewBlogId] = useState('');
+  const [newInterval, setNewInterval] = useState('360');
+  const [newAutoPublish, setNewAutoPublish] = useState(false);
+  const [newEnable, setNewEnable] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -44,18 +92,36 @@ export default function AutomationPage() {
         setError('не удалось загрузить');
         return;
       }
-      const data = (await r.json()) as { rules: Rule[]; runs: Run[] };
+      const data = (await r.json()) as { rules: Rule[]; runs: Run[]; schedulerEnabled?: boolean };
       setRules(data.rules);
       setRuns(data.runs);
+      setSchedulerEnabled(typeof data.schedulerEnabled === 'boolean' ? data.schedulerEnabled : null);
     } catch {
       // Сетевой сбой не должен выглядеть как «правил нет» — текст вместо пустоты.
       setError('не удалось загрузить правила — сеть недоступна');
     }
   }, []);
 
+  const loadBlogs = useCallback(async () => {
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) {
+        setBlogsError('Не удалось загрузить блоги');
+        return;
+      }
+      const data = (await r.json()) as { blogs?: BlogOption[] };
+      setBlogs(data.blogs ?? []);
+      setBlogsError(null);
+    } catch {
+      // Отдельный текст от ошибки правил: селектор и список падают независимо.
+      setBlogsError('Не удалось загрузить блоги — сеть недоступна');
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadBlogs();
+  }, [load, loadBlogs]);
 
   const configure = async (blogId: number, patch: Partial<Pick<Rule, 'enabled' | 'intervalMinutes' | 'autoPublish'>>) => {
     setError(null);
@@ -120,15 +186,94 @@ export default function AutomationPage() {
     void load();
   };
 
+  // Блоги без правила: action:'configure' — upsert, «создание» для блога с
+  // правилом перезаписало бы его настройки, поэтому такие блоги в селект не идут.
+  const availableBlogs = (blogs ?? []).filter(
+    (b) => !(rules ?? []).some((r) => r.blogId === b.id),
+  );
+  const selectedBlog = availableBlogs.find((b) => String(b.id) === newBlogId) ?? null;
+
+  const openCreate = () => {
+    setNewBlogId('');
+    setNewInterval('360');
+    setNewAutoPublish(false);
+    setNewEnable(false);
+    setCreateError(null);
+    setCreateOpen(true);
+  };
+
+  const createRule = async () => {
+    if (!selectedBlog) {
+      setCreateError('выберите блог');
+      return;
+    }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const r = await fetch('/api/automation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'configure',
+          blogId: selectedBlog.id,
+          enabled: newEnable,
+          autoPublish: newAutoPublish,
+          intervalMinutes: Number(newInterval),
+        }),
+      });
+      if (!r.ok) {
+        const data = (await r.json().catch(() => ({}))) as { error?: string };
+        setCreateError(data.error ?? 'не удалось создать правило');
+        return;
+      }
+      toast('ok', `Правило для «${selectedBlog.name}» создано`);
+      setCreateOpen(false);
+      void load();
+    } catch {
+      setCreateError('не удалось создать правило — сеть недоступна');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <SectionHead code="product · automation" title="Автоматизация блогов" description="Расписание генерации и публикации постов по каждому блогу. Стиль задаётся пресетом блога ниже; пресет Антонова — один из вариантов." />
+      <SectionHead
+        code="product · automation"
+        title="Автоматизация блогов"
+        description="Правило = интервал прогонов + общий тумблер автопубликации: он действует и на интервальные прогоны, и на слоты расписания блога. Стиль задаётся пресетом блога."
+        actions={
+          rules && rules.length > 0 ? (
+            <Button variant="primary" onClick={openCreate}>
+              Создать правило
+            </Button>
+          ) : undefined
+        }
+      />
       {error ? <p className="text-sm text-err">{error}</p> : null}
+      {schedulerEnabled === true ? (
+        <p role="status" className="text-xs text-ok">
+          планировщик: работает — тики ходят, пока запущен web-сервер
+        </p>
+      ) : schedulerEnabled === false ? (
+        <p role="status" className="text-xs text-err">
+          планировщик: выключен — правила не срабатывают автоматически; тики включаются
+          настройкой сервера
+        </p>
+      ) : null}
 
       {rules == null ? (
         !error ? <p className="text-sm text-dim">Загрузка…</p> : null
       ) : rules.length === 0 ? (
-        <EmptyState title="Правил нет" hint="Включите автоматизацию для блога ниже." />
+        <EmptyState
+          title="Правил нет"
+          hint="Правило создаётся на конкретный блог: выберите блог, интервал и автопубликацию."
+          action={
+            <Button variant="primary" onClick={openCreate}>
+              Создать правило
+            </Button>
+          }
+        />
       ) : (
         <Card label="Правила">
           <ul className="space-y-3">
@@ -138,7 +283,7 @@ export default function AutomationPage() {
                   <div className="min-w-0">
                     <p className="font-medium text-ink">{r.blogName}</p>
                     <p className="text-xs text-dim">
-                      {r.enabled ? `каждые ${r.intervalMinutes} мин` : 'выключено'}
+                      {r.enabled ? intervalLabel(r.intervalMinutes) : 'выключено'}
                       {r.nextRunAt && r.enabled ? ` · следующий запуск ${r.nextRunAt.slice(0, 16).replace('T', ' ')}` : ''}
                     </p>
                   </div>
@@ -166,8 +311,8 @@ export default function AutomationPage() {
                     onChange={(e) => configure(r.blogId, { intervalMinutes: Number(e.target.value) })}
                     className="rounded border border-line bg-surface-2 px-2 py-1 text-ink"
                   >
-                    {[5, 30, 60, 180, 360, 720, 1440].map((m) => (
-                      <option key={m} value={m}>{m} мин</option>
+                    {INTERVAL_STEPS.map((s) => (
+                      <option key={s.minutes} value={s.minutes}>{s.label}</option>
                     ))}
                   </select>
                   {r.blogSlug ? (
@@ -182,6 +327,13 @@ export default function AutomationPage() {
                         <option value="default">по умолчанию</option>
                         <option value="antonov">Антонов</option>
                       </select>
+                      <LinkButton
+                        variant="ghost"
+                        size="sm"
+                        href={`/blog/settings/${encodeURIComponent(r.blogSlug)}?tab=schedule`}
+                      >
+                        расписание блога →
+                      </LinkButton>
                     </>
                   ) : null}
                 </div>
@@ -196,17 +348,145 @@ export default function AutomationPage() {
           <p className="text-sm text-dim">Запусков ещё не было.</p>
         ) : (
           <ul className="space-y-1">
-            {runs.slice(0, 20).map((r) => (
-              <li key={r.id} className="flex items-center gap-2 text-sm">
-                <span className={`h-2 w-2 rounded-full ${r.status === 'success' ? 'bg-ok' : r.status === 'error' ? 'bg-err' : 'bg-dim'}`} />
-                <span className="text-dim">#{r.blogId}</span>
-                <span className="truncate text-ink">{r.message}</span>
-                <span className="ml-auto text-xs text-dim">{r.startedAt.slice(0, 16).replace('T', ' ')}</span>
-              </li>
-            ))}
+            {runs.slice(0, 20).map((r) => {
+              const name = rules?.find((x) => x.blogId === r.blogId)?.blogName ?? `#${r.blogId}`;
+              return (
+                <li key={r.id} className="flex items-center gap-2 text-sm">
+                  <span className={`h-2 w-2 rounded-full ${r.status === 'success' ? 'bg-ok' : r.status === 'error' ? 'bg-err' : 'bg-dim'}`} />
+                  <span className="text-dim">{name}</span>
+                  <span className="truncate text-ink">{r.message}</span>
+                  {r.postId ? (
+                    <Link href={`/blog/posts/${r.postId}`} className="shrink-0 text-xs text-accent hover:text-ink">
+                      → #{r.postId}
+                    </Link>
+                  ) : null}
+                  <span className="ml-auto text-xs text-dim">{r.startedAt.slice(0, 16).replace('T', ' ')}</span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
+
+      {/* Создание правила: upsert поверх существующего configure-контракта. */}
+      <Dialog
+        open={createOpen}
+        onClose={() => {
+          if (!creating) setCreateOpen(false);
+        }}
+        title="Новое правило автоматизации"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Отмена
+            </Button>
+            <Button variant="primary" onClick={() => void createRule()} loading={creating}>
+              Создать правило
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          {blogsError ? (
+            <p className="text-xs text-err">
+              {blogsError} —{' '}
+              <button type="button" className="text-accent" onClick={() => void loadBlogs()}>
+                повторить
+              </button>
+            </p>
+          ) : null}
+          {availableBlogs.length === 0 && !blogsError ? (
+            <p className="text-sm text-dim">
+              {blogs && blogs.length === 0
+                ? 'Активных блогов нет — создайте блог в студии.'
+                : 'У всех активных блогов уже есть правила.'}
+              {blogs && blogs.length === 0 ? (
+                <>
+                  {' '}
+                  <Link href="/blog/settings" className="text-accent hover:text-ink">
+                    открыть студию →
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+          <Field id="new-rule-blog" label="блог" hint="Редактировать существующее правило — тумблерами в списке.">
+            <select
+              value={newBlogId}
+              onChange={(e) => setNewBlogId(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              <option value="">— выберите блог —</option>
+              {availableBlogs.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {`${b.name} · RSS ${b.sourcesCount} · профиль ${b.hasProfile ? '✓' : '—'}`}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {selectedBlog && selectedBlog.readyForNews === false ? (
+            <p className="text-xs text-warn">
+              У блога «{selectedBlog.name}» не хватает RSS-источников или профиля голоса — прогоны
+              будут падать с ошибкой. Настройте блог в студии.
+            </p>
+          ) : null}
+          <Field id="new-rule-interval" label="интервал прогона">
+            <select
+              value={newInterval}
+              onChange={(e) => setNewInterval(e.target.value)}
+              className={INPUT_CLASS}
+            >
+              {INTERVAL_STEPS.map((s) => (
+                <option key={s.minutes} value={s.minutes}>{s.label}</option>
+              ))}
+            </select>
+          </Field>
+          {newInterval === '5' ? (
+            <p role="note" className="text-xs text-warn">
+              5 минут — только для черновиков: с автопубликацией это пост в канал каждые 5 минут.
+            </p>
+          ) : null}
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={newAutoPublish}
+              onChange={(e) => setNewAutoPublish(e.target.checked)}
+              className="mt-0.5 accent-accent"
+            />
+            <span>
+              автопубликация
+              <span className="mt-1 block text-xs text-dim">
+                {newAutoPublish
+                  ? selectedBlog
+                    ? selectedBlog.tgChatId || selectedBlog.tgChatIdSet
+                      ? `Каждый прогон будет сразу отправлять пост в канал блога «${selectedBlog.name}».`
+                      : `У блога «${selectedBlog.name}» не задан chat_id — пост уйдёт в общий канал.`
+                    : 'Каждый прогон будет сразу отправлять пост в канал блога.'
+                  : 'Выключено: прогоны создают черновики, публикация — вручную.'}
+              </span>
+            </span>
+          </label>
+          <p className="text-xs text-dim">
+            Тумблер автопубликации общий: он же включает публикацию слотов расписания этого блога.
+          </p>
+          <label className="flex items-start gap-2 text-sm text-ink">
+            <input
+              type="checkbox"
+              checked={newEnable}
+              onChange={(e) => setNewEnable(e.target.checked)}
+              className="mt-0.5 accent-accent"
+            />
+            <span>
+              включить сразу
+              <span className="mt-1 block text-xs text-dim">
+                Правило сработает на первом же тике планировщика — почти сразу. Оставьте
+                выключенным, чтобы сначала посмотреть список.
+              </span>
+            </span>
+          </label>
+          {createError ? <p role="alert" className="text-xs text-err">{createError}</p> : null}
+        </div>
+      </Dialog>
 
       {/* Автопубликация = реальная отправка в канал: подтверждение перед прогоном,
           как у всех publish-путей (TgComposer, DigestComposer, страница поста). */}

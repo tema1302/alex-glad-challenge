@@ -13,6 +13,7 @@ import { FullPipelineRun } from '../../app/blog/pipeline/FullPipelineRun';
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  localStorage.clear(); // S5: запоминание выбора блога (pipeline-blog) — не течёт между кейсами
 });
 
 function sse(events: unknown[]): Response {
@@ -135,5 +136,72 @@ describe('FullPipelineRun: тема разведки → новостная фа
     const topic = (newsBodies[0] as { topic?: string }).topic;
     expect(topic).toHaveLength(200);
     expect(topic).toBe('ф'.repeat(200));
+  });
+});
+
+// S5: конвейер по выбранному блогу — slug уходит в ОБА POST (scout и news);
+// без выбора — легаси-тела без поля blog (снапшот-совместимость).
+describe('FullPipelineRun: blog-контекст', () => {
+  const BLOGS = {
+    blogs: [
+      {
+        slug: 'artemia-artel',
+        name: 'Артемия Артель',
+        hasProfile: true,
+        sourcesCount: 1,
+        profile: 'artemia',
+        readyForNews: true,
+      },
+    ],
+  };
+
+  function stubWithBlogs(scoutBodies: unknown[], newsBodies: unknown[]): void {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === '/api/blogs') return new Response(JSON.stringify(BLOGS), { status: 200 });
+        if (url === '/api/blog/scout') {
+          scoutBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return scoutDone([]);
+        }
+        if (url === '/api/blog/news') {
+          newsBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return newsDone();
+        }
+        return new Response('{}', { status: 200 });
+      }),
+    );
+  }
+
+  it('выбранный блог уходит в тела scout и news', async () => {
+    const scoutBodies: unknown[] = [];
+    const newsBodies: unknown[] = [];
+    stubWithBlogs(scoutBodies, newsBodies);
+    render(<FullPipelineRun sandbox={false} />);
+    const user = userEvent.setup();
+
+    await user.selectOptions(await screen.findByLabelText('блог'), 'artemia-artel');
+    expect(screen.getByText(/по блогу «Артемия Артель»/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Запустить весь конвейер' }));
+    await screen.findByText(/готово/);
+
+    expect(scoutBodies[0]).toMatchObject({ blog: 'artemia-artel' });
+    expect(newsBodies[0]).toMatchObject({ blog: 'artemia-artel' });
+  });
+
+  it('без блога — легаси: поля blog в телах нет', async () => {
+    const scoutBodies: unknown[] = [];
+    const newsBodies: unknown[] = [];
+    stubWithBlogs(scoutBodies, newsBodies);
+    render(<FullPipelineRun sandbox={false} />);
+    const user = userEvent.setup();
+
+    await screen.findByText(/без блога: стандартные источники и голос канала/);
+    await user.click(screen.getByRole('button', { name: 'Запустить весь конвейер' }));
+    await screen.findByText(/готово/);
+
+    expect('blog' in (newsBodies[0] as Record<string, unknown>)).toBe(false);
+    expect('blog' in (scoutBodies[0] as Record<string, unknown>)).toBe(false);
   });
 });

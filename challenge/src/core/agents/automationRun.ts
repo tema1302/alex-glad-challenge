@@ -15,10 +15,13 @@ import { dataPath } from '../paths.js';
 import { runNewsPipeline } from './pipeline.js';
 import { publishPost, type PublishResult } from './telegram.js';
 
-/** Публикация поста: контент + блог (адаптеры берут chat_id из blogs.tg_chat_id). */
+/** Публикация поста: контент + блог + id вставленного поста. Адаптеры берут
+ * chat_id из blogs.tg_chat_id; postId нужен web-обёртке — outbox-запись
+ * привязывается к реальному посту (ядро свой outbox не ведёт). */
 export type AutomationPublish = (
   content: string,
   blog: BlogRow,
+  postId?: number,
 ) => Promise<PublishResult>;
 
 export interface AutomationRunnerOptions {
@@ -81,13 +84,14 @@ export function createAutomationRunner(
       const rule = opts.getRule(blogId);
       let published = false;
       if (rule && rule.auto_publish === 1) {
-        const pub = await publish(content, blog);
+        const pub = await publish(content, blog, result.postId ?? undefined);
         published = pub.ok;
         if (!pub.ok) throw new Error(`Публикация не удалась: ${pub.error}`);
       }
 
       return {
-        postId: result.post.news.id,
+        // id ПОСТА (не новости): run-запись и outbox привязываются к посту.
+        postId: result.postId,
         message: published
           ? 'Пост создан и опубликован в TG'
           : 'Пост создан (без автопубликации)',

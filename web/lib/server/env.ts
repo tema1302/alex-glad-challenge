@@ -154,3 +154,9 @@ export { isAdminAuthConfigured } from '../auth';
 export function getGoogleCalendarStatus(): { configured: boolean } {
   return { configured: getGoogleCalendarConfig() !== null };
 }
+
+/** Планировщик автоматизации (web/instrumentation.ts, AUTOMATION_ENABLED=1):
+ *  наружу только флаг — правда ли, что тики ходят, пока запущен web-сервер. */
+export function isAutomationSchedulerEnabled(): boolean {
+  return process.env.AUTOMATION_ENABLED === '1';
+}

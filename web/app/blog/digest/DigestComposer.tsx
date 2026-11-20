@@ -65,6 +65,9 @@ interface BlogOption {
   slug: string;
   name: string;
   hasProfile: boolean;
+  // S5: канал блога — сервер резолвит tg_chat_id по slug при отправке.
+  tgChatId?: string | null;
+  tgChatIdSet?: boolean;
 }
 
 export function DigestComposer({
@@ -93,7 +96,19 @@ export function DigestComposer({
   const [sending, setSending] = useState(false);
 
   const over = digest.length > MAX;
-  const canPublish = tgConfigured && digest.trim().length > 0 && !over && !sending;
+  // S5: канал назначения виден до отправки — выбранный блог резолвится на
+  // сервере в его blogs.tg_chat_id; без блога — общий канал (легаси).
+  const selectedBlog = blogs.find((b) => b.slug === blog) ?? null;
+  const selectedBlogHasChannel = selectedBlog
+    ? Boolean(selectedBlog.tgChatId) || selectedBlog.tgChatIdSet === true
+    : false;
+  const targetChannelInvalid = selectedBlog !== null && !selectedBlogHasChannel;
+  const targetChannelLabel = selectedBlog
+    ? selectedBlogHasChannel
+      ? `канал: «${selectedBlog.name}» (свой chat_id)`
+      : 'канал: общий — у блога нет своего chat_id'
+    : 'канал: общий';
+  const canPublish = tgConfigured && digest.trim().length > 0 && !over && !sending && !targetChannelInvalid;
   const generating = phase === 'generating';
 
   // Черновик: восстановление при монтировании…
@@ -210,7 +225,7 @@ export function DigestComposer({
       const resp = await fetch('/api/telegram/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: digest.trim(), parseMode: 'none' }),
+        body: JSON.stringify({ text: digest.trim(), parseMode: 'none', ...(blog ? { blog } : {}) }),
       });
       const j = (await resp.json().catch(() => ({}))) as {
         ok?: boolean;
@@ -419,6 +434,14 @@ export function DigestComposer({
                 Очистить
               </Button>
               {!tgConfigured && <span className="text-xs text-warn">отправка выключена — TG не настроен</span>}
+              {tgConfigured && digest.trim().length > 0 ? (
+                <Badge tone={targetChannelInvalid ? 'warn' : 'dim'}>{targetChannelLabel}</Badge>
+              ) : null}
+              {targetChannelInvalid && selectedBlog ? (
+                <span role="note" className="text-xs text-warn">
+                  у блога «{selectedBlog.name}» нет своего канала — задайте chat_id в студии
+                </span>
+              ) : null}
             </div>
           </Card>
 
@@ -470,7 +493,9 @@ export function DigestComposer({
           <div className="space-y-3">
             <p className="flex items-center gap-2">
               Канал:{' '}
-              {channelLabel ? (
+              {selectedBlog ? (
+                <Badge tone={targetChannelInvalid ? 'warn' : 'accent'}>{selectedBlog.name}</Badge>
+              ) : channelLabel ? (
                 <Badge tone="accent">{channelLabel}</Badge>
               ) : (
                 <Badge tone="dim">канал по умолчанию · не настроен</Badge>

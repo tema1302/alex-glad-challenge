@@ -5,9 +5,12 @@ import { NextRequest } from 'next/server';
 
 process.env.WEB_AUTH_SECRET = 'test-secret-for-vitest';
 process.env.WEB_ADMIN_PASSWORD = 'test-password';
+// schedulerEnabled детерминирован: dotenv не перезаписывает уже заданные ключи.
+process.env.AUTOMATION_ENABLED = '0';
 
 const mocks = vi.hoisted(() => ({
   listBlogs: vi.fn(),
+  getBlog: vi.fn(),
   listRules: vi.fn(),
   listRuns: vi.fn(),
   upsertRule: vi.fn(),
@@ -17,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../lib/server/db', () => ({
-  getBlogDb: vi.fn(() => ({ listBlogs: mocks.listBlogs })),
+  getBlogDb: vi.fn(() => ({ listBlogs: mocks.listBlogs, getBlog: mocks.getBlog })),
   getGamificationDb: vi.fn(() => ({ award: mocks.award })),
   getNotificationDb: vi.fn(() => ({ add: mocks.notifyAdd })),
   withDb: vi.fn((fn: () => unknown) => fn()),
@@ -32,6 +35,12 @@ vi.mock('../../lib/server/automation-service', () => ({
   })),
 }));
 
+// Граница замокана (канон route-спеков): чистый детектор архива без core-БД.
+vi.mock('../../lib/server/blogs', () => ({
+  blogArchivedError: (blog: { archived_at: string | null } | null) =>
+    blog?.archived_at ? 'Блог «X» в архиве — верните его из архива' : null,
+}));
+
 let GET: (req: NextRequest) => Promise<Response>;
 let POST: (req: NextRequest) => Promise<Response>;
 let createSessionValue: () => string;
@@ -43,6 +52,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   mocks.listBlogs.mockReset().mockReturnValue([{ id: 1, slug: 'main', name: 'Главный', style_preset: 'antonov' }]);
+  // Блог не найден → гард молчит, upsertRule сам бросает «blog not found».
+  mocks.getBlog.mockReset().mockReturnValue(null);
   mocks.listRules.mockReset().mockReturnValue([
     {
       blog_id: 1,
@@ -73,7 +84,7 @@ beforeEach(() => {
     },
   ]);
   mocks.upsertRule.mockReset();
-  mocks.runNow.mockReset().mockResolvedValue({ status: 'success', message: 'Пост создан' });
+  mocks.runNow.mockReset().mockResolvedValue({ status: 'success', message: 'Пост создан', postId: 12 });
   mocks.award.mockReset();
   mocks.notifyAdd.mockReset();
 });
@@ -111,6 +122,7 @@ describe('GET /api/automation', () => {
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({
       ok: true,
+      schedulerEnabled: false,
       rules: [
         {
           blogId: 1,
@@ -173,6 +185,16 @@ describe('POST /api/automation', () => {
     await expect(res.json()).resolves.toMatchObject({ error: 'Блог 42 не найден' });
   });
 
+  it('configure: архивный блог → 400 «архив», upsertRule не зван', async () => {
+    mocks.getBlog.mockReturnValue({ id: 1, archived_at: '2026-01-01T00:00:00.000Z' });
+    const res = await POST(
+      postReq({ action: 'configure', blogId: 1, enabled: false, intervalMinutes: 60, autoPublish: false }),
+    );
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toMatchObject({ error: expect.stringMatching(/архив/i) });
+    expect(mocks.upsertRule).not.toHaveBeenCalled();
+  });
+
   it('400: тело не подходит ни под configure, ни под run (intervalMinutes < 5)', async () => {
     const res = await POST(postReq({ action: 'configure', blogId: 1, intervalMinutes: 1 }));
     expect(res.status).toBe(400);
@@ -189,7 +211,12 @@ describe('POST /api/automation', () => {
   it('run → 200 со статусом прогона; award + уведомление «успех»', async () => {
     const res = await POST(postReq({ action: 'run', blogId: 1 }));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toEqual({ ok: true, status: 'success', message: 'Пост создан' });
+    await expect(res.json()).resolves.toEqual({
+      ok: true,
+      status: 'success',
+      message: 'Пост создан',
+      postId: 12,
+    });
 
     expect(mocks.runNow).toHaveBeenCalledWith(1);
     expect(mocks.award).toHaveBeenCalledWith('automation_run', '1');

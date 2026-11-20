@@ -359,6 +359,9 @@ export type RagIndexTgInput = z.infer<typeof ragIndexTgSchema>;
 export const tgPublishSchema = z.object({
   text: z.string().trim().min(1, 'Текст обязателен').max(4096, 'TG: до 4096 символов'),
   parseMode: z.enum(['HTML', 'none']).optional(),
+  // S5: slug блога — сервер сам резолвит blogs.tg_chat_id (chat_id из тела
+  // клиента — никогда: адресация отправки только из БД).
+  blog: z.string().trim().min(1).max(64).optional(),
 });
 export type TgPublishInput = z.infer<typeof tgPublishSchema>;
 

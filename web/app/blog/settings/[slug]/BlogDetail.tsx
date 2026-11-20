@@ -157,6 +157,13 @@ function timezoneError(tz: string): string | null {
   }
 }
 
+// S5: человекочитаемый интервал правила автоматизации (строка состояния вкладки).
+function intervalLabel(minutes: number): string {
+  if (minutes % 1440 === 0) return 'раз в сутки';
+  if (minutes % 60 === 0) return `каждые ${minutes / 60} ч`;
+  return `каждые ${minutes} мин`;
+}
+
 // tgChatId: числовой id канала (pattern). @username легален для Bot API, но
 // publishPost превращает его в NaN — блокируем сохранение до ввода -100….
 const CHAT_ID_ERROR =
@@ -213,6 +220,14 @@ export function BlogDetail({ slug }: { slug: string }) {
   // S4: какие таймзоны слотов уже блюрились (индекс → true) — ошибка зоны
   // показывается после ухода из поля, а блокирует сохранение любая кривая зона.
   const [tzTouched, setTzTouched] = useState<Record<number, boolean>>({});
+  // S5: состояние правила автоматизации блога (вкладка «Расписание»): тумблер
+  // автопубликации общий для интервальных прогонов и слотов — показываем честно.
+  const [automationRule, setAutomationRule] = useState<{
+    enabled: boolean;
+    intervalMinutes: number;
+    autoPublish: boolean;
+  } | null>(null);
+  const [automationLoaded, setAutomationLoaded] = useState(false);
 
   // prompts editor
   const [agent, setAgent] = useState('post.writer');
@@ -321,6 +336,35 @@ export function BlogDetail({ slug }: { slug: string }) {
     // при переключении агента не нужен.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
+
+  // S5: ?tab=schedule — глубокая ссылка «расписание блога →» из /automation.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    if (requested && TABS.some((t) => t.id === requested)) setTab(requested);
+  }, []);
+
+  // S5: состояние правила автоматизации — один fetch при первом открытии вкладки.
+  useEffect(() => {
+    if (tab !== 'schedule' || automationLoaded || !blog) return;
+    setAutomationLoaded(true);
+    void (async () => {
+      try {
+        const r = await fetch('/api/automation');
+        if (!r.ok) return;
+        const data = (await r.json()) as {
+          rules?: Array<{ blogId: number; enabled: boolean; intervalMinutes: number; autoPublish: boolean }>;
+        };
+        const rule = (data.rules ?? []).find((x) => x.blogId === blog.id) ?? null;
+        setAutomationRule(
+          rule
+            ? { enabled: rule.enabled, intervalMinutes: rule.intervalMinutes, autoPublish: rule.autoPublish }
+            : null,
+        );
+      } catch {
+        // Строка состояния — дополнение, не блокер расписания: тихо.
+      }
+    })();
+  }, [tab, automationLoaded, blog]);
 
   const dirtyGeneral = useMemo(() => {
     if (!blog) return false;
@@ -1039,8 +1083,19 @@ export function BlogDetail({ slug }: { slug: string }) {
         <Card label="расписание постов (дни недели)">
           <div className="space-y-4">
             <p className="text-xs text-dim">
-              Слоты запускаются в локальном времени таймзоны (окно догона 3 часа). Черновики по умолчанию;
-              автопубликация — правило блога в <Link className="text-accent hover:underline" href="/automation">/automation</Link>.
+              Слоты запускаются в локальном времени таймзоны (окно догона 3 часа). Черновики по
+              умолчанию; автопубликация — общий тумблер правила блога (он же для интервальных
+              прогонов).
+            </p>
+            <p className="text-xs text-dim">
+              Интервальная автоматизация:{' '}
+              {automationRule
+                ? `${automationRule.enabled ? 'вкл' : 'выкл'} · ${intervalLabel(automationRule.intervalMinutes)} · автопубликация ${automationRule.autoPublish ? 'вкл' : 'выкл'}`
+                : 'правила нет'}{' '}
+              →{' '}
+              <Link className="text-accent hover:underline" href="/automation">
+                изменить в /automation
+              </Link>
             </p>
             {schedule.length === 0 ? (
               <p className="rounded-md border border-line bg-surface-2 p-3 text-sm text-dim">Слотов нет — добавьте день и время.</p>

@@ -63,11 +63,12 @@ const NEWS_ROW = {
 interface PublishCall {
   content: string;
   chatId?: string;
+  postId?: number;
 }
 
 function fakePublish(calls: PublishCall[], result: { ok: boolean; error?: string }): AutomationPublish {
-  return async (content, blog) => {
-    calls.push({ content, chatId: blog.tg_chat_id ?? undefined });
+  return async (content, blog, postId) => {
+    calls.push({ content, chatId: blog.tg_chat_id ?? undefined, postId });
     return result.ok ? { ok: true, messageId: 1 } : { ok: false, error: result.error };
   };
 }
@@ -111,8 +112,9 @@ test('runBlog: пост создаётся, без auto_publish публикац
 
     const outcome = await runner.runBlog(blog.id);
     assert.equal(outcome.message, 'Пост создан (без автопубликации)');
-    assert.equal(typeof outcome.postId, 'number');
-    assert.ok((outcome.postId ?? 0) > 0, 'postId — id новости из БД');
+    const inserted = db.recentPosts(1, blog.id)[0];
+    assert.ok(inserted, 'пост должен быть в БД');
+    assert.equal(outcome.postId, inserted.id, 'postId — id вставленного поста');
     assert.deepEqual(publishCalls, [], 'без auto_publish publish не зовётся');
   } finally {
     db.close();
@@ -142,6 +144,11 @@ test('runBlog: auto_publish=1 — публикация с контентом п�
     assert.equal(publishCalls.length, 1);
     assert.ok(publishCalls[0]?.content.includes('@lookatfacts'), 'публикуется контент поста');
     assert.equal(publishCalls[0]?.chatId, '-100777', 'chat_id берётся из blogs.tg_chat_id');
+    // postId — id вставленного ПОСТА (не новости): outbox привязывается к посту.
+    const inserted = db.recentPosts(1, blog.id)[0];
+    assert.ok(inserted, 'пост должен быть в БД');
+    assert.equal(publishCalls[0]?.postId, inserted.id, 'publish получает id вставленного поста');
+    assert.equal(outcome.postId, inserted.id, 'outcome.postId — id вставленного поста');
   } finally {
     db.close();
     safeRm(dir);
@@ -191,6 +198,9 @@ test('runBlog без инжекта publish: дефолт публикует в 
 
     const outcome = await runner.runBlog(blog.id);
     assert.equal(outcome.message, 'Пост создан и опубликован в TG');
+    const inserted = db.recentPosts(1, blog.id)[0];
+    assert.ok(inserted, 'пост должен быть в БД');
+    assert.equal(outcome.postId, inserted.id, 'outcome.postId — id вставленного поста');
     assert.equal(sendMessageCalls.length, 1, 'ровно один запрос в Bot API');
     const call = sendMessageCalls[0];
     assert.ok(call, 'запрос sendMessage не зафиксирован');
@@ -425,7 +435,9 @@ test('проводка адаптера: BlogAutomation поверх runner — 
 
     assert.equal(result.status, 'success');
     assert.equal(result.message, 'Пост создан и опубликован в TG');
-    assert.equal(typeof result.postId, 'number');
+    const inserted = db.recentPosts(1, blog.id)[0];
+    assert.ok(inserted, 'пост должен быть в БД');
+    assert.equal(result.postId, inserted.id, 'run-запись фиксирует id вставленного поста');
     assert.equal(publishCalls.length, 1);
     assert.ok(automation.getRule(blog.id)?.last_run_at, 'правило получило last_run_at');
   } finally {

@@ -17,6 +17,8 @@ import { FactChecker, type FactCheckResult } from './factChecker.js';
 export interface PipelineResult {
   news: NewsFetchResult;
   post: WrittenPost | null;
+  /** id вставленного поста (insertPost); null — пост не писался. */
+  postId: number | null;
   factCheck: FactCheckResult | null;
   /** Ошибки RSS-фидов (для честного UI: «новостей нет, потому что фиды недоступны»). */
   rssErrors: string[];
@@ -95,7 +97,7 @@ export async function runNewsPipeline(
   });
   log(`[pipeline] Агент 1: кандидатов ${news.rawCount}, выбрано ${news.ranked.length}`);
   if (news.ranked.length === 0) {
-    return { news, post: null, factCheck: null, rssErrors };
+    return { news, post: null, postId: null, factCheck: null, rssErrors };
   }
 
   // По умолчанию — пишем пост про самую хайповую новость.
@@ -111,7 +113,13 @@ export async function runNewsPipeline(
   log(`[pipeline] Агент 2: пост написан (${written.post.content.length} символов)`);
   log(`[pipeline] Агент 3: verdict=${written.factCheck.verdict}, issues=${written.factCheck.issues.length}`);
 
-  return { news, post: written.post, factCheck: written.factCheck, rssErrors };
+  return {
+    news,
+    post: written.post,
+    postId: written.postId,
+    factCheck: written.factCheck,
+    rssErrors,
+  };
 }
 
 export interface PostFromNewsResult {

@@ -11,6 +11,7 @@ import { tgVisibleText } from '../../../../lib/shared/tg-html';
 import { requireApiAuth, SESSION_COOKIE } from '../../../../lib/auth';
 import { publishToTelegram, tgPublishResponse, tgRateLimit } from '../../../../lib/server/tg-publish';
 import { getGamificationDb, getNotificationDb, getWebhookDb, withDb } from '../../../../lib/server/db';
+import { blogArchivedError, resolveBlog } from '../../../../lib/server/blogs';
 import { deliverEvent } from '../../../../lib/server/challenge';
 
 export const runtime = 'nodejs';
@@ -47,12 +48,30 @@ export async function POST(req: NextRequest): Promise<Response> {
     );
   }
 
-  const outcome = await publishToTelegram(
-    parsed.data.text,
-    'manual',
-    undefined,
-    parsed.data.parseMode ?? 'HTML',
-  );
+  // S5: адресация «в канал блога» — только по slug; chat_id резолвится из БД.
+  let chatId: string | undefined;
+  if (parsed.data.blog) {
+    const resolution = await withDb(() => resolveBlog(parsed.data.blog as string));
+    if (!resolution.blog) {
+      return Response.json({ ok: false, error: resolution.error ?? 'Блог не найден' }, { status: 400 });
+    }
+    const archived = blogArchivedError(resolution.blog);
+    if (archived) {
+      return Response.json({ ok: false, error: archived }, { status: 400 });
+    }
+    if (!resolution.blog.tg_chat_id) {
+      return Response.json(
+        { ok: false, error: 'У блога не задан TG-канал — задайте его в настройках блога' },
+        { status: 400 },
+      );
+    }
+    chatId = resolution.blog.tg_chat_id;
+  }
+
+  // Back-compat: без блога вызов остаётся 4-арным (как до S5).
+  const outcome = chatId
+    ? await publishToTelegram(parsed.data.text, 'manual', undefined, parsed.data.parseMode ?? 'HTML', chatId)
+    : await publishToTelegram(parsed.data.text, 'manual', undefined, parsed.data.parseMode ?? 'HTML');
   if (outcome.ok) {
     await withDb(() => {
       getGamificationDb().award('post_published');

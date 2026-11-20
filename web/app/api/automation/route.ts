@@ -7,6 +7,8 @@ import { automationConfigureSchema, automationRunSchema } from '../../../lib/sha
 import { jsonOk, jsonError } from '../../../lib/server/http';
 import { getBlogDb, getGamificationDb, getNotificationDb, withDb } from '../../../lib/server/db';
 import { getAutomation } from '../../../lib/server/automation-service';
+import { blogArchivedError } from '../../../lib/server/blogs';
+import { isAutomationSchedulerEnabled } from '../../../lib/server/env';
 import { safeMessage } from '../../../lib/server/safe-message';
 
 export const runtime = 'nodejs';
@@ -42,7 +44,10 @@ export async function GET(req: NextRequest): Promise<Response> {
     }));
     return { rules, runs };
   });
-  return jsonOk({ ...data });
+  // schedulerEnabled — флаг планировщика (AUTOMATION_ENABLED): правило может
+  // «работать» при мёртвом тикере; UI показывает это честно. Аддитивно для
+  // существующих потребителей (Android ignoreUnknownKeys).
+  return jsonOk({ ...data, schedulerEnabled: isAutomationSchedulerEnabled() });
 }
 
 export async function POST(req: NextRequest): Promise<Response> {
@@ -53,13 +58,19 @@ export async function POST(req: NextRequest): Promise<Response> {
   const configure = automationConfigureSchema.safeParse(body);
   if (configure.success) {
     try {
-      await withDb(() =>
-        getAutomation().upsertRule(configure.data.blogId, {
+      await withDb(() => {
+        // Архивный блог не автоматизируется: прямой API-вызов получает явную
+        // ошибку, а не тихо созданное правило (паритет news/digest/publish).
+        const blog = getBlogDb().getBlog(configure.data.blogId);
+        if (blog && blogArchivedError(blog)) {
+          throw new Error('Блог архивирован — правило создать нельзя');
+        }
+        return getAutomation().upsertRule(configure.data.blogId, {
           enabled: configure.data.enabled,
           intervalMinutes: configure.data.intervalMinutes,
           autoPublish: configure.data.autoPublish,
-        }),
-      );
+        });
+      });
       return jsonOk({});
     } catch (e) {
       return jsonError(safeMessage(e instanceof Error ? e.message : 'configure failed'), 400);
@@ -80,8 +91,8 @@ export async function POST(req: NextRequest): Promise<Response> {
         href: '/automation',
       });
     });
-    if (result.status === 'error') return jsonOk({ status: result.status, message: result.message });
-    return jsonOk({ status: result.status, message: result.message });
+    // postId — id вставленного ПОСТА: ссылка «→ #id» ведёт на /blog/posts/<id>.
+    return jsonOk({ status: result.status, message: result.message, postId: result.postId });
   } catch (e) {
     return jsonError(safeMessage(e instanceof Error ? e.message : 'run failed'), 500);
   }

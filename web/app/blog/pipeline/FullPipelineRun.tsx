@@ -9,7 +9,7 @@
 // Оба роута отдают только start → done/error (onProgress внутри агентов нет), поэтому
 // шаги внутри фазы резолвятся одним событием done.
 // Без импортов core/ и server-only (client component); секреты не нужны.
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import type {
   SseBlogNewsDone,
@@ -99,6 +99,71 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // S5: конвейер по выбранному блогу — его RSS и голос; без блога — легаси.
+  // Выбор запоминается (localStorage) и поддерживает deep-link ?blog=.
+  interface PipelineBlog {
+    slug: string;
+    name: string;
+    hasProfile: boolean;
+    sourcesCount: number;
+    profile?: string | null;
+    readyForNews?: boolean;
+  }
+  const [blogs, setBlogs] = useState<PipelineBlog[]>([]);
+  const [blogsError, setBlogsError] = useState(false);
+  const [blog, setBlog] = useState('');
+
+  const loadBlogs = useCallback(async () => {
+    setBlogsError(false);
+    try {
+      const r = await fetch('/api/blogs');
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = (await r.json()) as { blogs?: PipelineBlog[] };
+      setBlogs(j.blogs ?? []);
+    } catch {
+      setBlogs([]);
+      setBlogsError(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadBlogs();
+  }, [loadBlogs]);
+
+  // Deep-link ?blog= важнее запомненного выбора; сохранённый slug не из списка — сброс.
+  useEffect(() => {
+    const fromQuery = new URLSearchParams(window.location.search).get('blog') ?? '';
+    let saved = '';
+    try {
+      saved = localStorage.getItem('pipeline-blog') ?? '';
+    } catch {
+      /* localStorage недоступен — работаем без запоминания */
+    }
+    setBlog(fromQuery || saved);
+  }, []);
+
+  useEffect(() => {
+    if (blogs.length === 0) return;
+    setBlog((prev) => (prev && !blogs.some((b) => b.slug === prev) ? '' : prev));
+  }, [blogs]);
+
+  const changeBlog = (value: string): void => {
+    setBlog(value);
+    try {
+      if (value) localStorage.setItem('pipeline-blog', value);
+      else localStorage.removeItem('pipeline-blog');
+    } catch {
+      /* localStorage недоступен — выбор живёт до перезагрузки */
+    }
+  };
+
+  const selectedBlog = blogs.find((b) => b.slug === blog) ?? null;
+  // Фаза news для не-default блога требует профиль голоса и RSS — предупреждаем
+  // до запуска (роут вернул бы человекочитаемый 400 уже после старта).
+  const notReady = selectedBlog
+    ? selectedBlog.readyForNews === false || !selectedBlog.hasProfile || selectedBlog.sourcesCount === 0
+    : false;
+
   const run = useCallback(async () => {
     setScout(null);
     setNews(null);
@@ -120,6 +185,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
           enableForum: RUN_DEFAULTS.enableForum,
           enableTelegram: RUN_DEFAULTS.enableTelegram,
           llm,
+          ...(blog ? { blog } : {}),
         },
         ac.signal,
         (ev) => {
@@ -149,6 +215,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
           top: RUN_DEFAULTS.newsTop,
           forIndex: 0,
           llm,
+          ...(blog ? { blog } : {}),
           ...(newsTopic ? { topic: newsTopic } : {}),
         },
         ac.signal,
@@ -172,7 +239,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
       setRunning(false);
       abortRef.current = null;
     }
-  }, [query, llm]);
+  }, [query, llm, blog]);
 
   const stop = (): void => {
     abortRef.current?.abort();
@@ -186,6 +253,19 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
         <div className="mt-3 flex flex-wrap items-end gap-4">
           {/* Параметры — Field (S4); лейблы «Запрос для разведки»/«LLM» — пины
               (blog-pipeline-full-run.spec), фикс-параметры прогона — hint. */}
+          <Field id="pipeline-blog" label="блог">
+            <select
+              className={INPUT_CLASS}
+              value={blog}
+              onChange={(e) => changeBlog(e.target.value)}
+              disabled={running}
+            >
+              <option value="">— без блога —</option>
+              {blogs.map((b) => (
+                <option key={b.slug} value={b.slug}>{b.name}</option>
+              ))}
+            </select>
+          </Field>
           <Field id="pipeline-query" label="Запрос для разведки" className="min-w-[220px] flex-1">
             <input
               className={`w-full ${INPUT_CLASS}`}
@@ -208,7 +288,7 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
             </select>
           </Field>
           <div className="ml-auto flex gap-2">
-            <Button variant="primary" icon={<IconPlay />} loading={running} onClick={run} disabled={running}>
+            <Button variant="primary" icon={<IconPlay />} loading={running} onClick={run} disabled={running || notReady}>
               Запустить весь конвейер
             </Button>
             {/* «Стоп» — регресс-стоп: активна во время стрима, без loading. */}
@@ -217,6 +297,22 @@ export function FullPipelineRun({ sandbox }: { sandbox: boolean }) {
             </Button>
           </div>
         </div>
+        <p role="note" className={`mt-2 text-xs ${notReady ? 'text-warn' : 'text-dim'}`}>
+          {blogsError ? (
+            <>
+              Не удалось загрузить блоги —{' '}
+              <button type="button" className="text-accent" onClick={() => void loadBlogs()}>
+                обновить блоги
+              </button>
+            </>
+          ) : notReady && selectedBlog ? (
+            `у блога «${selectedBlog.name}» не хватает RSS-источников или профиля голоса — сначала настройте блог в студии`
+          ) : selectedBlog ? (
+            `по блогу «${selectedBlog.name}»: его RSS (${selectedBlog.sourcesCount}), голос — профиль «${selectedBlog.profile ?? '—'}»`
+          ) : (
+            'без блога: стандартные источники и голос канала'
+          )}
+        </p>
         <p className="mt-2 text-xs text-dim">
           часов: {RUN_DEFAULTS.hours} · топ разведки: {RUN_DEFAULTS.scoutTopK} · топ новостей:{' '}
           {RUN_DEFAULTS.newsTop}
